@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/alerts/evaluate",
+      "schedule": "0 0,6,12,18 * * *"
+    },
+    {
+      "path": "/api/sessions/nudge",
+      "schedule": "0 21 * * *"
+    }
+  ]
+}

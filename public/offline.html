@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WindPing — Offline</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #061B2E; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .container { text-align: center; padding: 40px 24px; max-width: 360px; }
+    .icon { font-size: 64px; margin-bottom: 20px; }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    p { font-size: 14px; color: #94A3B8; line-height: 1.6; margin-bottom: 24px; }
+    button { padding: 12px 28px; background: #2E8FAE; color: #fff; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">🌊</div>
+    <h1>Je bent offline</h1>
+    <p>Geen internetverbinding. Check je WiFi of mobiele data en probeer opnieuw.</p>
+    <button onclick="window.location.reload()">Probeer opnieuw</button>
+  </div>
+</body>
+</html>

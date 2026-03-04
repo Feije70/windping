@@ -1,0 +1,23 @@
+{
+  "name": "WindPing",
+  "short_name": "WindPing",
+  "description": "Your perfect session, our obsession!",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F6F1EB",
+  "theme_color": "#2E8FAE",
+  "icons": [
+    {
+      "src": "/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
