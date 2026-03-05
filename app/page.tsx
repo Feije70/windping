@@ -372,7 +372,7 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
             const gearEmoji: Record<string, string> = { kite: "🪁", windsurf: "🏄", wing: "🦅", sup: "🛶" };
             const spotName = s.spots?.display_name || spotNames[s.spot_id] || "Spot";
             return (
-              <div key={s.id} style={{ padding: "12px 16px", borderBottom: i < Math.min(completed.length, 3) - 1 ? `1px solid ${C.cardBorder}` : "none", display: "flex", alignItems: "center", gap: 12 }}>
+              <Link href={`/sessie/${s.id}`} key={s.id} style={{ padding: "12px 16px", borderBottom: i < Math.min(completed.length, 3) - 1 ? `1px solid ${C.cardBorder}` : "none", display: "flex", alignItems: "center", gap: 12, textDecoration: "none" }}>
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: C.goBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>
                   {gearEmoji[s.gear_type || ""] || "🏄"}
                 </div>
@@ -383,13 +383,14 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
                 <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
                   {s.rating && Array.from({ length: s.rating }, (_, k) => <span key={k} style={{ fontSize: 12 }}>⭐</span>)}
                 </div>
-              </div>
+              </Link>
+
             );
           })}
         </div>
       )}
       {stats.total_sessions > 3 && (
-        <Link href="/alert" style={{ display: "block", textAlign: "center", marginTop: 10, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
+        <Link href="/mijn-sessies" style={{ display: "block", textAlign: "center", marginTop: 10, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
           Alle {stats.total_sessions} sessies bekijken →
         </Link>
       )}
