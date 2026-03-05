@@ -326,6 +326,19 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
   }
 
   const favSpotName = stats.favorite_spot_id ? (spotNames[stats.favorite_spot_id] || "–") : "–";
+  const latest = completed[0];
+  const latestSpot = latest ? (latest.spots?.display_name || spotNames[latest.spot_id] || "Spot") : null;
+  const ratingLabelsL: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker!", 5: "EPIC!" };
+  const ratingColorsL: Record<number, string> = { 1: "#C97A63", 2: "#D4860B", 3: "#E8A83E", 4: "#2E8FAE", 5: "#3EAA8C" };
+
+  function dateLabelFn(dateStr: string) {
+    const d = new Date(dateStr + "T12:00:00");
+    const now = new Date();
+    const diff = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000);
+    if (diff === 0) return "Vandaag";
+    if (diff === -1) return "Gisteren";
+    return d.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
+  }
 
   return (
     <div>
@@ -361,35 +374,77 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
           </div>
         </div>
       </div>
-      {completed.length > 0 && (
-        <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 14, overflow: "hidden" }}>
-          {completed.slice(0, 3).map((s, i) => {
+
+      {latest && (
+        <Link href={`/sessie/${latest.id}`} style={{ display: "block", textDecoration: "none", marginBottom: 12 }}>
+          <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, overflow: "hidden" }}>
+            {latest.photo_url ? (
+              <div style={{ position: "relative" }}>
+                <img src={latest.photo_url} alt="" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 30%, rgba(31,53,76,0.85) 100%)" }} />
+                <div style={{ position: "absolute", bottom: 12, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>{latestSpot}</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>{dateLabelFn(latest.session_date)}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {latest.forecast_wind && (
+                      <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", borderRadius: 9, padding: "5px 9px", textAlign: "center" }}>
+                        <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{latest.forecast_wind}</div>
+                        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>KN</div>
+                      </div>
+                    )}
+                    {latest.rating && (
+                      <div style={{ fontSize: 13, fontWeight: 800, color: ratingColorsL[latest.rating], background: `${ratingColorsL[latest.rating]}25`, padding: "4px 10px", borderRadius: 16 }}>
+                        {ratingLabelsL[latest.rating]}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{latestSpot}</div>
+                  <div style={{ fontSize: 11, color: C.sub }}>{dateLabelFn(latest.session_date)}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {latest.forecast_wind && <div style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{latest.forecast_wind}<span style={{ fontSize: 10 }}>kn</span></div>}
+                  {latest.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColorsL[latest.rating] }}>{ratingLabelsL[latest.rating]}</div>}
+                </div>
+              </div>
+            )}
+          </div>
+        </Link>
+      )}
+
+      {completed.length > 1 && (
+        <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 14, overflow: "hidden", marginBottom: 8 }}>
+          {completed.slice(1, 4).map((s, i) => {
             const dObj = new Date(s.session_date + "T12:00:00");
             const now = new Date();
-            const todayD = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-            const targetD = new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate());
-            const diff = Math.round((targetD.getTime() - todayD.getTime()) / 86400000);
-            const dateLabel = diff === 0 ? "Vandaag" : diff === -1 ? "Gisteren" : dObj.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
+            const diff = Math.round((new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate()).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000);
+            const dl = diff === 0 ? "Vandaag" : diff === -1 ? "Gisteren" : dObj.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
             const gearEmoji: Record<string, string> = { kite: "🪁", windsurf: "🏄", wing: "🦅", sup: "🛶" };
             const spotName = s.spots?.display_name || spotNames[s.spot_id] || "Spot";
             return (
-              <Link href={`/sessie/${s.id}`} key={s.id} style={{ padding: "12px 16px", borderBottom: i < Math.min(completed.length, 3) - 1 ? `1px solid ${C.cardBorder}` : "none", display: "flex", alignItems: "center", gap: 12, textDecoration: "none" }}>
+              <Link href={`/sessie/${s.id}`} key={s.id} style={{ padding: "12px 16px", borderBottom: i < 2 ? `1px solid ${C.cardBorder}` : "none", display: "flex", alignItems: "center", gap: 12, textDecoration: "none" }}>
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: C.goBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>
                   {gearEmoji[s.gear_type || ""] || "🏄"}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{spotName}</div>
-                  <div style={{ fontSize: 11, color: C.sub }}>{dateLabel}{s.forecast_wind ? ` · ${s.forecast_wind}kn ${s.forecast_dir || ""}` : ""}</div>
+                  <div style={{ fontSize: 11, color: C.sub }}>{dl}{s.forecast_wind ? ` · ${s.forecast_wind}kn ${s.forecast_dir || ""}` : ""}</div>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
                   {s.rating && Array.from({ length: s.rating }, (_, k) => <span key={k} style={{ fontSize: 12 }}>⭐</span>)}
                 </div>
               </Link>
-
             );
           })}
         </div>
       )}
+
       {stats.total_sessions > 3 && (
         <Link href="/mijn-sessies" style={{ display: "block", textAlign: "center", marginTop: 10, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
           Alle {stats.total_sessions} sessies bekijken →
@@ -398,6 +453,7 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
     </div>
   );
 }
+
 
 /* ═══════════════════════════════════════════════════════════
    DASHBOARD
