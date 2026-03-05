@@ -95,7 +95,7 @@ export default async function ShareSessionPage({ params }: { params: Promise<{ i
 
         {/* Share card */}
         <div style={{ background: "#1F354C", position: "relative", overflow: "hidden" }}>
-          {session.photo_url || session.image_url && (
+          {(session.photo_url || session.image_url) {session.photo_url || session.image_url && ({session.photo_url || session.image_url && ( (
             <img src={session.photo_url || session.image_url} alt="" style={{ width: "100%", height: 320, objectFit: "cover", display: "block", opacity: 0.85 }} />
           )}
           <div style={{
