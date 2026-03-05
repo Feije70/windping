@@ -308,7 +308,6 @@ interface RecentSession {
   forecast_wind: number | null;
   forecast_dir: string | null;
   photo_url: string | null;
-  photo_url: string | null;
   spots?: { display_name: string };
 }
 
