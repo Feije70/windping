@@ -16,7 +16,7 @@ const DIRS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW",
 function degToDir(deg: number) { return DIRS_16[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16]; }
 
 const RATINGS = [
-  { value: 1, label: "Bah" }, { value: 2, label: "Mwah" }, { value: 3, label: "Oké" },
+  { value: 1, label: "Shit" }, { value: 2, label: "Mwah" }, { value: 3, label: "Oké" },
   { value: 4, label: "Lekker!" }, { value: 5, label: "EPIC!" },
 ];
 const RATING_COLORS: Record<number, string> = { 1: "#C97A63", 2: "#D4860B", 3: "#E8A83E", 4: "#2E8FAE", 5: "#3EAA8C" };
@@ -55,6 +55,38 @@ const WIND_FEELS = [
 ];
 
 const KITE_SIZES = ["5","6","7","8","9","10","11","12","13","14"];
+
+function PropIcon({ id, selected, size = 44 }: { id: string; selected: boolean; size?: number }) {
+  const color = selected ? C.sky : "#B0BAC5";
+  if (id === "kite") return (
+    <svg width={size} height={size} viewBox="0 0 44 44" fill="none">
+      <path d="M8 28 Q22 6 36 28" fill={`${color}20`} stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M8 28 Q22 6 36 28" stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" />
+      <line x1="22" y1="10" x2="22" y2="28" stroke={color} strokeWidth="1" opacity="0.4" />
+      <line x1="12" y1="26" x2="22" y2="40" stroke={color} strokeWidth="1" strokeDasharray="2 2" />
+      <line x1="32" y1="26" x2="22" y2="40" stroke={color} strokeWidth="1" strokeDasharray="2 2" />
+      <path d="M16 40 L28 40" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+  if (id === "wing") return (
+    <svg width={size} height={size} viewBox="0 0 44 44" fill="none">
+      <path d="M8 28 Q22 6 36 28" fill={`${color}20`} stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M8 28 Q22 6 36 28" stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" />
+      <line x1="22" y1="10" x2="22" y2="28" stroke={color} strokeWidth="1" opacity="0.4" />
+      <circle cx="15" cy="24" r="2.5" fill={color} opacity="0.5" />
+      <circle cx="29" cy="24" r="2.5" fill={color} opacity="0.5" />
+      <line x1="15" y1="24" x2="15" y2="32" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="29" y1="24" x2="29" y2="32" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+  return (
+    <svg width={size} height={size} viewBox="0 0 44 44" fill="none">
+      <line x1="20" y1="38" x2="20" y2="6" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <path d="M20 6 L34 14 L20 30" fill={`${color}20`} stroke={color} strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M10 38 Q20 36 30 38" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
 
 function WindFeelIcon({ id, selected, size = 28 }: { id: string; selected: boolean; size?: number }) {
   const color = selected ? "#2E8FAE" : "#B0BAC5";
@@ -396,12 +428,20 @@ function Dashboard() {
   const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
   const [manualWeather, setManualWeather] = useState<{wind: number; gust: number; dir: number; dirStr: string} | null>(null);
   const [manualWeatherLoading, setManualWeatherLoading] = useState(false);
-  const [manualForm, setManualForm] = useState({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" });
   const [manualSaving, setManualSaving] = useState(false);
-  const [manualStep, setManualStep] = useState<"pick" | 1 | 2 | 3>("pick");
-  const [manualPhotoFile, setManualPhotoFile] = useState<File | null>(null);
-  const [manualPhotoPreview, setManualPhotoPreview] = useState<string | null>(null);
+  const [manualStep, setManualStep] = useState<"pick" | 1 | 2 | 3 | 4 | 5 | 6>("pick");
+  const [manualRating, setManualRating] = useState<number | null>(null);
+  const [manualPropulsion, setManualPropulsion] = useState<"kite" | "wing" | "zeil" | null>(null);
+  const [manualBoardOrFoil, setManualBoardOrFoil] = useState<"board" | "foil" | null>(null);
+  const [manualBoardType, setManualBoardType] = useState<string | null>(null);
+  const [manualSailSize, setManualSailSize] = useState("");
+  const [manualBoardLength, setManualBoardLength] = useState("");
+  const [manualWindFeel, setManualWindFeel] = useState<string | null>(null);
+  const [manualNotes, setManualNotes] = useState("");
+  const [manualPhotoUrl, setManualPhotoUrl] = useState<string | null>(null);
   const [manualPhotoUploading, setManualPhotoUploading] = useState(false);
+  const [manualError, setManualError] = useState("");
+  const [allPublicSpots, setAllPublicSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
 
   const goSpots = spots.filter(s => s.match === "go");
   const matchColors: Record<string, string> = { go: C.green, maybe: C.gold, no: C.amber };
@@ -447,6 +487,11 @@ function Dashboard() {
       (spotsData || []).forEach((s: any) => { names[s.id] = s.display_name; });
       setSpotNames(names);
       setAllSpots((spotsData || []).filter((s: any) => s.latitude && s.longitude).map((s: any) => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude })));
+      // Load ALL public spots for manual session spot picker
+      try {
+        const publicSpots = await sbGet(`spots?select=id,display_name,latitude,longitude&order=display_name.asc`);
+        setAllPublicSpots((publicSpots || []).filter((s: any) => s.latitude && s.longitude).map((s: any) => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude })));
+      } catch {}
       const conds: Record<number, any> = {};
       (condsData || []).forEach((ic: any) => { conds[ic.spot_id] = ic; });
       const valid = (spotsData || []).filter((s: any) => s.latitude && s.longitude);
@@ -536,27 +581,42 @@ function Dashboard() {
     setManualWeatherLoading(false);
   };
 
-  const uploadManualPhoto = async (sessionId: number): Promise<string | null> => {
-    if (!manualPhotoFile) return null;
-    setManualPhotoUploading(true);
-    try {
-      const token = await getValidToken();
-      const ext = manualPhotoFile.name.split(".").pop() || "jpg";
-      const path = `sessions/${sessionId}_${Date.now()}.${ext}`;
-      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/session-photos/${path}`, {
-        method: "POST",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": manualPhotoFile.type },
-        body: manualPhotoFile,
-      });
-      if (!res.ok) return null;
-      return `${SUPABASE_URL}/storage/v1/object/public/session-photos/${path}`;
-    } catch { return null; }
-    finally { setManualPhotoUploading(false); }
-  };
+  function manualBuildGearType(): string {
+    const parts: string[] = [];
+    if (manualPropulsion) parts.push(manualPropulsion === "zeil" ? "windsurf" : manualPropulsion);
+    if (manualBoardOrFoil === "foil") parts.push("foil");
+    else if (manualBoardType) parts.push(manualBoardType);
+    return parts.join("-") || "unknown";
+  }
+
+  function manualBuildGearSize(): string | null {
+    const parts: string[] = [];
+    if (manualSailSize.trim()) parts.push(manualSailSize.trim() + "m²");
+    if (manualBoardLength.trim()) parts.push(`board ${manualBoardLength.trim()}cm`);
+    return parts.length ? parts.join(", ") : null;
+  }
+
+  function resetManualSession() {
+    setManualStep("pick");
+    setManualSpotId("");
+    setManualDate(new Date().toISOString().split("T")[0]);
+    setManualWeather(null);
+    setManualRating(null);
+    setManualPropulsion(null);
+    setManualBoardOrFoil(null);
+    setManualBoardType(null);
+    setManualSailSize("");
+    setManualBoardLength("");
+    setManualWindFeel(null);
+    setManualNotes("");
+    setManualPhotoUrl(null);
+    setManualError("");
+  }
 
   const handleManualSessionSave = async () => {
-    if (!manualSpotId || manualForm.rating === 0 || !userId) return;
+    if (!manualSpotId || !manualRating || !userId) return;
     setManualSaving(true);
+    setManualError("");
     try {
       const token = await getValidToken();
       const body: any = {
@@ -564,46 +624,27 @@ function Dashboard() {
         spot_id: manualSpotId,
         session_date: manualDate,
         status: "completed",
-        rating: manualForm.rating,
+        rating: manualRating,
+        gear_type: manualBuildGearType(),
+        gear_size: manualBuildGearSize(),
       };
-      if (manualForm.wind_feel) body.wind_feel = manualForm.wind_feel;
-      if (manualForm.gear_type) body.gear_type = manualForm.gear_type;
-      if (manualForm.gear_size) body.gear_size = manualForm.gear_size;
-      if (manualForm.notes) body.notes = manualForm.notes;
+      if (manualWindFeel) body.wind_feel = manualWindFeel;
+      if (manualNotes) body.notes = manualNotes;
+      if (manualPhotoUrl) body.photo_url = manualPhotoUrl;
       if (manualWeather) {
         body.forecast_wind = manualWeather.wind;
         body.forecast_gust = manualWeather.gust;
         body.forecast_dir = manualWeather.dirStr;
       }
-      // Insert session first to get ID for photo upload
-      const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
         method: "POST",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
         body: JSON.stringify(body),
       });
-      const inserted = await insertRes.json();
-      const sessionId = inserted?.[0]?.id;
-      // Upload photo if present
-      if (sessionId && manualPhotoFile) {
-        const photoUrl = await uploadManualPhoto(sessionId);
-        if (photoUrl) {
-          await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${sessionId}`, {
-            method: "PATCH",
-            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
-            body: JSON.stringify({ photo_url: photoUrl }),
-          });
-        }
-      }
       setShowManualSession(false);
-      setManualStep("pick");
-      setManualSpotId("");
-      setManualDate(new Date().toISOString().split("T")[0]);
-      setManualWeather(null);
-      setManualForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" });
-      setManualPhotoFile(null);
-      setManualPhotoPreview(null);
+      resetManualSession();
       loadData();
-    } catch { }
+    } catch { setManualError("Opslaan mislukt, probeer opnieuw."); }
     setManualSaving(false);
   };
 
@@ -687,10 +728,7 @@ function Dashboard() {
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
             <span style={{ ...h, fontSize: 17, fontWeight: 700, color: C.navy }}>Feed</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button onClick={() => { setShowManualSession(true); setManualStep("pick"); }} style={{ fontSize: 12, color: C.sky, fontWeight: 600, background: "none", border: `1px solid ${C.sky}`, borderRadius: 8, padding: "4px 10px", cursor: "pointer" }}>+ Sessie</button>
-              {feedItems.length > 0 && <a href="/alert" style={{ fontSize: 12, color: C.sky, textDecoration: "none", fontWeight: 600 }}>Alle alerts →</a>}
-            </div>
+            {feedItems.length > 0 && <a href="/alert" style={{ fontSize: 12, color: C.sky, textDecoration: "none", fontWeight: 600 }}>Alle alerts →</a>}
           </div>
           {feedItems.map((item) => {
             const timeAgo = (() => { const mins = Math.round((Date.now() - new Date(item.latestCreatedAt).getTime()) / 60000); if (mins < 60) return `${mins}m geleden`; const hrs = Math.round(mins / 60); if (hrs < 24) return `${hrs}u geleden`; return `${Math.round(hrs / 24)}d geleden`; })();
@@ -837,7 +875,10 @@ function Dashboard() {
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
             <span style={{ ...h, fontSize: 17, fontWeight: 700, color: C.navy }}>Sessies</span>
-            {sessionStats.total_sessions > 0 && <span style={{ fontSize: 11, color: C.sub }}>Seizoen: {sessionStats.season_sessions}</span>}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button onClick={() => { setShowManualSession(true); setManualStep("pick"); }} style={{ fontSize: 12, color: C.sky, fontWeight: 600, background: "none", border: `1px solid ${C.sky}`, borderRadius: 8, padding: "4px 10px", cursor: "pointer" }}>+ Sessie</button>
+              {sessionStats.total_sessions > 0 && <span style={{ fontSize: 11, color: C.sub }}>Seizoen: {sessionStats.season_sessions}</span>}
+            </div>
           </div>
           <SessionStatsSection stats={sessionStats} sessions={recentSessions} spotNames={spotNames} />
         </div>
@@ -883,232 +924,335 @@ function Dashboard() {
 
 
         {/* ── HANDMATIGE SESSIE MODAL ── */}
-        {showManualSession && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(31,53,76,0.55)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
-            onClick={(e) => { if (e.target === e.currentTarget) { setShowManualSession(false); setManualStep("pick"); } }}>
-            <div style={{ background: C.cream, borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 480, padding: "24px 20px 40px", maxHeight: "90vh", overflowY: "auto" }}>
+        {showManualSession && (() => {
+          const userSpotIds = new Set(allSpots.map(s => s.id));
+          const otherSpots = allPublicSpots.filter(s => !userSpotIds.has(s.id));
+          const manualBoardTypesForProp = manualPropulsion === "zeil"
+            ? [{id:"freeride",label:"Freeride"},{id:"wave",label:"Wave"},{id:"freestyle",label:"Freestyle"},{id:"slalom",label:"Race / Slalom"}]
+            : manualPropulsion === "wing"
+            ? [{id:"wingboard",label:"Wingboard"},{id:"sup",label:"SUP"}]
+            : [{id:"twintip",label:"Twintip"},{id:"directional",label:"Directional"},{id:"wave",label:"Wave"},{id:"strapless",label:"Strapless"}];
 
-              {/* Header */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-                <span style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, color: C.navy }}>Sessie loggen</span>
-                <button onClick={() => { setShowManualSession(false); setManualStep("pick"); setManualForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" }); setManualPhotoFile(null); setManualPhotoPreview(null); }}
-                  style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: C.muted, lineHeight: 1 }}>×</button>
-              </div>
+          return (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(31,53,76,0.55)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+              onClick={(e) => { if (e.target === e.currentTarget) { setShowManualSession(false); resetManualSession(); } }}>
+              <div style={{ background: C.cream, borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 480, padding: "24px 20px 48px", maxHeight: "92vh", overflowY: "auto" }}>
 
-              {/* Progress bar — only during log steps */}
-              {manualStep !== "pick" && (
-                <div style={{ display: "flex", gap: 4, marginBottom: 24 }}>
-                  {[1,2,3].map(s => (
-                    <div key={s} style={{ flex: 1, height: 4, borderRadius: 2, background: (manualStep as number) >= s ? C.sky : C.cardBorder, transition: "background 0.3s ease" }} />
-                  ))}
+                {/* Header */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                  <span style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, color: C.navy, letterSpacing: 0.5 }}>Sessie loggen</span>
+                  <button onClick={() => { setShowManualSession(false); resetManualSession(); }}
+                    style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: C.muted, lineHeight: 1 }}>×</button>
                 </div>
-              )}
 
-              {/* ── STAP PICK: Spot + datum ── */}
-              {manualStep === "pick" && (
-                <>
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Spot</div>
-                    <select value={manualSpotId} onChange={e => setManualSpotId(Number(e.target.value) || "")}
-                      style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy }}>
-                      <option value="">Kies een spot...</option>
-                      {allSpots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                  <div style={{ marginBottom: 24 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Datum</div>
-                    <input type="date" value={manualDate} max={new Date().toISOString().split("T")[0]}
-                      onChange={e => setManualDate(e.target.value)}
-                      style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy, boxSizing: "border-box" }} />
-                  </div>
-                  <button onClick={async () => { if (!manualSpotId) return; await fetchManualWeather(Number(manualSpotId), manualDate); setManualStep(1); }}
-                    disabled={!manualSpotId}
-                    style={{ width: "100%", padding: "14px", background: manualSpotId ? C.sky : C.muted, border: "none", borderRadius: 12, color: "#FFF", fontSize: 15, fontWeight: 700, cursor: manualSpotId ? "pointer" : "default", opacity: manualSpotId ? 1 : 0.6 }}>
-                    Volgende →
-                  </button>
-                </>
-              )}
-
-              {/* ── STAP 1: Hoe was het? ── */}
-              {manualStep === 1 && (
-                <div>
-                  <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, textAlign: "center", margin: "0 0 24px", color: C.navy }}>Hoe was het?</h2>
-                  {/* Weerdata pill */}
-                  {(manualWeatherLoading || manualWeather) && (
-                    <div style={{ textAlign: "center", marginBottom: 20 }}>
-                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 16px", background: C.goBg, borderRadius: 20, fontSize: 13 }}>
-                        {manualWeatherLoading
-                          ? <span style={{ color: C.muted }}>Weerdata ophalen...</span>
-                          : <><span style={{ fontWeight: 800, color: C.green }}>{manualWeather!.wind}kn</span><span style={{ color: C.sub }}>{manualWeather!.dirStr}</span><span style={{ color: C.muted }}>· gusts {manualWeather!.gust}kn</span></>
-                        }
-                      </div>
-                    </div>
-                  )}
-                  <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 32 }}>
-                    {RATINGS.map(r => (
-                      <button key={r.value} onClick={() => setManualForm(f => ({ ...f, rating: r.value }))} style={{
-                        width: 60, padding: "14px 0", borderRadius: 16,
-                        border: `2px solid ${manualForm.rating === r.value ? RATING_COLORS[r.value] : C.cardBorder}`,
-                        background: manualForm.rating === r.value ? `${RATING_COLORS[r.value]}12` : C.card,
-                        cursor: "pointer", transition: "all 0.2s",
-                        transform: manualForm.rating === r.value ? "scale(1.1)" : "scale(1)",
-                        boxShadow: manualForm.rating === r.value ? `0 4px 16px ${RATING_COLORS[r.value]}25` : C.cardShadow,
-                        display: "flex", flexDirection: "column", alignItems: "center",
-                      }}>
-                        <RatingIcon value={r.value} selected={manualForm.rating === r.value} size={32} />
-                        <div style={{ fontSize: 10, fontWeight: 700, color: manualForm.rating === r.value ? RATING_COLORS[r.value] : C.muted, marginTop: 6 }}>{r.label}</div>
-                      </button>
+                {/* Progress bar */}
+                {manualStep !== "pick" && (
+                  <div style={{ display: "flex", gap: 4, marginBottom: 24 }}>
+                    {[1,2,3,4,5,6].map(s => (
+                      <div key={s} style={{ flex: 1, height: 4, borderRadius: 2, background: (manualStep as number) >= s ? C.sky : C.cardBorder, transition: "background 0.3s ease" }} />
                     ))}
                   </div>
-                  <button onClick={() => { if (manualForm.rating) setManualStep(2); }} disabled={!manualForm.rating}
-                    style={{ width: "100%", padding: "14px", background: manualForm.rating ? C.sky : C.cardBorder, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: manualForm.rating ? "pointer" : "not-allowed", opacity: manualForm.rating ? 1 : 0.5 }}>
-                    Volgende →
-                  </button>
-                </div>
-              )}
+                )}
 
-              {/* ── STAP 2: Gear ── */}
-              {manualStep === 2 && (
-                <div>
-                  <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, textAlign: "center", margin: "0 0 24px", color: C.navy }}>Wat reed je?</h2>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
-                    {GEAR_TYPES.map(g => (
-                      <button key={g.id} onClick={() => setManualForm(f => ({ ...f, gear_type: f.gear_type === g.id ? "" : g.id, gear_size: "" }))} style={{
-                        padding: "18px 14px", borderRadius: 14,
-                        border: `2px solid ${manualForm.gear_type === g.id ? C.sky : C.cardBorder}`,
-                        background: manualForm.gear_type === g.id ? `${C.sky}12` : C.card,
-                        cursor: "pointer", transition: "all 0.2s",
-                        boxShadow: manualForm.gear_type === g.id ? `0 4px 16px ${C.sky}25` : C.cardShadow,
-                        display: "flex", flexDirection: "column", alignItems: "center",
-                      }}>
-                        <GearIcon id={g.id} selected={manualForm.gear_type === g.id} size={40} />
-                        <div style={{ fontSize: 13, fontWeight: 700, color: manualForm.gear_type === g.id ? C.sky : C.navy, marginTop: 6 }}>{g.label}</div>
-                      </button>
-                    ))}
-                  </div>
-                  {/* Kite preset sizes */}
-                  {manualForm.gear_type === "kite" && (
+                {manualError && (
+                  <div style={{ padding: "10px 14px", background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 10, fontSize: 12, color: "#DC2626", marginBottom: 16 }}>{manualError}</div>
+                )}
+
+                {/* ── PICK: Spot + datum ── */}
+                {manualStep === "pick" && (
+                  <>
                     <div style={{ marginBottom: 16 }}>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6 }}>KITESIZE (m²)</label>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {KITE_SIZES.map(s => (
-                          <button key={s} onClick={() => setManualForm(f => ({ ...f, gear_size: f.gear_size === s + "m" ? "" : s + "m" }))} style={{
-                            padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 700,
-                            background: manualForm.gear_size === s + "m" ? C.sky : C.card,
-                            color: manualForm.gear_size === s + "m" ? "#fff" : C.sub,
-                            border: `1px solid ${manualForm.gear_size === s + "m" ? C.sky : C.cardBorder}`,
-                            cursor: "pointer",
-                          }}>{s}</button>
-                        ))}
-                      </div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>SPOT</label>
+                      <select value={manualSpotId} onChange={e => setManualSpotId(Number(e.target.value) || "")}
+                        style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy, outline: "none" }}>
+                        <option value="">Kies een spot...</option>
+                        {allSpots.length > 0 && (
+                          <optgroup label="Mijn spots">
+                            {allSpots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </optgroup>
+                        )}
+                        {otherSpots.length > 0 && (
+                          <optgroup label="Alle spots">
+                            {otherSpots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                          </optgroup>
+                        )}
+                      </select>
                     </div>
-                  )}
-                  {/* Generic gear size */}
-                  {manualForm.gear_type && manualForm.gear_type !== "kite" && (
-                    <div style={{ marginBottom: 16 }}>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6 }}>MATERIAAL (optioneel)</label>
-                      <input type="text" value={manualForm.gear_size} onChange={e => setManualForm(f => ({ ...f, gear_size: e.target.value }))}
-                        placeholder={manualForm.gear_type === "windsurf" ? "bijv. 7.8m zeil" : manualForm.gear_type === "wing" ? "bijv. 5m wing" : "bijv. 1500 foil"}
-                        style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `1.5px solid ${C.cardBorder}`, fontSize: 14, color: C.navy, background: C.card, boxSizing: "border-box" }} />
+                    <div style={{ marginBottom: 24 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>DATUM</label>
+                      <input type="date" value={manualDate} max={new Date().toISOString().split("T")[0]}
+                        onChange={e => setManualDate(e.target.value)}
+                        style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy, boxSizing: "border-box", outline: "none" }} />
                     </div>
-                  )}
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <button onClick={() => setManualStep(1)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
-                    <button onClick={() => setManualStep(3)} style={{ flex: 1, padding: "14px", background: C.sky, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-                      {manualForm.gear_type ? "Volgende →" : "Overslaan →"}
+                    <button onClick={async () => { if (!manualSpotId) return; await fetchManualWeather(Number(manualSpotId), manualDate); setManualStep(1); }}
+                      disabled={!manualSpotId}
+                      style={{ width: "100%", padding: "14px", background: manualSpotId ? C.sky : C.cardBorder, border: "none", borderRadius: 12, color: "#FFF", fontSize: 15, fontWeight: 700, cursor: manualSpotId ? "pointer" : "not-allowed", opacity: manualSpotId ? 1 : 0.6 }}>
+                      Volgende →
                     </button>
-                  </div>
-                </div>
-              )}
+                  </>
+                )}
 
-              {/* ── STAP 3: Details + Samenvatting ── */}
-              {manualStep === 3 && (
-                <div>
-                  <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, textAlign: "center", margin: "0 0 24px", color: C.navy }}>Details</h2>
-                  {/* Wind feel */}
-                  <div style={{ marginBottom: 20 }}>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8 }}>HOE VOELDE DE WIND?</label>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      {WIND_FEELS.map(w => (
-                        <button key={w.id} onClick={() => setManualForm(f => ({ ...f, wind_feel: f.wind_feel === w.id ? "" : w.id }))} style={{
-                          flex: 1, padding: "12px 8px", borderRadius: 12,
-                          border: `2px solid ${manualForm.wind_feel === w.id ? C.sky : C.cardBorder}`,
-                          background: manualForm.wind_feel === w.id ? `${C.sky}12` : C.card,
-                          cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center",
+                {/* ── STEP 1: Rating ── */}
+                {manualStep === 1 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Hoe was het?</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 16px" }}>Geef je sessie een eerlijke beoordeling</p>
+                    {(manualWeatherLoading || manualWeather) && (
+                      <div style={{ textAlign: "center", marginBottom: 16 }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 16px", background: C.goBg, borderRadius: 20, fontSize: 13 }}>
+                          {manualWeatherLoading
+                            ? <span style={{ color: C.muted }}>Weerdata ophalen...</span>
+                            : <><span style={{ fontWeight: 800, color: C.green }}>{manualWeather!.wind}kn</span><span style={{ color: C.sub }}>{manualWeather!.dirStr}</span><span style={{ color: C.muted, fontSize: 11 }}> · gusts {manualWeather!.gust}kn</span></>
+                          }
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 28 }}>
+                      {RATINGS.map(r => (
+                        <button key={r.value} onClick={() => { setManualRating(r.value); setTimeout(() => setManualStep(2), 280); }} style={{
+                          width: 58, padding: "14px 0", borderRadius: 16,
+                          border: `2px solid ${manualRating === r.value ? RATING_COLORS[r.value] : C.cardBorder}`,
+                          background: manualRating === r.value ? `${RATING_COLORS[r.value]}12` : C.card,
+                          cursor: "pointer", transition: "all 0.2s",
+                          transform: manualRating === r.value ? "scale(1.12)" : "scale(1)",
+                          boxShadow: manualRating === r.value ? `0 6px 20px ${RATING_COLORS[r.value]}35` : C.cardShadow,
+                          display: "flex", flexDirection: "column", alignItems: "center",
                         }}>
-                          <WindFeelIcon id={w.id} selected={manualForm.wind_feel === w.id} size={28} />
-                          <div style={{ fontSize: 10, fontWeight: 700, color: manualForm.wind_feel === w.id ? C.sky : C.muted, marginTop: 4 }}>{w.label}</div>
+                          <RatingIcon value={r.value} selected={manualRating === r.value} size={32} />
+                          <div style={{ fontSize: 9, fontWeight: 800, color: manualRating === r.value ? RATING_COLORS[r.value] : C.muted, marginTop: 6 }}>{r.label}</div>
                         </button>
                       ))}
                     </div>
                   </div>
-                  {/* Notes */}
-                  <div style={{ marginBottom: 20 }}>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6 }}>NOTITIES (optioneel)</label>
-                    <textarea value={manualForm.notes} onChange={e => setManualForm(f => ({ ...f, notes: e.target.value }))}
-                      placeholder="Hoe was het water? Iets bijzonders? Tips voor de volgende keer?"
-                      rows={3}
-                      style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${C.cardBorder}`, fontSize: 14, color: C.navy, background: C.card, resize: "vertical", boxSizing: "border-box", lineHeight: 1.5, fontFamily: "DM Sans, sans-serif" }} />
+                )}
+
+                {/* ── STEP 2: Propulsion ── */}
+                {manualStep === 2 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Wat reed je?</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 20px" }}>Kite, wing of sail?</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                      {(["kite","wing","zeil"] as const).map(p => (
+                        <button key={p} onClick={() => { setManualPropulsion(p); setManualStep(p === "kite" ? 4 : 3); }} style={{
+                          padding: "22px 10px", borderRadius: 16,
+                          border: `2px solid ${manualPropulsion === p ? C.sky : C.cardBorder}`,
+                          background: manualPropulsion === p ? `${C.sky}12` : C.card,
+                          cursor: "pointer", transition: "all 0.2s",
+                          boxShadow: manualPropulsion === p ? `0 4px 16px ${C.sky}25` : C.cardShadow,
+                          display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+                        }}>
+                          <PropIcon id={p} selected={manualPropulsion === p} />
+                          <div style={{ fontSize: 13, fontWeight: 700, color: manualPropulsion === p ? C.sky : C.navy }}>{p === "zeil" ? "Sail" : p.charAt(0).toUpperCase() + p.slice(1)}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setManualStep(6)} style={{ width: "100%", marginTop: 14, padding: "13px", background: "none", border: "none", color: C.muted, fontSize: 13, cursor: "pointer" }}>Overslaan →</button>
                   </div>
-                  {/* Foto */}
-                  <div style={{ marginBottom: 20 }}>
-                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8 }}>FOTO (optioneel)</label>
-                    {manualPhotoPreview ? (
-                      <div style={{ position: "relative", borderRadius: 12, overflow: "hidden" }}>
-                        <img src={manualPhotoPreview} alt="Preview" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
-                        <button onClick={() => { setManualPhotoFile(null); setManualPhotoPreview(null); }}
-                          style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(31,53,76,0.7)", border: "none", color: "#fff", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>×</button>
-                      </div>
-                    ) : (
-                      <label style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "20px", border: `2px dashed ${C.cardBorder}`, borderRadius: 12, cursor: "pointer", background: C.card }}>
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                          <circle cx="12" cy="13" r="4"/>
+                )}
+
+                {/* ── STEP 3: Foil or Board ── */}
+                {manualStep === 3 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Foil of board?</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 20px" }}>Wat had je onder je voeten?</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <button onClick={() => { setManualBoardOrFoil("foil"); setManualStep(5); }} style={{
+                        padding: "28px 16px", borderRadius: 16,
+                        border: `2px solid ${manualBoardOrFoil === "foil" ? C.sky : C.cardBorder}`,
+                        background: manualBoardOrFoil === "foil" ? `${C.sky}12` : C.card,
+                        cursor: "pointer", transition: "all 0.2s",
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
+                      }}>
+                        <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+                          <line x1="26" y1="8" x2="26" y2="40" stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="2.5" strokeLinecap="round"/>
+                          <path d="M10 34 L42 34" stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="2.5" strokeLinecap="round"/>
+                          <rect x="19" y="5" width="14" height="6" rx="3" fill={manualBoardOrFoil === "foil" ? `${C.sky}20` : "#B0BAC520"} stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="1.5"/>
                         </svg>
-                        <span style={{ fontSize: 13, color: C.muted, fontWeight: 600 }}>Foto toevoegen</span>
-                        <span style={{ fontSize: 11, color: C.sub }}>Tik om te kiezen uit je galerij</span>
-                        <input type="file" accept="image/*" style={{ display: "none" }}
-                          onChange={e => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            setManualPhotoFile(file);
-                            const reader = new FileReader();
-                            reader.onload = ev => setManualPhotoPreview(ev.target?.result as string);
-                            reader.readAsDataURL(file);
-                          }} />
-                      </label>
-                    )}
-                  </div>
-                  {/* Samenvatting */}
-                  <div style={{ padding: "14px 16px", background: C.card, borderRadius: 14, boxShadow: C.cardShadow, marginBottom: 20 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8 }}>SAMENVATTING</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      {manualForm.rating > 0 && <RatingIcon value={manualForm.rating} selected={true} size={36} />}
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{allSpots.find(s => s.id === manualSpotId)?.name}</div>
-                        <div style={{ fontSize: 12, color: C.sub }}>
-                          {new Date(manualDate + "T12:00:00").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" })}
-                          {manualForm.gear_type && ` · ${GEAR_TYPES.find(g => g.id === manualForm.gear_type)?.label}`}
-                          {manualForm.gear_size && ` ${manualForm.gear_size}`}
-                          {manualForm.wind_feel && ` · ${WIND_FEELS.find(w => w.id === manualForm.wind_feel)?.label}`}
-                        </div>
-                      </div>
-                      {manualWeather && <div style={{ fontSize: 16, fontWeight: 800, color: C.green }}>{manualWeather.wind}kn</div>}
+                        <div style={{ fontSize: 15, fontWeight: 700, color: manualBoardOrFoil === "foil" ? C.sky : C.navy }}>Foil</div>
+                      </button>
+                      <button onClick={() => { setManualBoardOrFoil("board"); setManualStep(4); }} style={{
+                        padding: "28px 16px", borderRadius: 16,
+                        border: `2px solid ${manualBoardOrFoil === "board" ? C.sky : C.cardBorder}`,
+                        background: manualBoardOrFoil === "board" ? `${C.sky}12` : C.card,
+                        cursor: "pointer", transition: "all 0.2s",
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
+                      }}>
+                        <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+                          <path d="M26 8 Q38 10 40 26 Q38 42 26 44 Q14 42 12 26 Q14 10 26 8Z" fill={manualBoardOrFoil === "board" ? `${C.sky}15` : "#B0BAC515"} stroke={manualBoardOrFoil === "board" ? C.sky : "#B0BAC5"} strokeWidth="1.8"/>
+                        </svg>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: manualBoardOrFoil === "board" ? C.sky : C.navy }}>Board</div>
+                      </button>
                     </div>
                   </div>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <button onClick={() => setManualStep(2)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
-                    <button onClick={handleManualSessionSave} disabled={manualSaving || manualPhotoUploading}
-                      style={{ flex: 1, padding: "14px", background: C.green, color: "#FFF", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: (manualSaving || manualPhotoUploading) ? "not-allowed" : "pointer", opacity: (manualSaving || manualPhotoUploading) ? 0.6 : 1 }}>
-                      {manualPhotoUploading ? "Foto uploaden..." : manualSaving ? "Opslaan..." : "✓ Log sessie"}
-                    </button>
-                  </div>
-                </div>
-              )}
+                )}
 
+                {/* ── STEP 4: Board type ── */}
+                {manualStep === 4 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Welk type board?</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 16px" }}>
+                      {manualPropulsion === "zeil" ? "Windsurf board type" : manualPropulsion === "wing" ? "Board onder de wing" : "Kite board type"}
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {manualBoardTypesForProp.map(bt => (
+                        <button key={bt.id} onClick={() => { setManualBoardType(bt.id); setManualStep(5); }} style={{
+                          padding: "16px 20px", borderRadius: 14, textAlign: "left",
+                          border: `2px solid ${manualBoardType === bt.id ? C.sky : C.cardBorder}`,
+                          background: manualBoardType === bt.id ? `${C.sky}10` : C.card,
+                          cursor: "pointer", transition: "all 0.2s",
+                        }}>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: manualBoardType === bt.id ? C.sky : C.navy }}>{bt.label}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setManualStep(5)} style={{ width: "100%", marginTop: 14, padding: "13px", background: "none", border: "none", color: C.muted, fontSize: 13, cursor: "pointer" }}>Overslaan →</button>
+                  </div>
+                )}
+
+                {/* ── STEP 5: Maten ── */}
+                {manualStep === 5 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Maten</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 20px" }}>Optioneel — wat had je op?</p>
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>
+                        {manualPropulsion === "kite" ? "KITE (m²)" : manualPropulsion === "wing" ? "WING (m²)" : "ZEIL (m²)"}
+                      </label>
+                      <div style={{ position: "relative" }}>
+                        <input type="text" inputMode="decimal" value={manualSailSize}
+                          onChange={e => setManualSailSize(e.target.value.replace(/[^0-9.,]/g,"").replace(",","."))}
+                          placeholder={manualPropulsion === "zeil" ? "7.6" : manualPropulsion === "wing" ? "5.0" : "12"}
+                          style={{ width: "100%", padding: "13px 48px 13px 16px", borderRadius: 12, border: `1.5px solid ${manualSailSize ? C.sky : C.cardBorder}`, fontSize: 16, color: C.navy, background: C.card, boxSizing: "border-box", outline: "none" }} />
+                        <span style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: C.muted, pointerEvents: "none" }}>m²</span>
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 24 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>BOARD LENGTE (cm)</label>
+                      <div style={{ position: "relative" }}>
+                        <input type="text" inputMode="numeric" value={manualBoardLength}
+                          onChange={e => setManualBoardLength(e.target.value.replace(/[^0-9]/g,""))}
+                          placeholder={manualPropulsion === "zeil" ? "245" : "138"}
+                          style={{ width: "100%", padding: "13px 48px 13px 16px", borderRadius: 12, border: `1.5px solid ${manualBoardLength ? C.sky : C.cardBorder}`, fontSize: 16, color: C.navy, background: C.card, boxSizing: "border-box", outline: "none" }} />
+                        <span style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: C.muted, pointerEvents: "none" }}>cm</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button onClick={() => setManualStep(manualBoardOrFoil === "foil" ? 3 : 4)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
+                      <button onClick={() => setManualStep(6)} style={{ flex: 1, padding: "14px", background: C.sky, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                        {manualSailSize || manualBoardLength ? "Volgende →" : "Overslaan →"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── STEP 6: Details + samenvatting ── */}
+                {manualStep === 6 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Details</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 16px" }}>Hoe voelde het op het water?</p>
+
+                    {/* Wind feel */}
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>HOE VOELDE DE WIND?</label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {WIND_FEELS.map(w => (
+                          <button key={w.id} onClick={() => setManualWindFeel(manualWindFeel === w.id ? null : w.id)} style={{
+                            flex: 1, padding: "12px 6px", borderRadius: 12,
+                            border: `2px solid ${manualWindFeel === w.id ? C.sky : C.cardBorder}`,
+                            background: manualWindFeel === w.id ? `${C.sky}12` : C.card,
+                            cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center",
+                          }}>
+                            <WindFeelIcon id={w.id} selected={manualWindFeel === w.id} size={26} />
+                            <div style={{ fontSize: 9, fontWeight: 700, color: manualWindFeel === w.id ? C.sky : C.muted, marginTop: 4 }}>{w.label}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6, letterSpacing: 0.5 }}>NOTITIES (optioneel)</label>
+                      <textarea value={manualNotes} onChange={e => setManualNotes(e.target.value)}
+                        placeholder="Hoe was het water? Iets bijzonders? Tips voor de volgende keer?"
+                        rows={3}
+                        style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${C.cardBorder}`, fontSize: 14, color: C.navy, background: C.card, resize: "vertical", boxSizing: "border-box", lineHeight: 1.5, outline: "none", fontFamily: "DM Sans, sans-serif" }} />
+                    </div>
+
+                    {/* Foto */}
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6, letterSpacing: 0.5 }}>FOTO (optioneel)</label>
+                      {manualPhotoUrl ? (
+                        <div style={{ position: "relative", borderRadius: 12, overflow: "hidden" }}>
+                          <img src={manualPhotoUrl} alt="Sessie foto" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+                          <button onClick={() => setManualPhotoUrl(null)} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                        </div>
+                      ) : (
+                        <div onClick={() => { if (!manualPhotoUploading) document.getElementById("manual-photo-input")?.click(); }}
+                          style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "24px 16px", borderRadius: 12, border: `2px dashed ${C.cardBorder}`, background: C.card, cursor: manualPhotoUploading ? "not-allowed" : "pointer" }}>
+                          {manualPhotoUploading ? (
+                            <><div style={{ width: 20, height: 20, border: `2px solid ${C.cardBorder}`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite" }} /><div style={{ fontSize: 13, color: C.muted }}>Uploaden...</div></>
+                          ) : (
+                            <><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><div style={{ fontSize: 13, color: C.muted, fontWeight: 600 }}>Tik om foto toe te voegen</div></>
+                          )}
+                        </div>
+                      )}
+                      <input id="manual-photo-input" type="file" accept="image/*" style={{ display: "none" }}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setManualPhotoUploading(true);
+                          setManualError("");
+                          try {
+                            const formData = new FormData();
+                            formData.append("file", file);
+                            formData.append("session_id", "temp_" + Date.now());
+                            const res = await fetch("/api/upload", { method: "POST", body: formData });
+                            const data = await res.json();
+                            if (res.ok && data.url) { setManualPhotoUrl(data.url); }
+                            else { setManualError(`Foto upload mislukt: ${data.error || "onbekend"}`); }
+                          } catch { setManualError("Foto upload mislukt."); }
+                          setManualPhotoUploading(false);
+                          e.target.value = "";
+                        }} />
+                    </div>
+
+                    {/* Samenvatting */}
+                    <div style={{ padding: "14px 16px", background: C.card, borderRadius: 14, boxShadow: C.cardShadow, marginBottom: 20, border: `1px solid ${C.cardBorder}` }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 10, letterSpacing: 0.5 }}>SAMENVATTING</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        {manualRating && <RatingIcon value={manualRating} selected={true} size={36} />}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>
+                            {[...allSpots, ...otherSpots].find(s => s.id === manualSpotId)?.name}
+                          </div>
+                          <div style={{ fontSize: 12, color: C.sub, marginTop: 2, lineHeight: 1.5 }}>
+                            {new Date(manualDate + "T12:00:00").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" })}
+                            {manualPropulsion && ` · ${manualPropulsion === "zeil" ? "windsurf" : manualPropulsion}`}
+                            {manualBoardType && ` ${manualBoardType}`}
+                            {manualSailSize && ` · ${manualSailSize}m²`}
+                            {manualBoardLength && ` · ${manualBoardLength}cm`}
+                            {manualWindFeel && ` · ${WIND_FEELS.find(w => w.id === manualWindFeel)?.label}`}
+                          </div>
+                        </div>
+                        {manualWeather && <div style={{ fontSize: 15, fontWeight: 800, color: C.green }}>{manualWeather.wind}kn</div>}
+                        {manualRating && <div style={{ fontSize: 12, fontWeight: 800, color: RATING_COLORS[manualRating], minWidth: 44, textAlign: "right" }}>{RATINGS.find(r => r.value === manualRating)?.label}</div>}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button onClick={() => setManualStep(5)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
+                      <button onClick={handleManualSessionSave} disabled={manualSaving || manualPhotoUploading}
+                        style={{ flex: 1, padding: "14px", background: C.green, color: "#FFF", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: (manualSaving || manualPhotoUploading) ? "not-allowed" : "pointer", opacity: (manualSaving || manualPhotoUploading) ? 0.6 : 1 }}>
+                        {manualSaving ? "Opslaan..." : "✓ Log sessie"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Logout */}
         <button onClick={async () => { await clearAuth(); window.location.href = "/login"; }} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "13px", background: "none", border: `1px solid ${C.cardBorder}`, borderRadius: 12, color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
