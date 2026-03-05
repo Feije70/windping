@@ -12,7 +12,7 @@ async function getSession(id: string) {
   
   // Use REST API directly to avoid RLS issues
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,photo_url,image_url,notes&limit=1`,
+    `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,photo_url,notes&limit=1`,
     {
       headers: {
         apikey: key,
