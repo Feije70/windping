@@ -12,7 +12,7 @@ async function getSession(id: string) {
   
   // Use REST API directly to avoid RLS issues
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,image_url,notes&limit=1`,
+    `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,photo_url,image_url,notes&limit=1`,
     {
       headers: {
         apikey: key,
@@ -53,15 +53,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     openGraph: {
       title,
       description,
-      images: session.image_url ? [{ url: session.image_url, width: 1200, height: 630 }] : [],
+      images: session.photo_url || session.image_url ? [{ url: session.photo_url || session.image_url, width: 1200, height: 630 }] : [],
       siteName: "WindPing",
       type: "website",
     },
     twitter: {
-      card: session.image_url ? "summary_large_image" : "summary",
+      card: session.photo_url || session.image_url ? "summary_large_image" : "summary",
       title,
       description,
-      images: session.image_url ? [session.image_url] : [],
+      images: session.photo_url || session.image_url ? [session.photo_url || session.image_url] : [],
     },
   };
 }
@@ -95,16 +95,16 @@ export default async function ShareSessionPage({ params }: { params: Promise<{ i
 
         {/* Share card */}
         <div style={{ background: "#1F354C", position: "relative", overflow: "hidden" }}>
-          {session.image_url && (
-            <img src={session.image_url} alt="" style={{ width: "100%", height: 320, objectFit: "cover", display: "block", opacity: 0.85 }} />
+          {session.photo_url || session.image_url && (
+            <img src={session.photo_url || session.image_url} alt="" style={{ width: "100%", height: 320, objectFit: "cover", display: "block", opacity: 0.85 }} />
           )}
           <div style={{
-            padding: session.image_url ? "0" : "60px 24px 32px",
-            position: session.image_url ? "absolute" : "relative",
-            bottom: session.image_url ? 0 : "auto",
+            padding: session.photo_url || session.image_url ? "0" : "60px 24px 32px",
+            position: session.photo_url || session.image_url ? "absolute" : "relative",
+            bottom: session.photo_url || session.image_url ? 0 : "auto",
             left: 0, right: 0,
-            background: session.image_url ? "linear-gradient(to top, rgba(31,53,76,0.95) 0%, transparent 100%)" : "transparent",
-            paddingTop: session.image_url ? "80px" : undefined,
+            background: session.photo_url || session.image_url ? "linear-gradient(to top, rgba(31,53,76,0.95) 0%, transparent 100%)" : "transparent",
+            paddingTop: session.photo_url || session.image_url ? "80px" : undefined,
             paddingBottom: 24, paddingLeft: 24, paddingRight: 24,
           }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: 1.5, marginBottom: 6 }}>WINDPING</div>
