@@ -8,9 +8,6 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_A
 
 async function getSession(id: string) {
   const key = SUPABASE_ANON_KEY;
-  console.log("getSession:", { id, url: SUPABASE_URL });
-  
-  // Use REST API directly to avoid RLS issues
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,photo_url,notes&limit=1`,
     {
@@ -22,9 +19,7 @@ async function getSession(id: string) {
       cache: "no-store",
     }
   );
-  console.log("sessions REST status:", res.status);
   const sessions = await res.json();
-  console.log("sessions data:", JSON.stringify(sessions));
   const session = sessions?.[0];
   if (!session) return null;
 
@@ -53,15 +48,15 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     openGraph: {
       title,
       description,
-      images: session.photo_url || session.image_url ? [{ url: session.photo_url || session.image_url, width: 1200, height: 630 }] : [],
+      images: session.photo_url ? [{ url: session.photo_url, width: 1200, height: 630 }] : [],
       siteName: "WindPing",
       type: "website",
     },
     twitter: {
-      card: session.photo_url || session.image_url ? "summary_large_image" : "summary",
+      card: session.photo_url ? "summary_large_image" : "summary",
       title,
       description,
-      images: session.photo_url || session.image_url ? [session.photo_url || session.image_url] : [],
+      images: session.photo_url ? [session.photo_url] : [],
     },
   };
 }
@@ -95,16 +90,16 @@ export default async function ShareSessionPage({ params }: { params: Promise<{ i
 
         {/* Share card */}
         <div style={{ background: "#1F354C", position: "relative", overflow: "hidden" }}>
-          {(session.photo_url || session.image_url) {session.photo_url || session.image_url && ({session.photo_url || session.image_url && ( (
-            <img src={session.photo_url || session.image_url} alt="" style={{ width: "100%", height: 320, objectFit: "cover", display: "block", opacity: 0.85 }} />
+          {session.photo_url && (
+            <img src={session.photo_url} alt="" style={{ width: "100%", height: 320, objectFit: "cover", display: "block", opacity: 0.85 }} />
           )}
           <div style={{
-            padding: session.photo_url || session.image_url ? "0" : "60px 24px 32px",
-            position: session.photo_url || session.image_url ? "absolute" : "relative",
-            bottom: session.photo_url || session.image_url ? 0 : "auto",
+            padding: session.photo_url ? "0" : "60px 24px 32px",
+            position: session.photo_url ? "absolute" : "relative",
+            bottom: session.photo_url ? 0 : "auto",
             left: 0, right: 0,
-            background: session.photo_url || session.image_url ? "linear-gradient(to top, rgba(31,53,76,0.95) 0%, transparent 100%)" : "transparent",
-            paddingTop: session.photo_url || session.image_url ? "80px" : undefined,
+            background: session.photo_url ? "linear-gradient(to top, rgba(31,53,76,0.95) 0%, transparent 100%)" : "transparent",
+            paddingTop: session.photo_url ? "80px" : undefined,
             paddingBottom: 24, paddingLeft: 24, paddingRight: 24,
           }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: 1.5, marginBottom: 6 }}>WINDPING</div>
