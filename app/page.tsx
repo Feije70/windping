@@ -307,6 +307,8 @@ interface RecentSession {
   gear_type: string | null;
   forecast_wind: number | null;
   forecast_dir: string | null;
+  photo_url: string | null;
+  photo_url: string | null;
   spots?: { display_name: string };
 }
 
@@ -522,7 +524,7 @@ function Dashboard() {
       try {
         const token = await getValidToken();
         if (token) {
-          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=session_date.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,forecast_wind,forecast_dir,spots(display_name)`, {
+          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=session_date.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,forecast_wind,forecast_dir,photo_url,spots(display_name)`, {
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
           });
           if (sessRes.ok) setRecentSessions(await sessRes.json() || []);
