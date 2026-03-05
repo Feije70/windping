@@ -402,13 +402,7 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
                   </div>
                 </div>
               </div>
-              {(latest.gear_type || latest.gear_size) && (
-                <div style={{ padding: "8px 14px", display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {latest.gear_type && <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: C.sky + '12', borderRadius: 7, padding: "3px 9px" }}>{latest.gear_type.replace(/^zeil\b/, 'windsurf').replace(/-/g, ' ')}</span>}
-                  {latest.gear_size && <span style={{ fontSize: 11, color: C.sub, padding: "3px 0" }}>{latest.gear_size}</span>}
-                </div>
-              )}
-            ) : (
+                        ) : (
               <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{latestSpot}</div>
