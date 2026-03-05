@@ -18,7 +18,7 @@ interface Session {
   forecast_dir: string | null;
   wind_feel: string | null;
   notes: string | null;
-  image_url: string | null;
+  photo_url: string | null;
   _spotName?: string;
 }
 
@@ -45,9 +45,9 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
       overflow: "hidden", marginBottom: 12, cursor: "pointer",
       borderLeft: s.rating ? `3px solid ${ratingColors[s.rating]}` : `3px solid ${C.cardBorder}`,
     }}>
-      {s.image_url && (
+      {s.photo_url && (
         <div style={{ position: "relative" }}>
-          <img src={s.image_url} alt="" style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }} />
+          <img src={s.photo_url} alt="" style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.5) 100%)" }} />
           <div style={{ position: "absolute", bottom: 10, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
             <div>
@@ -64,7 +64,7 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
         </div>
       )}
       <div style={{ padding: "12px 14px" }}>
-        {!s.image_url && (
+        {!s.photo_url && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{spot}</div>
@@ -116,9 +116,9 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
         <span style={{ ...h, fontSize: 17, fontWeight: 700, color: C.navy }}>Sessie detail</span>
       </div>
       <div style={{ padding: "0 16px 120px" }}>
-        {s.image_url && (
+        {s.photo_url && (
           <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
-            <img src={s.image_url} alt="" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} />
+            <img src={s.photo_url} alt="" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} />
           </div>
         )}
         <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, padding: "16px", marginBottom: 12 }}>
@@ -189,7 +189,7 @@ export default function MijnSessiesPage() {
         if (!users?.length) return;
         const userId = users[0].id;
 
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,image_url`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url`, {
           headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
         });
         const data: Session[] = await res.json() || [];
