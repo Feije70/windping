@@ -402,6 +402,12 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
                   </div>
                 </div>
               </div>
+              {(latest.gear_type || latest.gear_size) && (
+                <div style={{ padding: "8px 14px", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {latest.gear_type && <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: C.sky + '12', borderRadius: 7, padding: "3px 9px" }}>{latest.gear_type.replace(/^zeil\b/, 'windsurf').replace(/-/g, ' ')}</span>}
+                  {latest.gear_size && <span style={{ fontSize: 11, color: C.sub, padding: "3px 0" }}>{latest.gear_size}</span>}
+                </div>
+              )}
             ) : (
               <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div>
@@ -552,7 +558,7 @@ function Dashboard() {
       try {
         const token = await getValidToken();
         if (token) {
-          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,forecast_wind,forecast_dir,photo_url`, {
+          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,photo_url`, {
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
           });
           if (sessRes.ok) setRecentSessions(await sessRes.json() || []);
