@@ -378,7 +378,7 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
       {latest && (
         <Link href={`/sessie/${latest.id}`} style={{ display: "block", textDecoration: "none", marginBottom: 12 }}>
           <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, overflow: "hidden" }}>
-            {latest.photo_url ? (
+            {latest.photo_url && (
               <div style={{ position: "relative" }}>
                 <img src={latest.photo_url} alt="" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
                 <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 30%, rgba(31,53,76,0.85) 100%)" }} />
@@ -402,18 +402,27 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
                   </div>
                 </div>
               </div>
-                        ) : (
-              <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{latestSpot}</div>
-                  <div style={{ fontSize: 11, color: C.sub }}>{dateLabelFn(latest.session_date)}</div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {latest.forecast_wind && <div style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{latest.forecast_wind}<span style={{ fontSize: 10 }}>kn</span></div>}
-                  {latest.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColorsL[latest.rating] }}>{ratingLabelsL[latest.rating]}</div>}
-                </div>
-              </div>
             )}
+            <div style={{ padding: "12px 14px" }}>
+              {!latest.photo_url && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{latestSpot}</div>
+                    <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>{dateLabelFn(latest.session_date)}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {latest.forecast_wind && <div style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{latest.forecast_wind}<span style={{ fontSize: 10 }}>kn</span></div>}
+                    {latest.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColorsL[latest.rating] }}>{ratingLabelsL[latest.rating]}</div>}
+                  </div>
+                </div>
+              )}
+              {(latest.gear_type || latest.gear_size) && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                  {latest.gear_type && <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: C.sky + "12", borderRadius: 7, padding: "3px 9px" }}>{latest.gear_type.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}</span>}
+                  {latest.gear_size && <span style={{ fontSize: 11, color: C.sub, padding: "3px 0" }}>{latest.gear_size}</span>}
+                </div>
+              )}
+            </div>
           </div>
         </Link>
       )}
@@ -426,7 +435,6 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
     </div>
   );
 }
-
 
 /* ═══════════════════════════════════════════════════════════
    DASHBOARD
