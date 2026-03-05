@@ -16,6 +16,35 @@ async function sbGet(path: string) {
   return res.json();
 }
 
+async function sbPatch(path: string, body: any) {
+  const token = await getValidToken();
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: "PATCH",
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify(body),
+  });
+  return res;
+}
+
+async function sbDelete(path: string) {
+  const token = await getValidToken();
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: "DELETE",
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+  });
+  return res;
+}
+
+async function sbPost2(path: string, body: any) {
+  const token = await getValidToken();
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: "POST",
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(body),
+  });
+  return res;
+}
+
 async function apiPost(path: string, body: any) {
   const token = await getValidToken();
   const res = await fetch(path, {
@@ -356,7 +385,7 @@ function RedFlagsPanel({ flags }: { flags: HealthData["redFlags"] }) {
 
 export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<"health" | "test" | "history">("health");
+  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users">("health");
   const [stats, setStats] = useState({ users: 0, spots: 0, alerts: 0, alertsToday: 0 });
   const [history, setHistory] = useState<AlertHistoryItem[]>([]);
   const [users, setUsers] = useState<UserInfo[]>([]);
@@ -367,17 +396,26 @@ export default function AdminPage() {
   const [testResult, setTestResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [evalResult, setEvalResult] = useState<any>(null);
+  const [diagnoseResult, setDiagnoseResult] = useState<any>(null);
+  const [diagnoseUserId, setDiagnoseUserId] = useState<number | null>(null);
+  const [diagnoseLoading, setDiagnoseLoading] = useState(false);
   const [health, setHealth] = useState<HealthData | null>(null);
+
+  // Users tab state
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [userDetail, setUserDetail] = useState<any>(null);
+  const [userSpots, setUserSpots] = useState<any[]>([]);
+  const [userPrefs, setUserPrefs] = useState<any>(null);
+  const [userSaving, setUserSaving] = useState(false);
+  const [userMsg, setUserMsg] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editWindMin, setEditWindMin] = useState(12);
+  const [editWindMax, setEditWindMax] = useState(28);
+  const [editWelcome, setEditWelcome] = useState(false);
+  const [allSpots, setAllSpots] = useState<any[]>([]);
   const [healthLoading, setHealthLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-
-  // Test session state
-  const [sessionSpot, setSessionSpot] = useState<number | null>(null);
-  const [sessionDate, setSessionDate] = useState<"today" | "yesterday" | "2daysago">("yesterday");
-  const [sessionWind, setSessionWind] = useState(18);
-  const [sessionDir, setSessionDir] = useState("SW");
-  const [sessionResult, setSessionResult] = useState<any>(null);
-  const [sessionLoading, setSessionLoading] = useState(false);
 
   // Auth check
   useEffect(() => {
@@ -488,64 +526,6 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  const createTestSession = async () => {
-    if (!selectedUser || !sessionSpot) return;
-    setSessionLoading(true);
-    setSessionResult(null);
-    try {
-      const token = await getValidToken();
-      const now = new Date();
-      const d = new Date(now);
-      if (sessionDate === "yesterday") d.setDate(d.getDate() - 1);
-      else if (sessionDate === "2daysago") d.setDate(d.getDate() - 2);
-      const dateStr = d.toISOString().split("T")[0];
-
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          Prefer: "return=representation",
-        },
-        body: JSON.stringify({
-          created_by: selectedUser,
-          spot_id: sessionSpot,
-          session_date: dateStr,
-          status: "going",
-          forecast_wind: sessionWind,
-          forecast_dir: sessionDir,
-          going_at: new Date().toISOString(),
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSessionResult({ success: true, session: data[0] || data, message: `Test sessie aangemaakt voor ${dateStr}. Ga naar /sessie om te loggen.` });
-      } else {
-        setSessionResult({ error: JSON.stringify(data) });
-      }
-    } catch (e: any) {
-      setSessionResult({ error: e.message });
-    }
-    setSessionLoading(false);
-  };
-
-  const clearTestSessions = async () => {
-    if (!selectedUser) return;
-    setSessionLoading(true);
-    try {
-      const token = await getValidToken();
-      await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${selectedUser}&status=eq.going`, {
-        method: "DELETE",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-      });
-      setSessionResult({ success: true, message: "Test sessies verwijderd." });
-    } catch (e: any) {
-      setSessionResult({ error: e.message });
-    }
-    setSessionLoading(false);
-  };
-
   const testPush = async () => {
     if (!selectedUser) return;
     setLoading(true); setTestResult(null);
@@ -589,6 +569,8 @@ export default function AdminPage() {
             { id: "health" as const, label: "🩺 Health", badge: health?.redFlags.filter(f => f.severity === "critical").length || 0 },
             { id: "test" as const, label: "🧪 Test", badge: 0 },
             { id: "history" as const, label: "📜 History", badge: 0 },
+            { id: "diagnose" as const, label: "🔍 Diagnose", badge: 0 },
+            { id: "users" as const, label: "👤 Gebruikers", badge: 0 },
           ]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
@@ -689,7 +671,6 @@ export default function AdminPage() {
 
         {/* ═══ TEST TAB ═══ */}
         {tab === "test" && (
-          <>
           <Section title="🧪 Test Alerts">
             <Card>
               <div style={{ marginBottom: 14 }}>
@@ -774,136 +755,176 @@ export default function AdminPage() {
               </Card>
             )}
           </Section>
-
-          {/* ── TEST SESSIE ── */}
-          <Section title="🏄 Test Sessie" defaultOpen={true}>
-            <Card>
-              <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.6, marginBottom: 14, padding: "10px 12px", background: C.oceanTint, borderRadius: 8 }}>
-                Maak een nep-sessie aan met status <strong style={{ color: C.navy }}>&quot;going&quot;</strong> zodat je <strong style={{ color: C.navy }}>/sessie</strong> kunt testen zonder een echte alert te hoeven ontvangen.
-              </div>
-
-              {/* User */}
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>USER</label>
-                <select value={selectedUser || ""} onChange={(e) => setSelectedUser(Number(e.target.value))}
-                  style={{ width: "100%", padding: "10px 12px", background: C.card, boxShadow: C.cardShadow, borderRadius: 10, color: C.navy, fontSize: 13 }}>
-                  {users.map(u => <option key={u.id} value={u.id}>{u.name || u.email} (#{u.id})</option>)}
-                </select>
-              </div>
-
-              {/* Spot */}
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>SPOT</label>
-                <select value={sessionSpot || ""} onChange={(e) => setSessionSpot(e.target.value ? Number(e.target.value) : null)}
-                  style={{ width: "100%", padding: "10px 12px", background: C.card, boxShadow: C.cardShadow, borderRadius: 10, color: C.navy, fontSize: 13 }}>
-                  <option value="">— Kies een spot —</option>
-                  {spots.map(s => <option key={s.id} value={s.id}>{(s as any).display_name || (s as any).name || `Spot #${s.id}`} (#{s.id})</option>)}
-                </select>
-              </div>
-
-              {/* Datum */}
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>SESSIEDATUM</label>
-                <div style={{ display: "flex", gap: 6 }}>
-                  {([
-                    ["today", "Vandaag"],
-                    ["yesterday", "Gisteren"],
-                    ["2daysago", "Eergisteren"],
-                  ] as const).map(([val, label]) => (
-                    <button key={val} onClick={() => setSessionDate(val)} style={{
-                      flex: 1, padding: "9px 4px", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer",
-                      background: sessionDate === val ? C.sky : C.creamDark,
-                      color: sessionDate === val ? "#fff" : C.muted,
-                      border: `1px solid ${sessionDate === val ? C.sky : C.cardBorder}`,
-                    }}>{label}</button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Wind + richting */}
-              <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>WIND (kn)</label>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {[12, 15, 18, 22, 25, 30].map(w => (
-                      <button key={w} onClick={() => setSessionWind(w)} style={{
-                        padding: "7px 10px", borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                        background: sessionWind === w ? C.green : C.creamDark,
-                        color: sessionWind === w ? "#fff" : C.muted,
-                        border: `1px solid ${sessionWind === w ? C.green : C.cardBorder}`,
-                      }}>{w}</button>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ width: 80 }}>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>RICHTING</label>
-                  <select value={sessionDir} onChange={e => setSessionDir(e.target.value)}
-                    style={{ width: "100%", padding: "8px 8px", background: C.card, boxShadow: C.cardShadow, borderRadius: 8, color: C.navy, fontSize: 13 }}>
-                    {["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"].map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Buttons */}
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={createTestSession}
-                  disabled={sessionLoading || !selectedUser || !sessionSpot}
-                  style={{
-                    flex: 1, padding: "11px 0", background: C.green, border: "none", borderRadius: 10,
-                    color: "#fff", fontSize: 13, fontWeight: 700,
-                    cursor: (!selectedUser || !sessionSpot) ? "not-allowed" : "pointer",
-                    opacity: (!selectedUser || !sessionSpot || sessionLoading) ? 0.5 : 1,
-                  }}>
-                  {sessionLoading ? "Aanmaken..." : "🏄 Maak test sessie"}
-                </button>
-                <a href="/sessie" target="_blank" style={{
-                  padding: "11px 16px", background: C.sky, border: "none", borderRadius: 10,
-                  color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", textDecoration: "none",
-                  display: "flex", alignItems: "center",
-                }}>
-                  Open /sessie →
-                </a>
-              </div>
-
-              <button
-                onClick={clearTestSessions}
-                disabled={sessionLoading || !selectedUser}
-                style={{
-                  width: "100%", marginTop: 8, padding: "8px", background: C.card,
-                  border: `1px solid ${C.cardBorder}`, borderRadius: 8, color: C.muted,
-                  fontSize: 11, fontWeight: 600, cursor: "pointer",
-                }}>
-                🗑️ Verwijder openstaande test sessies
-              </button>
-
-              {sessionResult && (
-                <div style={{
-                  marginTop: 12, padding: "12px 14px", borderRadius: 10,
-                  background: sessionResult.error ? "#FEF2F2" : `${C.green}10`,
-                  border: `1px solid ${sessionResult.error ? "#FCA5A5" : `${C.green}30`}`,
-                }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: sessionResult.error ? "#DC2626" : C.green, marginBottom: sessionResult.session ? 6 : 0 }}>
-                    {sessionResult.error ? "❌ Error" : "✅ " + sessionResult.message}
-                  </div>
-                  {sessionResult.session && (
-                    <pre style={{ fontSize: 10, color: C.muted, margin: 0, whiteSpace: "pre-wrap" }}>
-                      {JSON.stringify(sessionResult.session, null, 2)}
-                    </pre>
-                  )}
-                  {sessionResult.error && (
-                    <div style={{ fontSize: 11, color: "#DC2626" }}>{sessionResult.error}</div>
-                  )}
-                </div>
-              )}
-            </Card>
-          </Section>
-          </> // closes fragment + tab === "test"
         )}
 
         {/* ═══ HISTORY TAB ═══ */}
+        {tab === "diagnose" && (
+          <div>
+            <Section title="🔍 Waarom geen alert?">
+              <p style={{ fontSize: 13, color: C.sub, margin: "0 0 16px" }}>Kies een gebruiker om te zien waarom ze wel of geen alert hebben gekregen.</p>
+
+              {/* User selector */}
+              {allUsers.length === 0 ? (
+                <button onClick={async () => {
+                  const token = await getValidToken();
+                  const res = await fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } });
+                  const data = await res.json();
+                  setAllUsers(data || []);
+                }} style={{ padding: "8px 16px", background: C.sky, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 16 }}>
+                  Laad gebruikers
+                </button>
+              ) : (
+                <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+                  {allUsers.map((u: any) => (
+                    <button key={u.id} onClick={() => { setDiagnoseUserId(u.id); setDiagnoseResult(null); }} style={{
+                      padding: "8px 16px", borderRadius: 10, border: "2px solid",
+                      borderColor: diagnoseUserId === u.id ? C.sky : C.cardBorder,
+                      background: diagnoseUserId === u.id ? `${C.sky}15` : C.card,
+                      color: diagnoseUserId === u.id ? C.sky : C.navy,
+                      fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    }}>{u.name || u.email}</button>
+                  ))}
+                </div>
+              )}
+
+              {diagnoseUserId && (
+                <button onClick={async () => {
+                  setDiagnoseLoading(true);
+                  setDiagnoseResult(null);
+                  try {
+                    const token = await getValidToken();
+                    const res = await fetch(`/api/alerts/diagnose?user_id=${diagnoseUserId}`, {
+                      headers: { Authorization: `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                      setDiagnoseResult({ error: `HTTP ${res.status}: ${data?.error || JSON.stringify(data)}` });
+                    } else {
+                      setDiagnoseResult(data);
+                    }
+                  } catch (e: any) {
+                    setDiagnoseResult({ error: e.message || "Fetch mislukt" });
+                  }
+                  setDiagnoseLoading(false);
+                }} style={{
+                  padding: "10px 20px", background: C.sky, color: "#fff",
+                  border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  marginBottom: 20, opacity: diagnoseLoading ? 0.6 : 1,
+                }}>{diagnoseLoading ? "Laden..." : "🔍 Analyseer"}</button>
+              )}
+
+              {diagnoseResult && !diagnoseResult.error && (
+                <div>
+                  {/* Prefs summary */}
+                  <Card style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8 }}>INSTELLINGEN</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {Object.entries(diagnoseResult.prefs.availability).map(([day, avail]: [string, any]) => (
+                        <span key={day} style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                          background: avail ? "#D1FAE5" : C.creamDark, color: avail ? "#065F46" : C.muted }}>
+                          {day.charAt(0).toUpperCase() + day.slice(1)}
+                        </span>
+                      ))}
+                      <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: `${C.sky}15`, color: C.sky }}>
+                        {diagnoseResult.prefs.lookahead}d vooruit
+                      </span>
+                      {diagnoseResult.prefs.paused && <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: "#FEF3C7", color: "#D97706" }}>⏸ Gepauzeerd</span>}
+                    </div>
+                  </Card>
+
+                  {/* Spots */}
+                  <Card style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8 }}>SPOTS ({diagnoseResult.spots.length})</div>
+                    {diagnoseResult.spots.map((s: any) => (
+                      <div key={s.id} style={{ padding: "6px 0", borderBottom: `1px solid ${C.cardBorder}`, fontSize: 12 }}>
+                        <span style={{ fontWeight: 600, color: C.navy }}>{s.name}</span>
+                        {s.conditions ? (
+                          <span style={{ color: C.sub, marginLeft: 8 }}>
+                            {s.conditions.windMin}–{s.conditions.windMax}kn · {s.conditions.directions?.join(", ") || "alle richtingen"}
+                          </span>
+                        ) : <span style={{ color: C.gold, marginLeft: 8 }}>Geen voorkeuren ingesteld</span>}
+                      </div>
+                    ))}
+                  </Card>
+
+                  {/* Per day */}
+                  {diagnoseResult.days.map((day: any) => (
+                    <div key={day.date} style={{
+                      background: C.card, borderRadius: 14, padding: "14px 16px", marginBottom: 10,
+                      boxShadow: C.cardShadow,
+                      borderLeft: `4px solid ${day.hadGo ? C.green : day.hadHeadsUp ? C.sky : day.wouldSend ? C.gold : C.cardBorder}`,
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                        <div style={{ fontWeight: 700, color: C.navy, fontSize: 14 }}>{day.dayLabel}</div>
+                        <div style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 8,
+                          background: day.hadGo ? "#D1FAE5" : day.hadHeadsUp ? "#DBEAFE" : day.wouldSend ? "#FEF3C7" : C.creamDark,
+                          color: day.hadGo ? "#065F46" : day.hadHeadsUp ? "#1D4ED8" : day.wouldSend ? "#D97706" : C.muted,
+                        }}>
+                          {day.hadGo ? "✅ Go verstuurd" : day.hadHeadsUp ? "📣 Heads-up verstuurd" : day.hadDowngrade ? "⬇️ Downgrade verstuurd" : day.wouldSend ? `⏳ Zou sturen: ${day.wouldSend}` : `❌ ${day.wouldNotSendReason || "Geen alert"}`}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {day.spotResults.map((s: any) => (
+                          <div key={s.spotId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8,
+                            background: s.inRange ? "#F0FDF4" : "#FFF7ED" }}>
+                            <span>{s.inRange ? "✅" : "❌"}</span>
+                            <span style={{ fontWeight: 600, fontSize: 12, color: C.navy, flex: 1 }}>{s.spotName}</span>
+                            <span style={{ fontSize: 12, color: C.sub }}>{s.wind}kn {s.dir}</span>
+                            {s.reasons?.length > 0 && <span style={{ fontSize: 11, color: "#EF4444" }}>{s.reasons.join(" · ")}</span>}
+                            {s.error && <span style={{ fontSize: 11, color: "#EF4444" }}>{s.error}</span>}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Verstuurde alerts voor deze dag */}
+                      {day.sentAlerts?.length > 0 && (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.cardBorder}` }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, marginBottom: 6, letterSpacing: 0.5 }}>VERSTUURDE ALERTS</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                            {day.sentAlerts.map((a: any, i: number) => (
+                              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8, background: C.creamDark }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: a.alert_type === "go" ? C.green : a.alert_type === "heads_up" ? C.sky : C.gold }}>
+                                  {a.alert_type === "go" ? "🟢 Go" : a.alert_type === "heads_up" ? "🔵 Heads-up" : a.alert_type === "downgrade" ? "🔴 Downgrade" : a.alert_type}
+                                </span>
+                                <span style={{ fontSize: 11, color: C.sub, flex: 1 }}>
+                                  {new Date(a.created_at).toLocaleString("nl-NL", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Amsterdam" })}
+                                </span>
+                                <span style={{ fontSize: 10, color: a.delivered_push ? C.green : C.muted }}>📱 {a.delivered_push ? "✓" : "—"}</span>
+                                <span style={{ fontSize: 10, color: a.delivered_email ? C.green : C.muted }}>📧 {a.delivered_email ? "✓" : "—"}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Nog geen alert maar zou sturen */}
+                      {day.wouldSend && !day.sentAlerts?.length && (
+                        <div style={{ marginTop: 8, padding: "5px 10px", borderRadius: 8, background: "#FEF3C7", fontSize: 11, color: "#D97706" }}>
+                          ⏳ Nog niet verstuurd — zou een <strong>{day.wouldSend}</strong> alert sturen bij volgende engine run
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {diagnoseResult?.error && (
+                <div style={{ background: "#FEF2F2", borderRadius: 10, padding: "12px 16px", color: "#DC2626", fontSize: 13, marginBottom: 12 }}>
+                  ❌ Fout: {diagnoseResult.error}
+                </div>
+              )}
+              {diagnoseResult && (
+                <details style={{ marginTop: 8 }}>
+                  <summary style={{ fontSize: 11, color: C.muted, cursor: "pointer" }}>Raw API response (debug)</summary>
+                  <pre style={{ fontSize: 10, color: C.sub, background: C.creamDark, padding: 10, borderRadius: 8, overflow: "auto", maxHeight: 200, marginTop: 6 }}>
+                    {JSON.stringify(diagnoseResult, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </Section>
+          </div>
+        )}
+
         {tab === "history" && (
           <Section title="📜 Alert History">
             {history.length === 0 ? (
@@ -938,6 +959,254 @@ export default function AdminPage() {
             )}
           </Section>
         )}
+
+        {tab === "users" && (
+          <div>
+            <Section title="👤 Gebruikersbeheer">
+              {/* User list */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                  <button onClick={async () => {
+                    const token = await getValidToken();
+                  const res = await fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } });
+                  const data = await res.json();
+                  setAllUsers(data || []);
+                  }} style={{ padding: "8px 16px", background: C.sky, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                    Laad gebruikers
+                  </button>
+                  <span style={{ fontSize: 12, color: C.sub }}>{allUsers.length} gebruikers geladen</span>
+                </div>
+
+                {allUsers.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 300, overflowY: "auto" }}>
+                    {allUsers.map(u => (
+                      <div key={u.id} onClick={async () => {
+                        setSelectedUserId(u.id);
+                        setEditName(u.name || "");
+                        setEditWindMin(u.min_wind_speed || 12);
+                        setEditWindMax(u.max_wind_speed || 28);
+                        setEditWelcome(u.welcome_shown || false);
+                        setUserDetail(u);
+                        setUserMsg("");
+                        // Load prefs and spots
+                        const [prefs, spots, spotsList] = await Promise.all([
+                          sbGet(`alert_preferences?user_id=eq.${u.id}`),
+                          sbGet(`user_spots?user_id=eq.${u.id}&select=spot_id,spots(id,display_name)`),
+                          sbGet("spots?select=id,display_name&order=display_name.asc&limit=100"),
+                        ]);
+                        setUserPrefs(prefs?.[0] || null);
+                        setUserSpots(spots || []);
+                        setAllSpots(spotsList || []);
+                      }} style={{
+                        padding: "10px 14px", background: selectedUserId === u.id ? `${C.sky}15` : C.card,
+                        border: `1.5px solid ${selectedUserId === u.id ? C.sky : C.cardBorder}`,
+                        borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                      }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{u.name || "—"}</div>
+                          <div style={{ fontSize: 11, color: C.sub }}>{u.email}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {u.subscription_status === "active" && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: `${C.green}20`, color: C.green, fontWeight: 700 }}>Pro</span>}
+                          {u.welcome_shown && <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 6, background: `${C.sky}20`, color: C.sky, fontWeight: 700 }}>Onboarded</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* User detail editor */}
+              {userDetail && (
+                <div style={{ background: C.creamDark, borderRadius: 14, padding: 16, marginTop: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 14 }}>
+                    ✏️ {userDetail.name || userDetail.email}
+                    <span style={{ fontSize: 11, color: C.sub, fontWeight: 400, marginLeft: 8 }}>ID: {userDetail.id}</span>
+                  </div>
+
+                  {userMsg && (
+                    <div style={{ padding: "8px 12px", borderRadius: 8, background: userMsg.startsWith("✓") ? `${C.green}20` : `${C.amber}20`, color: userMsg.startsWith("✓") ? C.green : C.amber, fontSize: 12, fontWeight: 600, marginBottom: 12 }}>
+                      {userMsg}
+                    </div>
+                  )}
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                    {/* Name */}
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>NAAM / DISPLAY NAME</label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input value={editName} onChange={e => setEditName(e.target.value)}
+                          style={{ flex: 1, padding: "8px 12px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, outline: "none" }} />
+                        <button onClick={async () => {
+                          setUserSaving(true);
+                          await sbPatch(`users?id=eq.${userDetail.id}`, { name: editName });
+                          setUserMsg("✓ Naam opgeslagen");
+                          setUserSaving(false);
+                        }} style={{ padding: "8px 14px", background: C.sky, color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                          Opslaan
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Wind min */}
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>MIN WIND (KN)</label>
+                      <input type="number" value={editWindMin} onChange={e => setEditWindMin(Number(e.target.value))} min={5} max={50}
+                        style={{ width: "100%", padding: "8px 12px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, outline: "none", boxSizing: "border-box" }} />
+                    </div>
+
+                    {/* Wind max */}
+                    <div>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>MAX WIND (KN)</label>
+                      <input type="number" value={editWindMax} onChange={e => setEditWindMax(Number(e.target.value))} min={5} max={50}
+                        style={{ width: "100%", padding: "8px 12px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, outline: "none", boxSizing: "border-box" }} />
+                    </div>
+
+                    <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8 }}>
+                      <button onClick={async () => {
+                        setUserSaving(true);
+                        await sbPatch(`users?id=eq.${userDetail.id}`, { min_wind_speed: editWindMin, max_wind_speed: editWindMax });
+                        setUserMsg("✓ Wind opgeslagen");
+                        setUserSaving(false);
+                      }} style={{ padding: "8px 14px", background: C.sky, color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                        Wind opslaan
+                      </button>
+                      <button onClick={async () => {
+                        setEditWindMin(12); setEditWindMax(28);
+                        await sbPatch(`users?id=eq.${userDetail.id}`, { min_wind_speed: 12, max_wind_speed: 28 });
+                        setUserMsg("✓ Wind naar default (12–28kn)");
+                      }} style={{ padding: "8px 14px", background: C.creamDark, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                        Default (12–28)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Welcome / onboarding flags */}
+                  <div style={{ borderTop: `1px solid ${C.cardBorder}`, paddingTop: 12, marginBottom: 12 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8 }}>ONBOARDING FLAGS</label>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button onClick={async () => {
+                        await sbPatch(`users?id=eq.${userDetail.id}`, { welcome_shown: false });
+                        setEditWelcome(false);
+                        setUserMsg("✓ Welcome reset — ziet welkomstbericht opnieuw");
+                      }} style={{ padding: "7px 14px", background: editWelcome ? `${C.amber}15` : `${C.green}15`, border: `1px solid ${editWelcome ? C.amber : C.green}`, borderRadius: 8, fontSize: 12, fontWeight: 600, color: editWelcome ? C.amber : C.green, cursor: "pointer" }}>
+                        {editWelcome ? "🔄 Reset welkomstbericht" : "✓ Welkom al gezien"}
+                      </button>
+                      <button onClick={async () => {
+                        await sbPatch(`users?id=eq.${userDetail.id}`, { welcome_shown: false });
+                        if (userPrefs) {
+                          await sbPatch(`alert_preferences?user_id=eq.${userDetail.id}`, {
+                            available_mon: false, available_tue: false, available_wed: false,
+                            available_thu: false, available_fri: false, available_sat: true, available_sun: true,
+                          });
+                        }
+                        setEditWelcome(false); setEditWindMin(12); setEditWindMax(28);
+                        await sbPatch(`users?id=eq.${userDetail.id}`, { min_wind_speed: 12, max_wind_speed: 28 });
+                        setUserMsg("✓ Volledig gereset naar defaults");
+                      }} style={{ padding: "7px 14px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#DC2626", cursor: "pointer" }}>
+                        🔄 Reset alles naar default
+                      </button>
+                      <button onClick={async () => {
+                        if (!confirm(`Weet je zeker dat je ALLES van ${userDetail.name || userDetail.email} wilt verwijderen? Dit reset de volledige onboarding.`)) return;
+                        setUserSaving(true);
+                        try {
+                          await Promise.all([
+                            sbDelete(`user_spots?user_id=eq.${userDetail.id}`),
+                            sbDelete(`alert_preferences?user_id=eq.${userDetail.id}`),
+                            sbDelete(`alert_schedules?user_id=eq.${userDetail.id}`),
+                          ]);
+                          await sbPatch(`users?id=eq.${userDetail.id}`, {
+                            name: null,
+                            min_wind_speed: null,
+                            max_wind_speed: null,
+                            welcome_shown: false,
+                          });
+                          setUserSpots([]);
+                          setUserPrefs(null);
+                          setEditName("");
+                          setEditWindMin(12);
+                          setEditWindMax(28);
+                          setEditWelcome(false);
+                          setUserMsg("✓ Alles verwijderd — gebruiker kan opnieuw onboarden");
+                        } catch(e: any) {
+                          setUserMsg("❌ Fout: " + e.message);
+                        }
+                        setUserSaving(false);
+                      }} style={{ padding: "7px 14px", background: "#FEF2F2", border: "2px solid #DC2626", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#DC2626", cursor: "pointer" }}>
+                        🗑️ Verwijder alles (onboarding reset)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Spots */}
+                  <div style={{ borderTop: `1px solid ${C.cardBorder}`, paddingTop: 12, marginBottom: 12 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8 }}>SPOTS ({userSpots.length})</label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                      {userSpots.length === 0 ? (
+                        <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>Geen spots</span>
+                      ) : userSpots.map((us: any) => (
+                        <div key={us.spot_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: C.card, borderRadius: 8 }}>
+                          <span style={{ flex: 1, fontSize: 12, color: C.navy }}>{us.spots?.display_name || `Spot #${us.spot_id}`}</span>
+                          <button onClick={async () => {
+                            await sbDelete(`user_spots?user_id=eq.${userDetail.id}&spot_id=eq.${us.spot_id}`);
+                            setUserSpots(prev => prev.filter(s => s.spot_id !== us.spot_id));
+                            setUserMsg(`✓ Spot verwijderd`);
+                          }} style={{ padding: "4px 10px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 6, fontSize: 11, fontWeight: 600, color: "#DC2626", cursor: "pointer" }}>
+                            Verwijder
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Add spot */}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <select onChange={async (e) => {
+                        const spotId = Number(e.target.value);
+                        if (!spotId) return;
+                        await sbPost2(`user_spots`, { user_id: userDetail.id, spot_id: spotId });
+                        const spot = allSpots.find(s => s.id === spotId);
+                        setUserSpots(prev => [...prev, { spot_id: spotId, spots: { display_name: spot?.display_name } }]);
+                        setUserMsg("✓ Spot toegevoegd");
+                        e.target.value = "";
+                      }} style={{ flex: 1, padding: "8px 12px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, outline: "none" }}>
+                        <option value="">+ Spot toevoegen...</option>
+                        {allSpots.filter(s => !userSpots.find(us => us.spot_id === s.id)).map(s => (
+                          <option key={s.id} value={s.id}>{s.display_name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Alert preferences summary */}
+                  {userPrefs && (
+                    <div style={{ borderTop: `1px solid ${C.cardBorder}`, paddingTop: 12 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8 }}>BESCHIKBAARHEID</label>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                        {["ma", "di", "wo", "do", "vr", "za", "zo"].map((d, i) => {
+                          const keys = ["available_mon","available_tue","available_wed","available_thu","available_fri","available_sat","available_sun"];
+                          const active = userPrefs[keys[i]];
+                          return (
+                            <span key={d} style={{ padding: "4px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700, background: active ? C.sky : C.creamDark, color: active ? "#fff" : C.sub }}>{d}</span>
+                          );
+                        })}
+                      </div>
+                      <button onClick={async () => {
+                        await sbPatch(`alert_preferences?user_id=eq.${userDetail.id}`, {
+                          available_mon: false, available_tue: false, available_wed: false,
+                          available_thu: false, available_fri: false, available_sat: true, available_sun: true,
+                        });
+                        setUserPrefs((p: any) => ({ ...p, available_mon: false, available_tue: false, available_wed: false, available_thu: false, available_fri: false, available_sat: true, available_sun: true }));
+                        setUserMsg("✓ Beschikbaarheid naar default (weekenden)");
+                      }} style={{ padding: "6px 14px", background: C.creamDark, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                        Reset naar weekenden
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Section>
+          </div>
+        )}
+
       </div>
     </div>
   );

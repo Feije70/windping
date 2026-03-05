@@ -43,7 +43,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Session is automatically stored in localStorage by the client
       window.location.href = "/";
     } catch {
       setError("Connection error. Please try again.");
@@ -76,7 +75,7 @@ export default function LoginPage() {
           <Link href="/" style={{ textDecoration: "none", display: "inline-block" }}>
             <Logo size={44} />
           </Link>
-          <p style={{ fontSize: 13, color: C.sub, fontStyle: "italic", margin: 0 }}>Your perfect session, our obsession!</p>
+          <p style={{ fontSize: 13, color: C.sub, fontStyle: "italic", margin: 0 }}>Stop checking, start riding.</p>
         </div>
 
         {/* Card */}
@@ -87,7 +86,7 @@ export default function LoginPage() {
           {view === "login" ? (
             <>
               <h1 className="font-bebas" style={{ ...h, fontSize: 26, letterSpacing: 1, color: C.text, margin: "0 0 4px" }}>Log in</h1>
-              <p style={{ fontSize: 13, color: C.textSub, margin: "0 0 24px" }}>Welcome back!</p>
+              <p style={{ fontSize: 13, color: C.textSub, margin: "0 0 24px" }}>Welkom terug!</p>
 
               {error && <div style={{ background: "#FDF6F3", border: "1px solid #F0D0C0", borderRadius: 10, padding: "12px 16px", fontSize: 13, fontWeight: 600, color: "#B86444", marginBottom: 16 }}>{error}</div>}
 
@@ -100,8 +99,8 @@ export default function LoginPage() {
               </div>
 
               <div style={{ marginBottom: 8 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Password</label>
-                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min. 8 characters"
+                <label style={{ fontSize: 12, fontWeight: 600, color: "#374151", display: "block", marginBottom: 6 }}>Wachtwoord</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min. 8 tekens"
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                   style={{ width: "100%", padding: "13px 16px", border: "2px solid #E5E7EB", borderRadius: 12, fontSize: 15, color: C.text, outline: "none", background: "#F8FBFF", boxSizing: "border-box" }}
                   onFocus={(e) => (e.target.style.borderColor = C.sky)} onBlur={(e) => (e.target.style.borderColor = "#E5E7EB")}
@@ -109,7 +108,7 @@ export default function LoginPage() {
               </div>
 
               <div style={{ textAlign: "right", marginBottom: 16 }}>
-                <button onClick={() => setView("reset")} style={{ fontSize: 12, fontWeight: 600, color: C.sky, background: "none", border: "none", cursor: "pointer", padding: 0 }}>Forgot password??</button>
+                <button onClick={() => setView("reset")} style={{ fontSize: 12, fontWeight: 600, color: C.sky, background: "none", border: "none", cursor: "pointer", padding: 0 }}>Wachtwoord vergeten?</button>
               </div>
 
               <button onClick={() => handleLogin()} disabled={loading}
@@ -118,7 +117,7 @@ export default function LoginPage() {
                   border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer",
                   opacity: loading ? 0.6 : 1, transition: "all 0.2s",
                 }}>
-                {loading ? "Loading..." : "Log in"}
+                {loading ? "Laden..." : "Inloggen"}
               </button>
 
               <div style={{ textAlign: "center", margin: "24px 0", fontSize: 13, color: C.muted, position: "relative" }}>
@@ -127,17 +126,17 @@ export default function LoginPage() {
               </div>
 
               <p style={{ textAlign: "center", fontSize: 13, color: C.textSub, margin: 0 }}>
-                No account yet?{" "}
-                <Link href="/signup" style={{ fontWeight: 700, color: C.sky, textDecoration: "none" }}>Create account</Link>
+                Nog geen account?{" "}
+                <Link href="/signup" style={{ fontWeight: 700, color: C.sky, textDecoration: "none" }}>Account aanmaken</Link>
               </p>
             </>
           ) : (
             <>
               <button onClick={() => setView("login")} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: C.sky, background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: 20 }}>
-                ← Back to login
+                ← Terug naar inloggen
               </button>
-              <h1 className="font-bebas" style={{ ...h, fontSize: 26, letterSpacing: 1, color: C.text, margin: "0 0 4px" }}>Forgot password?</h1>
-              <p style={{ fontSize: 13, color: C.textSub, margin: "0 0 24px" }}>We will send you a recovery link by email.</p>
+              <h1 className="font-bebas" style={{ ...h, fontSize: 26, letterSpacing: 1, color: C.text, margin: "0 0 4px" }}>Wachtwoord vergeten?</h1>
+              <p style={{ fontSize: 13, color: C.textSub, margin: "0 0 24px" }}>We sturen je een herstelmail.</p>
 
               {resetError && <div style={{ background: "#FDF6F3", border: "1px solid #F0D0C0", borderRadius: 10, padding: "12px 16px", fontSize: 13, fontWeight: 600, color: "#B86444", marginBottom: 16 }}>{resetError}</div>}
               {resetSuccess && <div style={{ background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 10, padding: "12px 16px", fontSize: 13, fontWeight: 600, color: "#16A34A", marginBottom: 16 }}>{resetSuccess}</div>}
@@ -152,7 +151,7 @@ export default function LoginPage() {
 
               <button onClick={handleReset}
                 style={{ width: "100%", padding: 15, background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-                Send recovery link
+                Herstelmail sturen
               </button>
             </>
           )}

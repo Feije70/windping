@@ -47,8 +47,25 @@ export async function GET(req: Request) {
     }
     if (currentRun) runs.push(currentRun);
 
-    const lastRun = runs[0] || null;
-    const lastRunTime = lastRun ? new Date(lastRun.timestamp) : null;
+    // Also check engine_runs heartbeat table
+    const { data: engineRuns } = await sb
+      .from("engine_runs")
+      .select("ran_at, alerts_sent")
+      .order("ran_at", { ascending: false })
+      .limit(5);
+    
+    const lastEngineRunTime = engineRuns?.[0] ? new Date(engineRuns[0].ran_at) : null;
+    const lastAlertRunTime = runs[0] ? new Date(runs[0].timestamp) : null;
+    
+    // Use whichever is more recent
+    const lastRunTime = (() => {
+      if (!lastAlertRunTime && !lastEngineRunTime) return null;
+      if (!lastAlertRunTime) return lastEngineRunTime;
+      if (!lastEngineRunTime) return lastAlertRunTime;
+      return lastAlertRunTime > lastEngineRunTime ? lastAlertRunTime : lastEngineRunTime;
+    })();
+    
+    const lastRun = lastRunTime ? { timestamp: lastRunTime.toISOString() } : (runs[0] || null);
     const hoursSinceLastRun = lastRunTime ? (now.getTime() - lastRunTime.getTime()) / 3600000 : null;
 
     const weekAgo = new Date(now.getTime() - 7 * 24 * 3600000).toISOString();
@@ -130,15 +147,44 @@ export async function GET(req: Request) {
     const expectedCrons = [0, 6, 12, 18];
     const last24h = new Date(now.getTime() - 24 * 3600000);
     const recentRuns = runs.filter(r => new Date(r.timestamp) > last24h);
-    const runHours = recentRuns.map(r => new Date(r.timestamp).getUTCHours());
-    const missedCrons = expectedCrons.filter(hr => !runHours.includes(hr));
+    // Use 30 min tolerance: a run at 6:05 counts as the 6:00 cron
+    const runHours = recentRuns.map(r => {
+      const d = new Date(r.timestamp);
+      const h = d.getUTCHours();
+      const m = d.getUTCMinutes();
+      // Round to nearest expected cron hour with 30 min tolerance
+      return expectedCrons.find(hr => Math.abs(h - hr) === 0 || (m <= 30 && h === hr) || (m > 30 && h + 1 === hr)) ?? h;
+    });
+    // Only flag as missed if the expected time has passed by more than 30 minutes
+    const missedCrons = expectedCrons.filter(hr => {
+      if (runHours.includes(hr)) return false;
+      const expectedTime = new Date(now);
+      expectedTime.setUTCHours(hr, 30, 0, 0); // 30 min grace period
+      if (expectedTime > now) return false; // not due yet
+      // Check if it ran within 30 min of expected time
+      const ranNearby = recentRuns.some(r => {
+        const d = new Date(r.timestamp);
+        const diff = Math.abs(d.getUTCHours() - hr) * 60 + d.getUTCMinutes();
+        return diff <= 30;
+      });
+      return !ranNearby;
+    });
 
     if (missedCrons.length > 0 && recentRuns.length > 0) {
       redFlags.push({ severity: missedCrons.length >= 3 ? "critical" : "warning", message: missedCrons.length + " gemiste cron runs in 24u", detail: "Gemist: " + missedCrons.map(hr => hr + ":00 UTC").join(", ") });
     }
 
-    // Self-alert: email admin if engine down >8 hours
-    if (hoursSinceLastRun !== null && hoursSinceLastRun > 8) {
+    // Self-alert: email admin if engine down >8 hours, max 1x per hour
+    const lastSelfAlert = await sb
+      .from("alert_history")
+      .select("created_at")
+      .eq("is_test", true)
+      .eq("alert_type", "engine_down")
+      .gte("created_at", new Date(now.getTime() - 3600000).toISOString())
+      .limit(1);
+    const recentlySentSelfAlert = (lastSelfAlert.data?.length || 0) > 0;
+    
+    if (hoursSinceLastRun !== null && hoursSinceLastRun > 8 && !recentlySentSelfAlert) {
       const RESEND_API_KEY = process.env.RESEND_API_KEY;
       const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "feijekooistra@hotmail.com";
       const { data: recentAdminAlerts } = await sb

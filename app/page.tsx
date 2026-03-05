@@ -15,6 +15,15 @@ const OM_BASE = "https://api.open-meteo.com/v1/forecast";
 const DIRS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
 function degToDir(deg: number) { return DIRS_16[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16]; }
 
+async function sbPatch(path: string, body: any) {
+  const token = await getValidToken();
+  await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: "PATCH",
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify(body),
+  });
+}
+
 async function sbGet(path: string) {
   const token = await getValidToken();
   const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" };
@@ -213,9 +222,6 @@ interface RecentSession {
   gear_type: string | null;
   forecast_wind: number | null;
   forecast_dir: string | null;
-  gear_size: string | null;
-  wind_feel: string | null;
-  image_url: string | null;
   spots?: { display_name: string };
 }
 
@@ -270,46 +276,27 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
         </div>
       </div>
       {completed.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {completed.slice(0, 3).map((s) => {
+        <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 14, overflow: "hidden" }}>
+          {completed.slice(0, 3).map((s, i) => {
             const dObj = new Date(s.session_date + "T12:00:00");
             const now = new Date();
             const todayD = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             const targetD = new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate());
             const diff = Math.round((targetD.getTime() - todayD.getTime()) / 86400000);
             const dateLabel = diff === 0 ? "Vandaag" : diff === -1 ? "Gisteren" : dObj.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
-            const spotName = spotNames[s.spot_id] || "Spot";
-            const ratingLabels: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker!", 5: "EPIC!" };
-            const ratingColors: Record<number, string> = { 1: "#C97A63", 2: C.amber, 3: C.gold, 4: C.sky, 5: C.green };
-            const windFeelLabel: Record<string, string> = { perfect: "Perfect", overpowered: "Te veel", underpowered: "Te weinig", gusty: "Gusty" };
-            const borderColor = s.rating ? ratingColors[s.rating] : C.cardBorder;
+            const gearEmoji: Record<string, string> = { kite: "🪁", windsurf: "🏄", wing: "🦅", sup: "🛶" };
+            const spotName = s.spots?.display_name || spotNames[s.spot_id] || "Spot";
             return (
-              <div key={s.id} style={{ background: C.card, borderLeft: `3px solid ${borderColor}`, borderRadius: 13, boxShadow: C.cardShadow, overflow: "hidden" }}>
-                {s.image_url && (
-                  <img src={s.image_url} alt="" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
-                )}
-                <div style={{ padding: "12px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{spotName}</div>
-                      <div style={{ fontSize: 11, color: C.sub }}>{dateLabel}{s.forecast_wind ? ` · ${s.forecast_wind}kn ${s.forecast_dir || ""}` : ""}</div>
-                    </div>
-                    {s.rating && (
-                      <div style={{ fontSize: 13, fontWeight: 800, color: ratingColors[s.rating] }}>{ratingLabels[s.rating]}</div>
-                    )}
-                  </div>
-                  {(s.gear_type || s.gear_size || s.wind_feel) && (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
-                      {s.gear_type && (() => {
-                        // Handle legacy JSON strings like ["kite"] or {"kite":"9"}
-                        let gt = s.gear_type;
-                        try { const p = JSON.parse(gt); gt = Array.isArray(p) ? p[0] : typeof p === "object" ? Object.keys(p)[0] : gt; } catch {}
-                        return <span style={{ fontSize: 11, color: C.sub, background: C.cream, padding: "2px 8px", borderRadius: 6 }}>{gt.replace("-", " ")}</span>;
-                      })()}
-                      {s.gear_size && !s.gear_size.startsWith("{") && <span style={{ fontSize: 11, color: C.sub }}>{s.gear_size}</span>}
-                      {s.wind_feel && <span style={{ fontSize: 11, color: C.muted }}>· {windFeelLabel[s.wind_feel] || s.wind_feel}</span>}
-                    </div>
-                  )}
+              <div key={s.id} style={{ padding: "12px 16px", borderBottom: i < Math.min(completed.length, 3) - 1 ? `1px solid ${C.cardBorder}` : "none", display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: C.goBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>
+                  {gearEmoji[s.gear_type || ""] || "🏄"}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{spotName}</div>
+                  <div style={{ fontSize: 11, color: C.sub }}>{dateLabel}{s.forecast_wind ? ` · ${s.forecast_wind}kn ${s.forecast_dir || ""}` : ""}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+                  {s.rating && Array.from({ length: s.rating }, (_, k) => <span key={k} style={{ fontSize: 12 }}>⭐</span>)}
                 </div>
               </div>
             );
@@ -317,7 +304,7 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
         </div>
       )}
       {stats.total_sessions > 3 && (
-        <Link href="/mijn-sessies" style={{ display: "block", textAlign: "center", marginTop: 10, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
+        <Link href="/alert" style={{ display: "block", textAlign: "center", marginTop: 10, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
           Alle {stats.total_sessions} sessies bekijken →
         </Link>
       )}
@@ -335,6 +322,7 @@ function Dashboard() {
   const [userName, setUserName] = useState("");
   const [userId, setUserId] = useState<number | null>(null);
   const [spots, setSpots] = useState<SpotSummary[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [paused, setPaused] = useState(false);
   const [showPause, setShowPause] = useState(false);
@@ -346,6 +334,7 @@ function Dashboard() {
   const [spotNames, setSpotNames] = useState<Record<number, string>>({});
   const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
   const [friendActivity, setFriendActivity] = useState<any[]>([]);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   const goSpots = spots.filter(s => s.match === "go");
   const matchColors: Record<string, string> = { go: C.green, maybe: C.gold, no: C.amber };
@@ -355,11 +344,16 @@ function Dashboard() {
       const email = getEmail();
       if (!email) return;
       const authId = getAuthId();
-      const users = await sbGet(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,name,min_wind_speed,max_wind_speed`);
+      const users = await sbGet(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,name,min_wind_speed,max_wind_speed,welcome_shown`);
       if (!users?.length) return;
       const user = users[0];
       setUserName(user.name || email.split("@")[0]);
       setUserId(user.id);
+      // Show welcome message first time on homepage
+      if (!user.welcome_shown) {
+        setShowWelcome(true);
+        sbPatch(`users?id=eq.${user.id}`, { welcome_shown: true }).catch(() => {});
+      }
       try {
         const pauseData = await sbGet(`user_settings?user_id=eq.${user.id}&select=alerts_paused_until`);
         if (pauseData?.[0]?.alerts_paused_until) {
@@ -368,6 +362,14 @@ function Dashboard() {
         }
       } catch {}
       const userSpots = await sbGet(`user_spots?user_id=eq.${user.id}&select=spot_id`);
+      
+      // Onboarding check: redirect if not set up
+      try {
+        const prefs = await sbGet(`alert_preferences?user_id=eq.${user.id}&select=id`);
+        const needsOnboarding = !user.name || !userSpots?.length || !prefs?.length;
+        if (needsOnboarding) { window.location.href = "/onboarding"; return; }
+      } catch {}
+      
       if (!userSpots?.length) { setLoading(false); return; }
       const ids = userSpots.map((x: any) => x.spot_id);
       const [spotsData, condsData] = await Promise.all([
@@ -406,30 +408,10 @@ function Dashboard() {
       try {
         const token = await getValidToken();
         if (token) {
-          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&status=eq.completed&order=id.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,gear_size,wind_feel,image_url,forecast_wind,forecast_dir`, {
+          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=session_date.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,forecast_wind,forecast_dir,spots(display_name)`, {
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
           });
-          if (sessRes.ok) {
-            const sessData = await sessRes.json() || [];
-            setRecentSessions(sessData);
-            // Fetch spot names for session spots not yet in spotNames
-            const sessionSpotIds = [...new Set(sessData.map((s: any) => s.spot_id))] as number[];
-            if (sessionSpotIds.length > 0) {
-              try {
-                const extraSpotsRes = await fetch(`${SUPABASE_URL}/rest/v1/spots?id=in.(${sessionSpotIds.join(",")})&select=id,display_name`, {
-                  headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-                });
-                if (extraSpotsRes.ok) {
-                  const extraSpots = await extraSpotsRes.json();
-                  setSpotNames(prev => {
-                    const updated = { ...prev };
-                    (extraSpots || []).forEach((s: any) => { updated[s.id] = s.display_name; });
-                    return updated;
-                  });
-                }
-              } catch {}
-            }
-          }
+          if (sessRes.ok) setRecentSessions(await sessRes.json() || []);
           const statsRes = await fetch(`${SUPABASE_URL}/rest/v1/user_stats?user_id=eq.${user.id}&select=*`, {
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
           });
@@ -469,6 +451,8 @@ function Dashboard() {
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
       <NavBar />
+      
+
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 16px 100px" }}>
         {/* Greeting */}
         <div style={{ marginBottom: 20 }}>
@@ -619,57 +603,19 @@ function Dashboard() {
           {/* Friend activity */}
           {friendActivity.map((a: any) => {
             const timeAgo = (() => { const mins = Math.round((Date.now() - new Date(a.goingAt).getTime()) / 60000); if (mins < 60) return `${mins}m geleden`; const hrs = Math.round(mins / 60); if (hrs < 24) return `${hrs}u geleden`; return `${Math.round(hrs / 24)}d geleden`; })();
-            const ratingLabels: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker!", 5: "EPIC!" };
-            const ratingColors: Record<number, string> = { 1: "#C97A63", 2: C.amber, 3: C.gold, 4: C.sky, 5: C.green };
-            const isCompleted = a.status === "completed";
-            const borderColor = isCompleted && a.rating ? ratingColors[a.rating] : C.sky;
             return (
-              <div key={a.id} style={{ background: C.card, borderLeft: `3px solid ${borderColor}`, borderRadius: 13, boxShadow: C.cardShadow, marginBottom: 10, overflow: "hidden" }}>
-                {/* Photo */}
-                {isCompleted && a.imageUrl && (
-                  <img src={a.imageUrl} alt="" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
-                )}
-                <div style={{ padding: "12px 16px" }}>
-                  {/* Top row: avatar + name + time */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: isCompleted && (a.gearType || a.rating) ? 8 : 0 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: C.oceanTint, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: C.sky, flexShrink: 0 }}>
-                      {a.friendName.charAt(0).toUpperCase()}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.4 }}>
-                        <strong style={{ color: C.navy }}>{a.friendName}</strong>
-                        {isCompleted ? " was op " : " gaat naar "}
-                        <strong style={{ color: C.sky }}>{a.spotName}</strong>
-                      </div>
-                    </div>
-                    <div style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>{timeAgo}</div>
-                  </div>
-                  {/* Session details for completed */}
-                  {isCompleted && (a.rating || a.gearType || a.gearSize || a.windFeel) && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", paddingLeft: 44 }}>
-                      {a.rating && (
-                        <span style={{ fontSize: 12, fontWeight: 800, color: ratingColors[a.rating] }}>
-                          {ratingLabels[a.rating]}
-                        </span>
-                      )}
-                      {a.gearType && (
-                        <span style={{ fontSize: 11, color: C.sub, background: C.cream, padding: "2px 8px", borderRadius: 6 }}>
-                          {a.gearType.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}
-                        </span>
-                      )}
-                      {a.gearSize && !a.gearSize.startsWith("{") && (
-                        <span style={{ fontSize: 11, color: C.sub }}>
-                          {a.gearSize}
-                        </span>
-                      )}
-                      {a.windFeel && (
-                        <span style={{ fontSize: 11, color: C.muted }}>
-                          · {a.windFeel === "perfect" ? "Perfect" : a.windFeel === "overpowered" ? "Te veel" : a.windFeel === "underpowered" ? "Te weinig" : "Gusty"}
-                        </span>
-                      )}
-                    </div>
-                  )}
+              <div key={a.id} style={{ padding: "12px 16px", background: C.card, borderLeft: `3px solid ${C.sky}`, borderRadius: 13, boxShadow: C.cardShadow, marginBottom: 10, display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: C.oceanTint, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: C.sky, flexShrink: 0 }}>
+                  {a.friendName.charAt(0).toUpperCase()}
                 </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.4 }}>
+                    <strong style={{ color: C.navy }}>{a.friendName}</strong>
+                    {a.status === "completed" ? " was op " : " gaat naar "}
+                    <strong style={{ color: C.sky }}>{a.spotName}</strong>
+                  </div>
+                </div>
+                <div style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>{timeAgo}</div>
               </div>
             );
           })}
@@ -677,13 +623,43 @@ function Dashboard() {
           {/* W. Ping message */}
           <div style={{ padding: "13px 16px", background: C.oceanTint, borderRadius: 13, border: "1px solid rgba(46,111,126,0.06)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: "50%", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}><WPing mood={goSpots.length > 0 ? "happy" : "sleep"} size={22} /></div>
+              <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: "50%", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}><WPing mood={showWelcome || goSpots.length > 0 ? "happy" : "sleep"} size={22} /></div>
               <div style={{ fontSize: 12, fontWeight: 700, color: C.sky }}>W. Ping</div>
               <div style={{ fontSize: 10, color: C.muted, marginLeft: "auto" }}>nu</div>
             </div>
             <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.5 }}>
-              {spots.length === 0 ? "Welkom bij WindPing! Voeg je favoriete spots toe en ik houd de wind voor je in de gaten." : goSpots.length > 0 ? `Yes! ${goSpots.length > 1 ? `${goSpots.length} spots zijn` : `${goSpots[0].name} is`} Go vandaag. Tas al ingepakt?` : "Vandaag even geen wind op je spots. Ik houd het in de gaten!"}
-              {friendActivity.length === 0 && spots.length > 0 && (
+              {showWelcome ? (
+                <div>
+                  <div style={{ fontWeight: 700, color: C.navy, marginBottom: 6 }}>Welkom bij WindPing, {userName}! 🤙</div>
+                  <div style={{ marginBottom: 10 }}>Fijn dat je er bent. Dit kun je allemaal doen:</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                      <span style={{ flexShrink: 0 }}>{Icons.wind({ color: C.sky, size: 15 })}</span>
+                      <span><strong>Check</strong> — zie de huidige wind op al je spots in één oogopslag</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                      <span style={{ flexShrink: 0 }}>{Icons.mapPin({ color: C.sky, size: 15 })}</span>
+                      <span><strong>Spots</strong> — voeg je favoriete spots toe en stel windcondities in</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                      <span style={{ flexShrink: 0 }}>{Icons.calendar({ color: C.sky, size: 15 })}</span>
+                      <span><strong>Sessies</strong> — log je sessies en bekijk je statistieken en badges</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                      <span style={{ flexShrink: 0 }}>{Icons.users({ color: C.sky, size: 15 })}</span>
+                      <span><strong>Vrienden</strong> — nodig je maten uit, zie wie er gaan en deel je sessies</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                      <span style={{ flexShrink: 0 }}>{Icons.bell({ color: C.sky, size: 15 })}</span>
+                      <span><strong>Alerts</strong> — ik ping je automatisch als het waait op jouw spots</span>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(46,111,126,0.1)", fontSize: 12, color: C.sub }}>
+                    Zet je gear maar alvast klaar. 🤙
+                  </div>
+                </div>
+              ) : spots.length === 0 ? "Voeg je favoriete spots toe en ik houd de wind voor je in de gaten." : goSpots.length > 0 ? `Yes! ${goSpots.length > 1 ? `${goSpots.length} spots zijn` : `${goSpots[0].name} is`} Go vandaag. Tas al ingepakt?` : "Vandaag even geen wind op je spots. Ik houd het in de gaten!"}
+              {!showWelcome && friendActivity.length === 0 && spots.length > 0 && (
                 <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(46,111,126,0.1)" }}>
                   <a href="/vrienden" style={{ fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
                     🤙 Nodig je kitemaatjes uit en zie wanneer zij het water opgaan →

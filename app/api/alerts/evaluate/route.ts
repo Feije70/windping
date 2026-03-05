@@ -52,7 +52,7 @@ function getHourlyForDay(hourlyData: any, dateStr: string): { hour: number; wind
   const gusts: number[] = hourlyData.hourly.wind_gusts_10m;
   const dirs: number[] = hourlyData.hourly.wind_direction_10m;
   
-  const hours = [7, 9, 11, 13, 15, 17, 19, 21];
+  const hours = [6, 9, 12, 15, 18];
   const result: { hour: number; wind: number; gust: number; dir: string }[] = [];
   
   for (const h of hours) {
@@ -245,6 +245,7 @@ export async function POST(req: Request) {
   }
   
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const startTime = Date.now();
   const now = new Date();
   const today = now.toISOString().split("T")[0];
   const results: any[] = [];
@@ -644,10 +645,21 @@ export async function POST(req: Request) {
       }
     }
     
+    const alertsSent = results.filter(r => r.alertType).length;
+    
+    // Save heartbeat to engine_runs
+    try {
+      await sb.from("engine_runs").insert({
+        alerts_sent: alertsSent,
+        duration_ms: Date.now() - startTime,
+        source: "cron",
+      });
+    } catch (e) { console.error("Heartbeat save error:", e); }
+
     return NextResponse.json({
       timestamp: now.toISOString(),
       usersEvaluated: users.length,
-      alertsGenerated: results.filter(r => r.alertType).length,
+      alertsGenerated: alertsSent,
       results,
     });
     
@@ -911,19 +923,18 @@ async function sendAlertEmail(
   if (!res.ok) throw new Error(`Resend: ${res.status} ${await res.text()}`);
 }
 
+/* ── GET: health check + cron trigger ── */
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const key = url.searchParams.get("key");
+  const authHeader = req.headers.get("authorization") || "";
   
-  if (key !== "WindPing-extra-redundancy-2026" && !req.headers.get("authorization")?.includes(CRON_SECRET)) {
-    return NextResponse.json({ status: "ok", engine: "alerts/evaluate/v3", timestamp: new Date().toISOString() });
+  if (authHeader === `Bearer ${CRON_SECRET}` && CRON_SECRET) {
+    const fakeReq = new Request(req.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", authorization: authHeader },
+      body: JSON.stringify({}),
+    });
+    return POST(fakeReq);
   }
   
-  const fakeReq = new Request(req.url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", authorization: `Bearer ${CRON_SECRET}` },
-    body: JSON.stringify({}),
-  });
-  return POST(fakeReq);
+  return NextResponse.json({ status: "ok", engine: "alerts/evaluate/v3", timestamp: new Date().toISOString() });
 }
-  

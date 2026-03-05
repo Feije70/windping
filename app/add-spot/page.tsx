@@ -80,42 +80,78 @@ function WindSlider({ min, max, onChange, color = C.sky }: { min: number; max: n
   );
 }
 
+/* ── First Spot Popup ── */
+function FirstSpotPopup({ spotName, onClose }: { spotName: string; onClose: () => void }) {
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 99999,
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+    }}>
+      <div style={{
+        background: C.card, borderRadius: 24, padding: "36px 28px", maxWidth: 360, width: "100%",
+        textAlign: "center", boxShadow: "0 24px 80px rgba(0,0,0,0.3)",
+        animation: "popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)",
+      }}>
+        <div style={{ fontSize: 64, marginBottom: 16 }}>🤙</div>
+        <h2 style={{ ...h, fontSize: 26, fontWeight: 800, color: C.navy, margin: "0 0 10px" }}>Je bent er klaar voor!</h2>
+        <p style={{ fontSize: 14, color: C.sub, lineHeight: 1.6, margin: "0 0 8px" }}>
+          Vanaf nu houden we de wind in de gaten voor
+        </p>
+        <div style={{
+          display: "inline-block", padding: "6px 16px", borderRadius: 20,
+          background: `${C.sky}20`, color: C.sky, fontWeight: 700, fontSize: 15, marginBottom: 16,
+        }}>
+          📍 {spotName}
+        </div>
+        <p style={{ fontSize: 13, color: C.sub, lineHeight: 1.6, margin: "0 0 24px" }}>
+          Je krijgt een ping zodra het waait. Tijd om je gear klaar te leggen. Je kunt altijd meer spots toevoegen of je instellingen aanpassen.
+        </p>
+        <button onClick={onClose} style={{
+          width: "100%", padding: "14px", background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`,
+          color: "#fff", border: "none", borderRadius: 14, fontSize: 15, fontWeight: 700,
+          cursor: "pointer", boxShadow: `0 4px 20px ${C.sky}40`,
+        }}>
+          Let's go! 🌊
+        </button>
+      </div>
+      <style>{`@keyframes popIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }`}</style>
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    MAIN PAGE
    ══════════════════════════════════════════════════════════════════════ */
 export default function AddSpotPage() {
-  // Form state
   const [name, setName] = useState("");
   const [spotType, setSpotType] = useState<string | null>(null);
   const [level, setLevel] = useState("Alle niveaus");
   const [tips, setTips] = useState("");
   const [spotLat, setSpotLat] = useState<number | null>(null);
   const [spotLng, setSpotLng] = useState<number | null>(null);
-
-  // Wind
   const [wMin, setWMin] = useState(15);
   const [wMax, setWMax] = useState(25);
   const [userSegs, setUserSegs] = useState<boolean[]>(new Array(16).fill(false));
   const [userArc, setUserArc] = useState<[number, number] | null>(null);
-
-  // Map & compass
   const [mode, setMode] = useState<"map" | "select">("map");
   const [isSat, setIsSat] = useState(false);
-
-  // Epic
   const [epicEnabled, setEpicEnabled] = useState(false);
   const [eMin, setEMin] = useState(15);
   const [eMax, setEMax] = useState(30);
   const [epicSegs, setEpicSegs] = useState<boolean[]>(new Array(16).fill(false));
   const [epicArc, setEpicArc] = useState<[number, number] | null>(null);
   const [compassLayer, setCompassLayer] = useState<"good" | "epic">("good");
-
-  // UI
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Refs
+  // First spot popup
+  // First spot popup
+  const [showFirstSpotPopup, setShowFirstSpotPopup] = useState(false);
+  const [savedSpotName, setSavedSpotName] = useState("");
+  const fromOnboarding = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "onboarding";
+
   const mapRef = useRef<any>(null);
   const mapElRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -124,15 +160,12 @@ export default function AddSpotPage() {
   const sweepRef = useRef<{ active: boolean; s: number | null; c: number | null }>({ active: false, s: null, c: null });
   const satLayerRef = useRef<any>(null);
   const streetLayerRef = useRef<any>(null);
-
-  // Mutable state ref for canvas drawing & sweep finish
   const stateRef = useRef({ userSegs, userArc, epicSegs, epicArc, epicEnabled, compassLayer });
   useEffect(() => { stateRef.current = { userSegs, userArc, epicSegs, epicArc, epicEnabled, compassLayer }; }, [userSegs, userArc, epicSegs, epicArc, epicEnabled, compassLayer]);
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
   const pinPlaced = spotLat !== null;
 
-  /* ── Load user wind prefs as defaults ── */
   useEffect(() => {
     if (!getEmail() || isTokenExpired()) { window.location.href = "/login"; return; }
     sbGet(`users?auth_id=eq.${encodeURIComponent(getAuthId() || "")}&select=min_wind_speed,max_wind_speed`)
@@ -140,7 +173,6 @@ export default function AddSpotPage() {
       .catch(() => {});
   }, []);
 
-  /* ══ LEAFLET MAP ══ */
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!document.querySelector('link[href*="leaflet"]')) { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(l); }
@@ -160,26 +192,20 @@ export default function AddSpotPage() {
     const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 });
     street.addTo(map);
     streetLayerRef.current = street; satLayerRef.current = sat;
-
-    // Click to place pin
     map.on("click", (e: any) => {
       const { lat, lng } = e.latlng;
       setSpotLat(lat); setSpotLng(lng);
       if (markerRef.current) map.removeLayer(markerRef.current);
       markerRef.current = L.circleMarker([lat, lng], { radius: 8, color: C.sky, fillColor: C.sky, fillOpacity: 0.8, weight: 2 }).addTo(map);
-      map.setView([lat, lng], 13); // ~10km view
+      map.setView([lat, lng], 13);
     });
-
-    // When map is moved in "Move map" mode, reposition marker to center
     map.on("moveend", () => {
       if (!markerRef.current) return;
       const center = map.getCenter();
       markerRef.current.setLatLng([center.lat, center.lng]);
       setSpotLat(center.lat); setSpotLng(center.lng);
     });
-
     mapRef.current = map;
-    // IP geolocation for initial view
     fetch("https://ipapi.co/json/").then((r) => r.json()).then((d) => { if (d.latitude && d.longitude) map.setView([d.latitude, d.longitude], 9); }).catch(() => {});
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
   }
@@ -191,7 +217,6 @@ export default function AddSpotPage() {
     setIsSat(!isSat);
   }
 
-  // Mode toggle: map drag vs compass select
   useEffect(() => {
     if (!mapRef.current) return;
     const map = mapRef.current;
@@ -199,27 +224,21 @@ export default function AddSpotPage() {
     else { map.dragging.disable(); map.touchZoom.disable(); map.scrollWheelZoom.disable(); }
   }, [mode]);
 
-  /* ══ COMPASS DRAWING ══ */
   function segsToArc(segs: boolean[]): [number, number] | null {
     const active: number[] = [];
     for (let i = 0; i < SEG; i++) if (segs[i]) active.push(i);
     if (!active.length) return null;
     let start = active[0], end = active[active.length - 1];
     let contiguous = true;
-    for (let j = 1; j < active.length; j++) {
-      if (active[j] !== active[j - 1] + 1) { contiguous = false; break; }
-    }
+    for (let j = 1; j < active.length; j++) { if (active[j] !== active[j - 1] + 1) { contiguous = false; break; } }
     if (!contiguous) {
       const all = new Set(active);
       let gapStart = -1;
-      for (let i = 0; i < SEG; i++) {
-        if (!all.has(i) && all.has((i + SEG - 1) % SEG)) { gapStart = i; break; }
-      }
+      for (let i = 0; i < SEG; i++) { if (!all.has(i) && all.has((i + SEG - 1) % SEG)) { gapStart = i; break; } }
       if (gapStart >= 0) {
         let s = gapStart;
         while (!all.has(s)) s = (s + 1) % SEG;
-        start = s;
-        end = (gapStart + SEG - 1) % SEG;
+        start = s; end = (gapStart + SEG - 1) % SEG;
       }
     }
     return [start * SEG_A - SEG_A / 2, end * SEG_A + SEG_A / 2];
@@ -230,40 +249,24 @@ export default function AddSpotPage() {
     const ctx = canvas.getContext("2d"); if (!ctx) return;
     const st = stateRef.current;
     ctx.clearRect(0, 0, SIZE, SIZE);
-
-    // User selection (solid teal arc)
     if (st.userSegs.some(Boolean)) {
       const arc = st.userArc || segsToArc(st.userSegs);
       if (arc) {
         const [from, to] = arc;
-        ctx.beginPath(); ctx.moveTo(CTR, CTR);
-        ctx.arc(CTR, CTR, OR, (from - 90) * Math.PI / 180, (to - 90) * Math.PI / 180);
-        ctx.closePath();
-        ctx.fillStyle = "rgba(46,111,126,0.45)"; ctx.fill();
-        ctx.strokeStyle = "rgba(46,111,126,0.8)"; ctx.lineWidth = 2.5; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(CTR, CTR); ctx.arc(CTR, CTR, OR, (from - 90) * Math.PI / 180, (to - 90) * Math.PI / 180); ctx.closePath();
+        ctx.fillStyle = "rgba(46,111,126,0.45)"; ctx.fill(); ctx.strokeStyle = "rgba(46,111,126,0.8)"; ctx.lineWidth = 2.5; ctx.stroke();
       }
     }
-
-    // Epic selection (gold arc, smaller radius, double border)
     if (st.epicEnabled && st.epicSegs.some(Boolean)) {
       const arc = st.epicArc || segsToArc(st.epicSegs);
       if (arc) {
-        const [from, to] = arc;
-        const eR = OR * 0.72;
-        ctx.beginPath(); ctx.moveTo(CTR, CTR);
-        ctx.arc(CTR, CTR, eR, (from - 90) * Math.PI / 180, (to - 90) * Math.PI / 180);
-        ctx.closePath();
-        ctx.fillStyle = "rgba(212,146,46,0.45)"; ctx.fill();
-        ctx.strokeStyle = "rgba(212,146,46,0.9)"; ctx.lineWidth = 3; ctx.stroke();
-        // Inner highlight border
-        ctx.beginPath(); ctx.moveTo(CTR, CTR);
-        ctx.arc(CTR, CTR, eR - 4, (from - 90) * Math.PI / 180, (to - 90) * Math.PI / 180);
-        ctx.closePath();
+        const [from, to] = arc; const eR = OR * 0.72;
+        ctx.beginPath(); ctx.moveTo(CTR, CTR); ctx.arc(CTR, CTR, eR, (from - 90) * Math.PI / 180, (to - 90) * Math.PI / 180); ctx.closePath();
+        ctx.fillStyle = "rgba(212,146,46,0.45)"; ctx.fill(); ctx.strokeStyle = "rgba(212,146,46,0.9)"; ctx.lineWidth = 3; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(CTR, CTR); ctx.arc(CTR, CTR, eR - 4, (from - 90) * Math.PI / 180, (to - 90) * Math.PI / 180); ctx.closePath();
         ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1; ctx.stroke();
       }
     }
-
-    // Sweep preview
     const sw = sweepRef.current;
     if (sw.active && sw.s !== null && sw.c !== null) {
       let s = normA(sw.s), e = normA(sw.c), d = e - s;
@@ -271,16 +274,14 @@ export default function AddSpotPage() {
       let from: number, to: number; if (d >= 0) { from = s; to = s + d; } else { from = s + d; to = s; }
       const isEpic = st.compassLayer === "epic";
       const rad = isEpic ? OR * 0.72 : OR;
-      const fc = isEpic ? "rgba(212,146,46,0.35)" : "rgba(46,111,126,0.35)";
-      const sc = isEpic ? "rgba(212,146,46,0.8)" : "rgba(46,111,126,0.8)";
       ctx.beginPath(); ctx.moveTo(CTR, CTR); ctx.arc(CTR, CTR, rad, (from - 90) * Math.PI / 180, (to - 90) * Math.PI / 180); ctx.closePath();
-      ctx.fillStyle = fc; ctx.fill(); ctx.strokeStyle = sc; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = isEpic ? "rgba(212,146,46,0.35)" : "rgba(46,111,126,0.35)"; ctx.fill();
+      ctx.strokeStyle = isEpic ? "rgba(212,146,46,0.8)" : "rgba(46,111,126,0.8)"; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
     }
   }, []);
 
   useEffect(() => { drawPie(); }, [userSegs, userArc, epicSegs, epicArc, epicEnabled, drawPie]);
 
-  /* ══ SWEEP HANDLERS ══ */
   function arcToSegs(sa: number, ea: number) {
     const segs = new Array(16).fill(false);
     let s = normA(sa), e = normA(ea), d = e - s;
@@ -316,7 +317,7 @@ export default function AddSpotPage() {
   useEffect(() => {
     const onMove = (e: MouseEvent | TouchEvent) => {
       if (!sweepRef.current.active) return;
-      if ("touches" in e) e.preventDefault(); // Prevent page scroll during sweep
+      if ("touches" in e) e.preventDefault();
       const canvas = canvasRef.current; if (!canvas) return;
       const r = canvas.getBoundingClientRect();
       const raw = "touches" in e ? e.touches[0] : e; if (!raw) return;
@@ -344,14 +345,13 @@ export default function AddSpotPage() {
     e.preventDefault(); e.stopPropagation();
   }
 
-  /* ══ VALIDATE & SAVE ══ */
   async function handleSave() {
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = "Enter a name";
     if (!spotType) errs.type = "Choose a type";
     if (spotLat === null) errs.loc = "Click the map to choose a location";
     if (!userSegs.some(Boolean)) errs.dir = "Select at least 1 wind direction";
-    if (epicEnabled && !epicSegs.some(Boolean)) errs.epic = "Select epic wind directions (switch to Epic tab and sweep)";
+    if (epicEnabled && !epicSegs.some(Boolean)) errs.epic = "Select epic wind directions";
     setErrors(errs);
     if (Object.keys(errs).length) return;
 
@@ -364,7 +364,6 @@ export default function AddSpotPage() {
       const eDirs = epicEnabled ? DIRS.filter((_, i) => epicSegs[i]) : null;
       const compassCenter = mapRef.current?.getCenter();
 
-      // Step 1: Create private spot
       const newSpot = await sbPost("spots", {
         name: name.trim(), display_name: name.trim(), region: "Own spot", spot_type: spotType,
         level, latitude: spotLat, longitude: spotLng, good_directions: dirs,
@@ -374,7 +373,6 @@ export default function AddSpotPage() {
       if (!newSpot?.length) throw new Error("spot_create_failed");
       const sid = newSpot[0].id;
 
-      // Step 2: Link user_spots + ideal_conditions
       await Promise.all([
         sbPost("user_spots", { user_id: uid, spot_id: sid }, "resolution=merge-duplicates,return=minimal"),
         sbPost("ideal_conditions", {
@@ -389,53 +387,57 @@ export default function AddSpotPage() {
         }, "resolution=merge-duplicates,return=minimal"),
       ]);
 
-      showToast("✓ Spot saved!");
+      // Check if this is first spot ever
+      const allSpots = await sbGet(`user_spots?user_id=eq.${uid}&select=spot_id`);
+      if (allSpots?.length === 1) {
+        setSavedSpotName(name.trim());
+        setShowFirstSpotPopup(true);
+        setSaving(false);
+        return;
+      }
+
+      showToast("✓ Spot opgeslagen!");
       setTimeout(() => { window.location.href = "/mijn-spots"; }, 1200);
     } catch (e: any) {
-      showToast("Save failed: " + (e.message || ""));
+      showToast("Opslaan mislukt: " + (e.message || ""));
       setSaving(false);
     }
   }
 
-  /* ── Derived values ── */
   const userDirNames = DIRS.filter((_, i) => userSegs[i]);
   const epicDirNames = DIRS.filter((_, i) => epicSegs[i]);
-
   const labelR = CTR - 8;
   const labels = DIRS.map((d, i) => {
     const a = i * SEG_A; const r = (a - 90) * Math.PI / 180;
     return { d, x: CTR + Math.cos(r) * labelR, y: CTR + Math.sin(r) * labelR, isCard: i % 2 === 0 };
   });
 
-  /* ══ RENDER ══ */
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
       <NavBar />
       <div style={{ maxWidth: 700, margin: "0 auto", padding: "24px 16px 100px" }}>
 
-        {/* Back */}
         <a href="/mijn-spots" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: C.sky, textDecoration: "none", marginBottom: 16 }}>
-          {Icons.arrowLeft({ color: C.sky, size: 16 })} Back to my spots
+          {Icons.arrowLeft({ color: C.sky, size: 16 })} Terug naar mijn spots
         </a>
-        <h1 className="font-bebas" style={{ ...h, fontSize: 28, letterSpacing: 2, color: C.navy, margin: "0 0 4px" }}>Add New Spot</h1>
-        <p style={{ fontSize: 14, color: C.sub, marginBottom: 24 }}>Add your own private spot. Only you can see it.</p>
+        <h1 className="font-bebas" style={{ ...h, fontSize: 28, letterSpacing: 2, color: C.navy, margin: "0 0 4px" }}>Spot toevoegen</h1>
+        <p style={{ fontSize: 14, color: C.sub, marginBottom: 24 }}>Voeg je eigen privé spot toe. Alleen jij kunt hem zien.</p>
 
-        {/* ── Name ── */}
+        {/* Name */}
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Name <span style={{ color: C.amber }}>*</span></label>
-          <input value={name} onChange={(e) => { setName(e.target.value); setErrors((p) => ({ ...p, name: "" })); }} maxLength={80} placeholder="E.g. My secret spot"
+          <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Naam <span style={{ color: C.amber }}>*</span></label>
+          <input value={name} onChange={(e) => { setName(e.target.value); setErrors((p) => ({ ...p, name: "" })); }} maxLength={80} placeholder="Bijv. Mijn geheime spot"
             style={{ width: "100%", padding: "10px 14px", background: C.card, border: `1.5px solid ${errors.name ? C.amber : C.cardBorder}`, borderRadius: 10, fontSize: 14, color: C.navy, outline: "none", boxSizing: "border-box" }} />
           {errors.name && <div style={{ color: C.amber, fontSize: 12, marginTop: 4 }}>{errors.name}</div>}
         </div>
 
-        {/* ── Type ── */}
+        {/* Type */}
         <div style={{ marginBottom: 20 }}>
           <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Type <span style={{ color: C.amber }}>*</span></label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {TYPES.map((t) => (
               <button key={t.value} onClick={() => { setSpotType(t.value); setErrors((p) => ({ ...p, type: "" })); }} style={{
-                padding: "8px 18px", borderRadius: 10,
-                border: `2px solid ${spotType === t.value ? C.sky : C.cardBorder}`,
+                padding: "8px 18px", borderRadius: 10, border: `2px solid ${spotType === t.value ? C.sky : C.cardBorder}`,
                 background: spotType === t.value ? `${C.sky}20` : C.card,
                 fontSize: 13, fontWeight: 600, color: spotType === t.value ? C.sky : C.muted, cursor: "pointer",
               }}>{t.label}</button>
@@ -444,22 +446,17 @@ export default function AddSpotPage() {
           {errors.type && <div style={{ color: C.amber, fontSize: 12, marginTop: 4 }}>{errors.type}</div>}
         </div>
 
-        {/* ── Map + Compass ── */}
+        {/* Map + Compass */}
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Location & wind directions <span style={{ color: C.amber }}>*</span></label>
+          <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Locatie & windrichtingen <span style={{ color: C.amber }}>*</span></label>
           <p style={{ fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 8 }}>
-            {!pinPlaced ? "Click the map to drop your pin" : "Pin placed! Switch to \"Select wind\" and sweep over water on the compass."}
+            {!pinPlaced ? "Klik op de kaart om je pin te plaatsen" : "Pin geplaatst! Schakel naar \"Wind selecteren\" en veeg over het kompas."}
           </p>
-
           <div style={{ position: "relative", width: "100%", height: "min(500px, 70vh)", borderRadius: 16, overflow: "hidden", border: `1px solid ${errors.loc || errors.dir ? C.amber : C.cardBorder}`, marginBottom: 8 }}>
             <div ref={mapElRef} style={{ width: "100%", height: "100%", zIndex: 1, cursor: mode === "map" && !pinPlaced ? "crosshair" : undefined }} />
-
-            {/* Sat/Street toggle */}
             <button onClick={toggleMapLayer} style={{ position: "absolute", top: 12, right: 12, zIndex: 1001, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.15)" }}>
-              {isSat ? "Map" : "Satellite"}
+              {isSat ? "Kaart" : "Satelliet"}
             </button>
-
-            {/* Mode bar — only after pin is placed */}
             {pinPlaced && (
               <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 1001, display: "flex", background: "rgba(0,0,0,0.6)", borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,0.3)", overflow: "hidden", border: `1px solid rgba(255,255,255,0.15)`, gap: 2, padding: 2 }}>
                 {(["map", "select"] as const).map((m) => (
@@ -470,21 +467,16 @@ export default function AddSpotPage() {
                     color: mode === m ? "#fff" : "rgba(255,255,255,0.5)",
                     display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap",
                   }}>
-                    {m === "map" ? "📌 Move map" : "🌊 Select wind"}
+                    {m === "map" ? "📌 Kaart verplaatsen" : "🌊 Wind selecteren"}
                   </button>
                 ))}
               </div>
             )}
-
-            {/* Compass overlay — only after pin is placed */}
             {pinPlaced && (
-              <div style={{ position: "absolute", zIndex: 1000, width: SIZE, height: SIZE, left: "50%", top: "50%", transform: "translate(-50%,-50%)", pointerEvents: mode === "select" ? "auto" : "none", transition: "opacity 0.3s" }}>
-                {/* Ring */}
+              <div style={{ position: "absolute", zIndex: 1000, width: SIZE, height: SIZE, left: "50%", top: "50%", transform: "translate(-50%,-50%)", pointerEvents: mode === "select" ? "auto" : "none" }}>
                 <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "radial-gradient(circle at 35% 35%, rgba(46,111,126,0.1), rgba(46,111,126,0.04))", border: `2px solid ${compassLayer === "epic" ? "rgba(212,146,46,0.6)" : "rgba(46,111,126,0.25)"}`, boxShadow: compassLayer === "epic" ? "0 0 0 3px rgba(212,146,46,0.12)" : "0 0 0 3px rgba(46,111,126,0.06)", pointerEvents: "none" }} />
-                {/* Canvas */}
                 <canvas ref={canvasRef} width={SIZE} height={SIZE} onMouseDown={onCanvasDown} onTouchStart={onCanvasDown}
                   style={{ position: "absolute", inset: 0, borderRadius: "50%", zIndex: 2, cursor: mode === "select" ? "crosshair" : "default", touchAction: "none" }} />
-                {/* SVG overlay */}
                 <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 3 }} viewBox="0 0 280 280">
                   <circle cx="140" cy="140" r="126" fill="none" stroke="rgba(46,111,126,0.2)" strokeWidth="1" />
                   <circle cx="140" cy="140" r="42" fill="none" stroke="rgba(46,111,126,0.12)" strokeWidth="1" />
@@ -493,144 +485,120 @@ export default function AddSpotPage() {
                   <polygon points="140,30 134,140 140,128 146,140" fill="#C97A63" opacity="0.75" />
                   <polygon points="140,250 134,140 140,152 146,140" fill="#94A3B8" opacity="0.45" />
                 </svg>
-                {/* Center dot */}
                 <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 14, height: 14, borderRadius: "50%", background: "#fff", border: `3px solid ${compassLayer === "epic" ? C.gold : C.sky}`, boxShadow: `0 0 0 5px ${compassLayer === "epic" ? "rgba(212,146,46,0.12)" : "rgba(46,111,126,0.12)"}`, zIndex: 20, pointerEvents: "none" }} />
-                {/* Labels */}
                 {labels.map((l) => (
                   <div key={l.d} style={{ position: "absolute", left: l.x, top: l.y, transform: "translate(-50%,-50%)", fontSize: l.isCard ? 12 : 9, fontWeight: 700, color: l.isCard ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)", pointerEvents: "none", zIndex: 5 }}>{l.d}</div>
                 ))}
-                {/* Hint */}
                 <div style={{ position: "absolute", bottom: -36, left: "50%", transform: "translateX(-50%)", fontSize: 12, whiteSpace: "nowrap", fontWeight: 700, padding: "8px 16px", borderRadius: 10, background: mode === "select" ? C.sky : C.card, color: mode === "select" ? "#fff" : C.navy, border: `1px solid ${C.cardBorder}`, boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
-                  {mode === "map" ? "Move map to position compass" : "Sweep over water to select directions"}
+                  {mode === "map" ? "Kaart verplaatsen om kompas te positioneren" : "Veeg over het water om richtingen te selecteren"}
                 </div>
               </div>
             )}
           </div>
-
-          {/* Coords display */}
-          {pinPlaced
-            ? <div style={{ fontSize: 12, color: C.sub }}>📍 <strong style={{ color: C.sky }}>{spotLat!.toFixed(4)}, {spotLng!.toFixed(4)}</strong></div>
-            : <div style={{ fontSize: 12, color: C.muted }}>No location chosen yet — click the map</div>
-          }
+          {pinPlaced ? <div style={{ fontSize: 12, color: C.sub }}>📍 <strong style={{ color: C.sky }}>{spotLat!.toFixed(4)}, {spotLng!.toFixed(4)}</strong></div> : <div style={{ fontSize: 12, color: C.muted }}>Nog geen locatie gekozen — klik op de kaart</div>}
           {errors.loc && <div style={{ color: C.amber, fontSize: 12, marginTop: 4 }}>{errors.loc}</div>}
-
-          {/* Compass controls — directly under compass */}
           {pinPlaced && (
             <div style={{ marginTop: 10, marginBottom: 4 }}>
-              {/* Layer tabs (Good/Epic) — only when epic is on */}
               {epicEnabled && (
                 <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                   {(["good", "epic"] as const).map((l) => (
-                    <button key={l} onClick={() => setCompassLayer(l)} style={{
-                      flex: 1, padding: "10px 14px", borderRadius: 10,
-                      border: `2px solid ${compassLayer === l ? (l === "good" ? C.sky : C.gold) : C.cardBorder}`,
-                      background: compassLayer === l ? (l === "good" ? C.sky : C.gold) : C.card,
-                      fontSize: 13, fontWeight: 700, color: compassLayer === l ? "#fff" : C.muted, cursor: "pointer",
-                    }}>{l === "good" ? "Good" : "Epic"}</button>
+                    <button key={l} onClick={() => setCompassLayer(l)} style={{ flex: 1, padding: "10px 14px", borderRadius: 10, border: `2px solid ${compassLayer === l ? (l === "good" ? C.sky : C.gold) : C.cardBorder}`, background: compassLayer === l ? (l === "good" ? C.sky : C.gold) : C.card, fontSize: 13, fontWeight: 700, color: compassLayer === l ? "#fff" : C.muted, cursor: "pointer" }}>{l === "good" ? "Goed" : "Epic"}</button>
                   ))}
                 </div>
               )}
-              {/* Clear button */}
               {userSegs.some(Boolean) && (
-                <button onClick={() => { setUserSegs(new Array(16).fill(false)); setUserArc(null); }} style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: `1px solid ${C.amber}40`, color: C.amber, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Clear selection</button>
+                <button onClick={() => { setUserSegs(new Array(16).fill(false)); setUserArc(null); }} style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: `1px solid ${C.amber}40`, color: C.amber, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Selectie wissen</button>
               )}
             </div>
           )}
-
-          {/* Direction tags */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10, minHeight: 24 }}>
             {userDirNames.length > 0
               ? userDirNames.map((d) => <span key={d} style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, background: `${C.sky}20`, color: C.sky }}>{d}</span>)
-              : <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>{pinPlaced ? "Sweep the compass to select directions" : "Place your pin first"}</span>
-            }
+              : <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>{pinPlaced ? "Veeg over het kompas om richtingen te selecteren" : "Plaats eerst je pin"}</span>}
           </div>
           {errors.dir && <div style={{ color: C.amber, fontSize: 12, marginTop: 4 }}>{errors.dir}</div>}
         </div>
 
-        {/* ── Wind range ── */}
+        {/* Wind range */}
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Ideal wind speed</label>
+          <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Ideale windsnelheid</label>
           <WindSlider min={wMin} max={wMax} onChange={(mn, mx) => { setWMin(mn); setWMax(mx); }} />
         </div>
 
-        {/* ── Level ── */}
+        {/* Level */}
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Level</label>
+          <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Niveau</label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {LEVELS.map((l) => (
-              <button key={l} onClick={() => setLevel(l)} style={{
-                padding: "8px 16px", borderRadius: 10,
-                border: `1.5px solid ${level === l ? C.sky : C.cardBorder}`,
-                background: level === l ? `${C.sky}20` : C.card,
-                fontSize: 13, fontWeight: 500, color: level === l ? C.sky : C.muted, cursor: "pointer",
-              }}>{l}</button>
+              <button key={l} onClick={() => setLevel(l)} style={{ padding: "8px 16px", borderRadius: 10, border: `1.5px solid ${level === l ? C.sky : C.cardBorder}`, background: level === l ? `${C.sky}20` : C.card, fontSize: 13, fontWeight: 500, color: level === l ? C.sky : C.muted, cursor: "pointer" }}>{l}</button>
             ))}
           </div>
         </div>
 
-        {/* ── Tips ── */}
+        {/* Tips */}
         <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Tips / notes</label>
-          <textarea value={tips} onChange={(e) => setTips(e.target.value)} rows={3} placeholder="E.g. Park near the farm, watch out for current at high tide..."
+          <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Tips / notities</label>
+          <textarea value={tips} onChange={(e) => setTips(e.target.value)} rows={3} placeholder="Bijv. Parkeren bij de boerderij, let op stroming bij vloed..."
             style={{ width: "100%", padding: "10px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 14, color: C.navy, outline: "none", resize: "vertical", minHeight: 60, boxSizing: "border-box" }} />
         </div>
 
-        {/* ── Epic toggle ── */}
+        {/* Epic toggle */}
         <div onClick={() => { setEpicEnabled(!epicEnabled); if (!epicEnabled) setCompassLayer("epic"); else setCompassLayer("good"); }}
-          style={{
-            background: epicEnabled ? C.epicBg : C.card,
-            border: `2px solid ${epicEnabled ? "#E8A83E" : C.cardBorder}`,
-            borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer",
-          }}>
+          style={{ background: epicEnabled ? C.epicBg : C.card, border: `2px solid ${epicEnabled ? "#E8A83E" : C.cardBorder}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: epicEnabled ? "#E8A83E" : C.navy }}>🤙 Set Epic conditions</div>
-            <div style={{ fontSize: 11, color: epicEnabled ? "#9A6830" : C.sub, fontStyle: "italic" }}>Get a special ping when conditions are perfect</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: epicEnabled ? "#E8A83E" : C.navy }}>🤙 Epic condities instellen</div>
+            <div style={{ fontSize: 11, color: epicEnabled ? "#9A6830" : C.sub, fontStyle: "italic" }}>Krijg een speciale ping als de condities perfect zijn</div>
           </div>
           <div style={{ width: 48, height: 26, borderRadius: 13, background: epicEnabled ? "#E8A83E" : C.creamDark, position: "relative", flexShrink: 0 }}>
             <div style={{ position: "absolute", top: 3, left: epicEnabled ? 25 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.3s" }} />
           </div>
         </div>
 
-        {/* Epic content */}
         {epicEnabled && (
           <div style={{ marginBottom: 24 }}>
-            <h2 style={{ fontSize: 17, fontWeight: 700, color: "#E8A83E", marginBottom: 4 }}>Epic Wind Speed</h2>
-            <p style={{ fontSize: 12, color: "#9A6830", fontStyle: "italic", marginBottom: 12 }}>The perfect wind range for your session</p>
+            <h2 style={{ fontSize: 17, fontWeight: 700, color: "#E8A83E", marginBottom: 4 }}>Epic windsnelheid</h2>
+            <p style={{ fontSize: 12, color: "#9A6830", fontStyle: "italic", marginBottom: 12 }}>De perfecte windrange voor jouw sessie</p>
             <WindSlider min={eMin} max={eMax} onChange={(mn, mx) => { setEMin(mn); setEMax(mx); }} color="#E8A83E" />
-
-            <h2 style={{ fontSize: 17, fontWeight: 700, color: "#E8A83E", marginTop: 20, marginBottom: 4 }}>Epic Wind Directions</h2>
-            <p style={{ fontSize: 12, color: "#9A6830", fontStyle: "italic", marginBottom: 12 }}>Switch to "Epic" tab above and sweep on the compass</p>
+            <h2 style={{ fontSize: 17, fontWeight: 700, color: "#E8A83E", marginTop: 20, marginBottom: 4 }}>Epic windrichtingen</h2>
+            <p style={{ fontSize: 12, color: "#9A6830", fontStyle: "italic", marginBottom: 12 }}>Schakel naar "Epic" hierboven en veeg op het kompas</p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 30 }}>
               {epicDirNames.length > 0
                 ? epicDirNames.map((d) => <span key={d} style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, background: "rgba(245,158,11,0.15)", color: "#E8A83E", border: "1px solid rgba(245,158,11,0.4)" }}>{d}</span>)
-                : <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>No epic directions selected yet</span>
-              }
+                : <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>Nog geen epic richtingen geselecteerd</span>}
             </div>
             {epicDirNames.length > 0 && (
-              <button onClick={() => { setEpicSegs(new Array(16).fill(false)); setEpicArc(null); }} style={{ marginTop: 10, padding: "6px 14px", borderRadius: 8, background: "transparent", border: "1px solid rgba(245,158,11,0.4)", color: "#E8A83E", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Clear epic selection</button>
+              <button onClick={() => { setEpicSegs(new Array(16).fill(false)); setEpicArc(null); }} style={{ marginTop: 10, padding: "6px 14px", borderRadius: 8, background: "transparent", border: "1px solid rgba(245,158,11,0.4)", color: "#E8A83E", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Epic selectie wissen</button>
             )}
             {errors.epic && <div style={{ color: C.amber, fontSize: 12, marginTop: 4 }}>{errors.epic}</div>}
           </div>
         )}
 
-        {/* ── Save button ── */}
+        {/* Save button */}
         <button onClick={handleSave} disabled={saving} style={{
           width: "100%", padding: 14,
           background: saving ? "rgba(255,255,255,0.1)" : `linear-gradient(135deg, ${C.sky}, #4DB8C9)`,
           color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700,
           cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1,
         }}>
-          {saving ? "Saving..." : "Save spot"}
+          {saving ? "Opslaan..." : "Spot opslaan"}
         </button>
 
-        {/* Toast */}
         {toast && (
           <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: toast.includes("✓") ? C.green : C.amber, color: "#fff", padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: "0 4px 20px rgba(0,0,0,0.3)", zIndex: 10000 }}>{toast}</div>
         )}
       </div>
 
+      {/* First Spot Popup */}
+      {showFirstSpotPopup && (
+        <FirstSpotPopup
+          spotName={savedSpotName}
+          onClose={() => { window.location.href = fromOnboarding ? "/" : "/mijn-spots"; }}
+        />
+      )}
+
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes popIn { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: scale(1); } }
         .leaflet-control-attribution { background: transparent !important; font-size: 9px !important; opacity: 0.4 !important; }
       `}</style>
     </div>

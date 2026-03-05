@@ -16,7 +16,7 @@ function sb() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 }
 
-const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImthaW1idGN1eWVtd3p2aHNxd2d1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExNTM0NzgsImV4cCI6MjA4NjcyOTQ3OH0.EVX_hJYy_uJ_-rk-q5izn_6qzo5TbHCnS4llbVUM4Q0";
+const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_ds6_HWMJEYxEnvrnEefeRg_q2T-ROO_";
 
 async function getUserId(req: NextRequest): Promise<number | null> {
   const authHeader = req.headers.get("authorization");

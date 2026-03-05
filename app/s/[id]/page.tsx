@@ -6,20 +6,38 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://kaimbtcuye
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 async function getSession(id: string) {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-  const { data: session } = await supabase
-    .from("sessions")
-    .select("id, spot_id, session_date, rating, gear_type, gear_size, wind_feel, forecast_wind, forecast_dir, image_url, notes")
-    .eq("id", id)
-    .eq("status", "completed")
-    .single();
+  const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+  const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  const key = SERVICE_KEY || ANON_KEY;
+  console.log("getSession:", { id, hasService: !!SERVICE_KEY, hasAnon: !!ANON_KEY, url: SUPABASE_URL });
+  
+  // Use REST API directly to avoid RLS issues
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,image_url,notes&limit=1`,
+    {
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    }
+  );
+  console.log("sessions REST status:", res.status);
+  const sessions = await res.json();
+  console.log("sessions data:", JSON.stringify(sessions));
+  const session = sessions?.[0];
   if (!session) return null;
-  const { data: spot } = await supabase
-    .from("spots")
-    .select("display_name")
-    .eq("id", session.spot_id)
-    .single();
-  return { ...session, spotName: spot?.display_name || "Spot" };
+
+  const spotRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/spots?id=eq.${session.spot_id}&select=display_name&limit=1`,
+    {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      cache: "no-store",
+    }
+  );
+  const spots = await spotRes.json();
+  return { ...session, spotName: spots?.[0]?.display_name || "Spot" };
 }
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {

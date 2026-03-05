@@ -144,10 +144,8 @@ const KITE_BOARD_TYPES = [
   { id: "strapless", label: "Strapless" },
 ];
 const WING_BOARD_TYPES = [
-  { id: "twintip", label: "Twintip" },
-  { id: "directional", label: "Directional" },
-  { id: "wave", label: "Wave" },
-  { id: "strapless", label: "Strapless" },
+  { id: "wingboard", label: "Wingboard" },
+  { id: "sup", label: "SUP" },
 ];
 const WINDSURF_BOARD_TYPES = [
   { id: "freeride", label: "Freeride" },
@@ -613,7 +611,7 @@ function SessionLogInner() {
         {step === 2 && (
           <div style={{ animation: "fadeUp 0.3s ease" }}>
             <h2 style={{ ...h, fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Wat reed je?</h2>
-            <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 24px" }}>Kite, wing of zeil?</p>
+            <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 24px" }}>Kite, wing of sail?</p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
               {(["kite", "wing", "zeil"] as const).map(p => (
                 <button key={p} onClick={() => { setPropulsion(p); setStep(p === "kite" ? 4 : 3); }} style={{
@@ -625,7 +623,7 @@ function SessionLogInner() {
                   display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
                 }}>
                   <PropIcon id={p} selected={propulsion === p} />
-                  <div style={{ fontSize: 13, fontWeight: 700, color: propulsion === p ? C.sky : C.navy, textTransform: "capitalize" }}>{p === "zeil" ? "Windsurf" : p}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: propulsion === p ? C.sky : C.navy, textTransform: "capitalize" }}>{p === "zeil" ? "Sail" : p.charAt(0).toUpperCase() + p.slice(1)}</div>
                 </button>
               ))}
             </div>

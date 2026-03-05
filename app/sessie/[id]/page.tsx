@@ -2,28 +2,46 @@ import { Metadata } from "next";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://kaimbtcuyemwzvhsqwgu.supabase.co";
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const SUPABASE_URL = "https://kaimbtcuyemwzvhsqwgu.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_ds6_HWMJEYxEnvrnEefeRg_q2T-ROO_";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
 
 async function getSession(id: string) {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-  const { data: session } = await supabase
-    .from("sessions")
-    .select("id, spot_id, session_date, rating, gear_type, gear_size, wind_feel, forecast_wind, forecast_dir, image_url, notes")
-    .eq("id", id)
-    .eq("status", "completed")
-    .single();
+  const key = SUPABASE_ANON_KEY;
+  console.log("getSession:", { id, url: SUPABASE_URL });
+  
+  // Use REST API directly to avoid RLS issues
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,image_url,notes&limit=1`,
+    {
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    }
+  );
+  console.log("sessions REST status:", res.status);
+  const sessions = await res.json();
+  console.log("sessions data:", JSON.stringify(sessions));
+  const session = sessions?.[0];
   if (!session) return null;
-  const { data: spot } = await supabase
-    .from("spots")
-    .select("display_name")
-    .eq("id", session.spot_id)
-    .single();
-  return { ...session, spotName: spot?.display_name || "Spot" };
+
+  const spotRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/spots?id=eq.${session.spot_id}&select=display_name&limit=1`,
+    {
+      headers: { apikey: key, Authorization: `Bearer ${key}` },
+      cache: "no-store",
+    }
+  );
+  const spots = await spotRes.json();
+  return { ...session, spotName: spots?.[0]?.display_name || "Spot" };
 }
 
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const session = await getSession(params.id);
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const session = await getSession(id);
   if (!session) return { title: "WindPing" };
   const ratingLabels: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker!", 5: "EPIC!" };
   const rating = session.rating ? ratingLabels[session.rating] : "";
@@ -52,8 +70,9 @@ const ratingColors: Record<number, string> = { 1: "#C97A63", 2: "#F59E0B", 3: "#
 const ratingLabels: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker!", 5: "EPIC!" };
 const windFeelLabels: Record<string, string> = { perfect: "Perfect", underpowered: "Te weinig", overpowered: "Te veel", gusty: "Gusty" };
 
-export default async function ShareSessionPage({ params }: { params: { id: string } }) {
-  const session = await getSession(params.id);
+export default async function ShareSessionPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const session = await getSession(id);
 
   if (!session) {
     return (
