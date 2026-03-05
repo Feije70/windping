@@ -418,33 +418,6 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
         </Link>
       )}
 
-      {completed.length > 1 && (
-        <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 14, overflow: "hidden", marginBottom: 8 }}>
-          {completed.slice(1, 4).map((s, i) => {
-            const dObj = new Date(s.session_date + "T12:00:00");
-            const now = new Date();
-            const diff = Math.round((new Date(dObj.getFullYear(), dObj.getMonth(), dObj.getDate()).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000);
-            const dl = diff === 0 ? "Vandaag" : diff === -1 ? "Gisteren" : dObj.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
-            const gearEmoji: Record<string, string> = { kite: "🪁", windsurf: "🏄", wing: "🦅", sup: "🛶" };
-            const spotName = s.spots?.display_name || spotNames[s.spot_id] || "Spot";
-            return (
-              <Link href={`/sessie/${s.id}`} key={s.id} style={{ padding: "12px 16px", borderBottom: i < 2 ? `1px solid ${C.cardBorder}` : "none", display: "flex", alignItems: "center", gap: 12, textDecoration: "none" }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: C.goBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>
-                  {gearEmoji[s.gear_type || ""] || "🏄"}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{spotName}</div>
-                  <div style={{ fontSize: 11, color: C.sub }}>{dl}{s.forecast_wind ? ` · ${s.forecast_wind}kn ${s.forecast_dir || ""}` : ""}</div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
-                  {s.rating && Array.from({ length: s.rating }, (_, k) => <span key={k} style={{ fontSize: 12 }}>⭐</span>)}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
       {stats.total_sessions > 3 && (
         <Link href="/mijn-sessies" style={{ display: "block", textAlign: "center", marginTop: 10, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
           Alle {stats.total_sessions} sessies bekijken →
