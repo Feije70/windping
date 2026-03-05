@@ -15,6 +15,59 @@ const OM_BASE = "https://api.open-meteo.com/v1/forecast";
 const DIRS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
 function degToDir(deg: number) { return DIRS_16[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16]; }
 
+const RATINGS = [
+  { value: 1, label: "Bah" }, { value: 2, label: "Mwah" }, { value: 3, label: "Oké" },
+  { value: 4, label: "Lekker!" }, { value: 5, label: "EPIC!" },
+];
+const RATING_COLORS: Record<number, string> = { 1: "#C97A63", 2: "#D4860B", 3: "#E8A83E", 4: "#2E8FAE", 5: "#3EAA8C" };
+
+function RatingIcon({ value, selected, size = 32 }: { value: number; selected: boolean; size?: number }) {
+  const color = selected ? RATING_COLORS[value] : "#B0BAC5";
+  const paths: Record<number, React.ReactNode> = {
+    1: (<><line x1="12" y1="6" x2="12" y2="26" stroke={color} strokeWidth="2" strokeLinecap="round" /><path d="M12 6 Q14 7 14 10 Q14 13 12 14" stroke={color} strokeWidth="1.8" fill={`${color}20`} strokeLinecap="round" /><path d="M4 26 Q12 24 20 26 Q28 28 28 26" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5" /></>),
+    2: (<><path d="M6 14 Q10 12 14 14 Q18 16 22 14" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" /><path d="M8 20 Q12 18 16 20 Q20 22 24 20" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.6" /><path d="M26 10 L22 12 L26 14" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" /></>),
+    3: (<><path d="M4 12 Q8 8 14 12 Q20 16 26 12" stroke={color} strokeWidth="2.2" strokeLinecap="round" fill="none" /><path d="M6 19 Q10 16 16 19 Q22 22 28 19" stroke={color} strokeWidth="1.8" strokeLinecap="round" fill="none" /><path d="M22 6 L28 9 L22 12" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" /><line x1="10" y1="8" x2="20" y2="6" stroke={color} strokeWidth="1.2" strokeLinecap="round" opacity="0.4" /></>),
+    4: (<><path d="M3 13 Q8 7 15 13 Q22 19 28 11" stroke={color} strokeWidth="2.5" strokeLinecap="round" fill="none" /><path d="M5 21 Q10 16 17 21 Q24 26 29 19" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" /><path d="M18 3 L24 5 L20 10 Z" fill={`${color}30`} stroke={color} strokeWidth="1.5" strokeLinejoin="round" /><line x1="18" y1="3" x2="14" y2="13" stroke={color} strokeWidth="1" strokeDasharray="2 2" /></>),
+    5: (<><path d="M2 14 Q7 6 14 14 Q21 22 28 12" stroke={color} strokeWidth="2.8" strokeLinecap="round" fill="none" /><path d="M4 22 Q9 15 16 22 Q23 29 30 20" stroke={color} strokeWidth="2.2" strokeLinecap="round" fill="none" /><path d="M16 2 L24 5 L18 12 Z" fill={`${color}35`} stroke={color} strokeWidth="1.6" strokeLinejoin="round" /><line x1="16" y1="2" x2="12" y2="14" stroke={color} strokeWidth="1.2" /><circle cx="6" cy="6" r="2" fill={color} opacity="0.3" /><circle cx="27" cy="7" r="1.5" fill={color} opacity="0.25" /><path d="M3 8 L7 7" stroke={color} strokeWidth="1.2" strokeLinecap="round" opacity="0.4" /><path d="M24 3 L28 4" stroke={color} strokeWidth="1.2" strokeLinecap="round" opacity="0.4" /></>),
+  };
+  return <svg width={size} height={size} viewBox="0 0 32 32" fill="none">{paths[value]}</svg>;
+}
+
+const GEAR_TYPES = [
+  { id: "kite", label: "Kite" }, { id: "windsurf", label: "Windsurf" },
+  { id: "wing", label: "Wing" }, { id: "foil", label: "Foil" },
+];
+
+function GearIcon({ id, selected, size = 36 }: { id: string; selected: boolean; size?: number }) {
+  const color = selected ? "#2E8FAE" : "#B0BAC5";
+  const icons: Record<string, React.ReactNode> = {
+    kite: (<><path d="M18 4 L28 10 L18 22 L8 10 Z" fill={`${color}20`} stroke={color} strokeWidth="1.8" strokeLinejoin="round" /><line x1="18" y1="22" x2="18" y2="32" stroke={color} strokeWidth="1.2" strokeDasharray="2 2" /><path d="M18 4 L18 22" stroke={color} strokeWidth="1" opacity="0.4" /><path d="M8 10 L28 10" stroke={color} strokeWidth="1" opacity="0.4" /></>),
+    windsurf: (<><path d="M10 30 Q16 28 22 30" stroke={color} strokeWidth="2.2" strokeLinecap="round" fill="none" /><line x1="16" y1="28" x2="16" y2="8" stroke={color} strokeWidth="1.8" strokeLinecap="round" /><path d="M16 8 L26 14 L16 24" fill={`${color}20`} stroke={color} strokeWidth="1.6" strokeLinejoin="round" /></>),
+    wing: (<><ellipse cx="18" cy="16" rx="12" ry="6" fill={`${color}15`} stroke={color} strokeWidth="1.8" /><line x1="18" y1="10" x2="18" y2="22" stroke={color} strokeWidth="1.2" opacity="0.4" /><circle cx="12" cy="16" r="1.5" fill={color} opacity="0.5" /><circle cx="24" cy="16" r="1.5" fill={color} opacity="0.5" /><line x1="18" y1="22" x2="18" y2="30" stroke={color} strokeWidth="1.2" strokeDasharray="2 2" /></>),
+    foil: (<><line x1="18" y1="6" x2="18" y2="26" stroke={color} strokeWidth="2" strokeLinecap="round" /><path d="M8 26 L28 26" stroke={color} strokeWidth="2" strokeLinecap="round" /><path d="M10 26 L6 22 Q10 20 14 22 Z" fill={`${color}25`} stroke={color} strokeWidth="1.4" strokeLinejoin="round" /><path d="M22 26 L30 22 Q26 20 22 22 Z" fill={`${color}25`} stroke={color} strokeWidth="1.4" strokeLinejoin="round" /><path d="M12 6 Q18 4 24 6 Q18 8 12 6" fill={`${color}20`} stroke={color} strokeWidth="1.4" /></>),
+  };
+  return <svg width={size} height={size} viewBox="0 0 36 36" fill="none">{icons[id]}</svg>;
+}
+
+const WIND_FEELS = [
+  { id: "underpowered", label: "Te weinig" }, { id: "perfect", label: "Perfect" },
+  { id: "overpowered", label: "Te veel" }, { id: "gusty", label: "Gusty" },
+];
+
+const KITE_SIZES = ["5","6","7","8","9","10","11","12","13","14"];
+
+function WindFeelIcon({ id, selected, size = 28 }: { id: string; selected: boolean; size?: number }) {
+  const color = selected ? "#2E8FAE" : "#B0BAC5";
+  const icons: Record<string, React.ReactNode> = {
+    underpowered: (<><path d="M4 14 Q10 12 16 14" stroke={color} strokeWidth="1.8" strokeLinecap="round" fill="none" /><circle cx="20" cy="10" r="1" fill={color} opacity="0.3" /></>),
+    perfect: (<><path d="M3 10 Q8 6 14 10 Q20 14 26 10" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" /><path d="M5 17 Q10 14 16 17 Q22 20 28 17" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.6" /><circle cx="24" cy="6" r="3" fill="none" stroke={color} strokeWidth="1.5" /><path d="M24 3 L24 2 M27 6 L28 6 M24 9 L24 10 M21 6 L20 6" stroke={color} strokeWidth="1" strokeLinecap="round" /></>),
+    overpowered: (<><path d="M2 8 Q6 3 12 8 Q18 13 24 6" stroke={color} strokeWidth="2.5" strokeLinecap="round" fill="none" /><path d="M4 15 Q8 10 14 15 Q20 20 26 13" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" /><path d="M6 22 Q10 18 16 22 Q22 26 28 20" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5" /></>),
+    gusty: (<><path d="M4 8 L14 8 Q18 8 16 12" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" /><path d="M6 15 L20 15 Q24 15 22 19" stroke={color} strokeWidth="1.8" strokeLinecap="round" fill="none" /><path d="M4 22 L12 22 Q15 22 13 25" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.6" /></>),
+  };
+  return <svg width={size} height={size} viewBox="0 0 28 28" fill="none">{icons[id]}</svg>;
+}
+
+
 async function sbPatch(path: string, body: any) {
   const token = await getValidToken();
   await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
@@ -335,6 +388,20 @@ function Dashboard() {
   const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
   const [friendActivity, setFriendActivity] = useState<any[]>([]);
   const [showWelcome, setShowWelcome] = useState(false);
+  const [allSpots, setAllSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
+
+  // Handmatige sessie modal
+  const [showManualSession, setShowManualSession] = useState(false);
+  const [manualSpotId, setManualSpotId] = useState<number | "">("");
+  const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
+  const [manualWeather, setManualWeather] = useState<{wind: number; gust: number; dir: number; dirStr: string} | null>(null);
+  const [manualWeatherLoading, setManualWeatherLoading] = useState(false);
+  const [manualForm, setManualForm] = useState({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" });
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualStep, setManualStep] = useState<"pick" | 1 | 2 | 3>("pick");
+  const [manualPhotoFile, setManualPhotoFile] = useState<File | null>(null);
+  const [manualPhotoPreview, setManualPhotoPreview] = useState<string | null>(null);
+  const [manualPhotoUploading, setManualPhotoUploading] = useState(false);
 
   const goSpots = spots.filter(s => s.match === "go");
   const matchColors: Record<string, string> = { go: C.green, maybe: C.gold, no: C.amber };
@@ -379,6 +446,7 @@ function Dashboard() {
       const names: Record<number, string> = {};
       (spotsData || []).forEach((s: any) => { names[s.id] = s.display_name; });
       setSpotNames(names);
+      setAllSpots((spotsData || []).filter((s: any) => s.latitude && s.longitude).map((s: any) => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude })));
       const conds: Record<number, any> = {};
       (condsData || []).forEach((ic: any) => { conds[ic.spot_id] = ic; });
       const valid = (spotsData || []).filter((s: any) => s.latitude && s.longitude);
@@ -447,6 +515,98 @@ function Dashboard() {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Goedemorgen" : hour < 18 ? "Goedemiddag" : "Goedenavond";
   const feedItems = bundleAlertsByDate(recentAlerts);
+
+  // Fetch weer voor handmatige sessie
+  const fetchManualWeather = async (spotId: number, date: string) => {
+    const spot = allSpots.find(s => s.id === spotId);
+    if (!spot) return;
+    setManualWeatherLoading(true);
+    setManualWeather(null);
+    try {
+      const url = `${OM_BASE}?latitude=${spot.lat}&longitude=${spot.lng}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Europe/Amsterdam&start_date=${date}&end_date=${date}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const midday = 12; // gebruik middagwaarden
+      const wind = Math.round(data.hourly.wind_speed_10m[midday] || 0);
+      const gust = Math.round(data.hourly.wind_gusts_10m[midday] || 0);
+      const dir = Math.round(data.hourly.wind_direction_10m[midday] || 0);
+      const dirStr = degToDir(dir);
+      setManualWeather({ wind, gust, dir, dirStr });
+    } catch { setManualWeather(null); }
+    setManualWeatherLoading(false);
+  };
+
+  const uploadManualPhoto = async (sessionId: number): Promise<string | null> => {
+    if (!manualPhotoFile) return null;
+    setManualPhotoUploading(true);
+    try {
+      const token = await getValidToken();
+      const ext = manualPhotoFile.name.split(".").pop() || "jpg";
+      const path = `sessions/${sessionId}_${Date.now()}.${ext}`;
+      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/session-photos/${path}`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": manualPhotoFile.type },
+        body: manualPhotoFile,
+      });
+      if (!res.ok) return null;
+      return `${SUPABASE_URL}/storage/v1/object/public/session-photos/${path}`;
+    } catch { return null; }
+    finally { setManualPhotoUploading(false); }
+  };
+
+  const handleManualSessionSave = async () => {
+    if (!manualSpotId || manualForm.rating === 0 || !userId) return;
+    setManualSaving(true);
+    try {
+      const token = await getValidToken();
+      const body: any = {
+        created_by: userId,
+        spot_id: manualSpotId,
+        session_date: manualDate,
+        status: "completed",
+        rating: manualForm.rating,
+      };
+      if (manualForm.wind_feel) body.wind_feel = manualForm.wind_feel;
+      if (manualForm.gear_type) body.gear_type = manualForm.gear_type;
+      if (manualForm.gear_size) body.gear_size = manualForm.gear_size;
+      if (manualForm.notes) body.notes = manualForm.notes;
+      if (manualWeather) {
+        body.forecast_wind = manualWeather.wind;
+        body.forecast_gust = manualWeather.gust;
+        body.forecast_dir = manualWeather.dirStr;
+      }
+      // Insert session first to get ID for photo upload
+      const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(body),
+      });
+      const inserted = await insertRes.json();
+      const sessionId = inserted?.[0]?.id;
+      // Upload photo if present
+      if (sessionId && manualPhotoFile) {
+        const photoUrl = await uploadManualPhoto(sessionId);
+        if (photoUrl) {
+          await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${sessionId}`, {
+            method: "PATCH",
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+            body: JSON.stringify({ photo_url: photoUrl }),
+          });
+        }
+      }
+      setShowManualSession(false);
+      setManualStep("pick");
+      setManualSpotId("");
+      setManualDate(new Date().toISOString().split("T")[0]);
+      setManualWeather(null);
+      setManualForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" });
+      setManualPhotoFile(null);
+      setManualPhotoPreview(null);
+      loadData();
+    } catch { }
+    setManualSaving(false);
+  };
+
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
@@ -527,7 +687,10 @@ function Dashboard() {
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
             <span style={{ ...h, fontSize: 17, fontWeight: 700, color: C.navy }}>Feed</span>
-            {feedItems.length > 0 && <a href="/alert" style={{ fontSize: 12, color: C.sky, textDecoration: "none", fontWeight: 600 }}>Alle alerts →</a>}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button onClick={() => { setShowManualSession(true); setManualStep("pick"); }} style={{ fontSize: 12, color: C.sky, fontWeight: 600, background: "none", border: `1px solid ${C.sky}`, borderRadius: 8, padding: "4px 10px", cursor: "pointer" }}>+ Sessie</button>
+              {feedItems.length > 0 && <a href="/alert" style={{ fontSize: 12, color: C.sky, textDecoration: "none", fontWeight: 600 }}>Alle alerts →</a>}
+            </div>
           </div>
           {feedItems.map((item) => {
             const timeAgo = (() => { const mins = Math.round((Date.now() - new Date(item.latestCreatedAt).getTime()) / 60000); if (mins < 60) return `${mins}m geleden`; const hrs = Math.round(mins / 60); if (hrs < 24) return `${hrs}u geleden`; return `${Math.round(hrs / 24)}d geleden`; })();
@@ -717,6 +880,235 @@ function Dashboard() {
           <div style={{ ...h, fontSize: 15, fontWeight: 700, color: C.navy, marginBottom: 3 }}>Spot Records</div>
           <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>Binnenkort — koppel je tracker<br />en vergelijk scores op je spots!</div>
         </div>
+
+
+        {/* ── HANDMATIGE SESSIE MODAL ── */}
+        {showManualSession && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(31,53,76,0.55)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+            onClick={(e) => { if (e.target === e.currentTarget) { setShowManualSession(false); setManualStep("pick"); } }}>
+            <div style={{ background: C.cream, borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 480, padding: "24px 20px 40px", maxHeight: "90vh", overflowY: "auto" }}>
+
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                <span style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, color: C.navy }}>Sessie loggen</span>
+                <button onClick={() => { setShowManualSession(false); setManualStep("pick"); setManualForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" }); setManualPhotoFile(null); setManualPhotoPreview(null); }}
+                  style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: C.muted, lineHeight: 1 }}>×</button>
+              </div>
+
+              {/* Progress bar — only during log steps */}
+              {manualStep !== "pick" && (
+                <div style={{ display: "flex", gap: 4, marginBottom: 24 }}>
+                  {[1,2,3].map(s => (
+                    <div key={s} style={{ flex: 1, height: 4, borderRadius: 2, background: (manualStep as number) >= s ? C.sky : C.cardBorder, transition: "background 0.3s ease" }} />
+                  ))}
+                </div>
+              )}
+
+              {/* ── STAP PICK: Spot + datum ── */}
+              {manualStep === "pick" && (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Spot</div>
+                    <select value={manualSpotId} onChange={e => setManualSpotId(Number(e.target.value) || "")}
+                      style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy }}>
+                      <option value="">Kies een spot...</option>
+                      {allSpots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Datum</div>
+                    <input type="date" value={manualDate} max={new Date().toISOString().split("T")[0]}
+                      onChange={e => setManualDate(e.target.value)}
+                      style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy, boxSizing: "border-box" }} />
+                  </div>
+                  <button onClick={async () => { if (!manualSpotId) return; await fetchManualWeather(Number(manualSpotId), manualDate); setManualStep(1); }}
+                    disabled={!manualSpotId}
+                    style={{ width: "100%", padding: "14px", background: manualSpotId ? C.sky : C.muted, border: "none", borderRadius: 12, color: "#FFF", fontSize: 15, fontWeight: 700, cursor: manualSpotId ? "pointer" : "default", opacity: manualSpotId ? 1 : 0.6 }}>
+                    Volgende →
+                  </button>
+                </>
+              )}
+
+              {/* ── STAP 1: Hoe was het? ── */}
+              {manualStep === 1 && (
+                <div>
+                  <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, textAlign: "center", margin: "0 0 24px", color: C.navy }}>Hoe was het?</h2>
+                  {/* Weerdata pill */}
+                  {(manualWeatherLoading || manualWeather) && (
+                    <div style={{ textAlign: "center", marginBottom: 20 }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 16px", background: C.goBg, borderRadius: 20, fontSize: 13 }}>
+                        {manualWeatherLoading
+                          ? <span style={{ color: C.muted }}>Weerdata ophalen...</span>
+                          : <><span style={{ fontWeight: 800, color: C.green }}>{manualWeather!.wind}kn</span><span style={{ color: C.sub }}>{manualWeather!.dirStr}</span><span style={{ color: C.muted }}>· gusts {manualWeather!.gust}kn</span></>
+                        }
+                      </div>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 32 }}>
+                    {RATINGS.map(r => (
+                      <button key={r.value} onClick={() => setManualForm(f => ({ ...f, rating: r.value }))} style={{
+                        width: 60, padding: "14px 0", borderRadius: 16,
+                        border: `2px solid ${manualForm.rating === r.value ? RATING_COLORS[r.value] : C.cardBorder}`,
+                        background: manualForm.rating === r.value ? `${RATING_COLORS[r.value]}12` : C.card,
+                        cursor: "pointer", transition: "all 0.2s",
+                        transform: manualForm.rating === r.value ? "scale(1.1)" : "scale(1)",
+                        boxShadow: manualForm.rating === r.value ? `0 4px 16px ${RATING_COLORS[r.value]}25` : C.cardShadow,
+                        display: "flex", flexDirection: "column", alignItems: "center",
+                      }}>
+                        <RatingIcon value={r.value} selected={manualForm.rating === r.value} size={32} />
+                        <div style={{ fontSize: 10, fontWeight: 700, color: manualForm.rating === r.value ? RATING_COLORS[r.value] : C.muted, marginTop: 6 }}>{r.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => { if (manualForm.rating) setManualStep(2); }} disabled={!manualForm.rating}
+                    style={{ width: "100%", padding: "14px", background: manualForm.rating ? C.sky : C.cardBorder, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: manualForm.rating ? "pointer" : "not-allowed", opacity: manualForm.rating ? 1 : 0.5 }}>
+                    Volgende →
+                  </button>
+                </div>
+              )}
+
+              {/* ── STAP 2: Gear ── */}
+              {manualStep === 2 && (
+                <div>
+                  <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, textAlign: "center", margin: "0 0 24px", color: C.navy }}>Wat reed je?</h2>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
+                    {GEAR_TYPES.map(g => (
+                      <button key={g.id} onClick={() => setManualForm(f => ({ ...f, gear_type: f.gear_type === g.id ? "" : g.id, gear_size: "" }))} style={{
+                        padding: "18px 14px", borderRadius: 14,
+                        border: `2px solid ${manualForm.gear_type === g.id ? C.sky : C.cardBorder}`,
+                        background: manualForm.gear_type === g.id ? `${C.sky}12` : C.card,
+                        cursor: "pointer", transition: "all 0.2s",
+                        boxShadow: manualForm.gear_type === g.id ? `0 4px 16px ${C.sky}25` : C.cardShadow,
+                        display: "flex", flexDirection: "column", alignItems: "center",
+                      }}>
+                        <GearIcon id={g.id} selected={manualForm.gear_type === g.id} size={40} />
+                        <div style={{ fontSize: 13, fontWeight: 700, color: manualForm.gear_type === g.id ? C.sky : C.navy, marginTop: 6 }}>{g.label}</div>
+                      </button>
+                    ))}
+                  </div>
+                  {/* Kite preset sizes */}
+                  {manualForm.gear_type === "kite" && (
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6 }}>KITESIZE (m²)</label>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {KITE_SIZES.map(s => (
+                          <button key={s} onClick={() => setManualForm(f => ({ ...f, gear_size: f.gear_size === s + "m" ? "" : s + "m" }))} style={{
+                            padding: "8px 14px", borderRadius: 8, fontSize: 13, fontWeight: 700,
+                            background: manualForm.gear_size === s + "m" ? C.sky : C.card,
+                            color: manualForm.gear_size === s + "m" ? "#fff" : C.sub,
+                            border: `1px solid ${manualForm.gear_size === s + "m" ? C.sky : C.cardBorder}`,
+                            cursor: "pointer",
+                          }}>{s}</button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Generic gear size */}
+                  {manualForm.gear_type && manualForm.gear_type !== "kite" && (
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6 }}>MATERIAAL (optioneel)</label>
+                      <input type="text" value={manualForm.gear_size} onChange={e => setManualForm(f => ({ ...f, gear_size: e.target.value }))}
+                        placeholder={manualForm.gear_type === "windsurf" ? "bijv. 7.8m zeil" : manualForm.gear_type === "wing" ? "bijv. 5m wing" : "bijv. 1500 foil"}
+                        style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `1.5px solid ${C.cardBorder}`, fontSize: 14, color: C.navy, background: C.card, boxSizing: "border-box" }} />
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={() => setManualStep(1)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
+                    <button onClick={() => setManualStep(3)} style={{ flex: 1, padding: "14px", background: C.sky, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                      {manualForm.gear_type ? "Volgende →" : "Overslaan →"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── STAP 3: Details + Samenvatting ── */}
+              {manualStep === 3 && (
+                <div>
+                  <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, textAlign: "center", margin: "0 0 24px", color: C.navy }}>Details</h2>
+                  {/* Wind feel */}
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8 }}>HOE VOELDE DE WIND?</label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {WIND_FEELS.map(w => (
+                        <button key={w.id} onClick={() => setManualForm(f => ({ ...f, wind_feel: f.wind_feel === w.id ? "" : w.id }))} style={{
+                          flex: 1, padding: "12px 8px", borderRadius: 12,
+                          border: `2px solid ${manualForm.wind_feel === w.id ? C.sky : C.cardBorder}`,
+                          background: manualForm.wind_feel === w.id ? `${C.sky}12` : C.card,
+                          cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center",
+                        }}>
+                          <WindFeelIcon id={w.id} selected={manualForm.wind_feel === w.id} size={28} />
+                          <div style={{ fontSize: 10, fontWeight: 700, color: manualForm.wind_feel === w.id ? C.sky : C.muted, marginTop: 4 }}>{w.label}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Notes */}
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6 }}>NOTITIES (optioneel)</label>
+                    <textarea value={manualForm.notes} onChange={e => setManualForm(f => ({ ...f, notes: e.target.value }))}
+                      placeholder="Hoe was het water? Iets bijzonders? Tips voor de volgende keer?"
+                      rows={3}
+                      style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${C.cardBorder}`, fontSize: 14, color: C.navy, background: C.card, resize: "vertical", boxSizing: "border-box", lineHeight: 1.5, fontFamily: "DM Sans, sans-serif" }} />
+                  </div>
+                  {/* Foto */}
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8 }}>FOTO (optioneel)</label>
+                    {manualPhotoPreview ? (
+                      <div style={{ position: "relative", borderRadius: 12, overflow: "hidden" }}>
+                        <img src={manualPhotoPreview} alt="Preview" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+                        <button onClick={() => { setManualPhotoFile(null); setManualPhotoPreview(null); }}
+                          style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(31,53,76,0.7)", border: "none", color: "#fff", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>×</button>
+                      </div>
+                    ) : (
+                      <label style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "20px", border: `2px dashed ${C.cardBorder}`, borderRadius: 12, cursor: "pointer", background: C.card }}>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                          <circle cx="12" cy="13" r="4"/>
+                        </svg>
+                        <span style={{ fontSize: 13, color: C.muted, fontWeight: 600 }}>Foto toevoegen</span>
+                        <span style={{ fontSize: 11, color: C.sub }}>Tik om te kiezen uit je galerij</span>
+                        <input type="file" accept="image/*" style={{ display: "none" }}
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setManualPhotoFile(file);
+                            const reader = new FileReader();
+                            reader.onload = ev => setManualPhotoPreview(ev.target?.result as string);
+                            reader.readAsDataURL(file);
+                          }} />
+                      </label>
+                    )}
+                  </div>
+                  {/* Samenvatting */}
+                  <div style={{ padding: "14px 16px", background: C.card, borderRadius: 14, boxShadow: C.cardShadow, marginBottom: 20 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8 }}>SAMENVATTING</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      {manualForm.rating > 0 && <RatingIcon value={manualForm.rating} selected={true} size={36} />}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{allSpots.find(s => s.id === manualSpotId)?.name}</div>
+                        <div style={{ fontSize: 12, color: C.sub }}>
+                          {new Date(manualDate + "T12:00:00").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" })}
+                          {manualForm.gear_type && ` · ${GEAR_TYPES.find(g => g.id === manualForm.gear_type)?.label}`}
+                          {manualForm.gear_size && ` ${manualForm.gear_size}`}
+                          {manualForm.wind_feel && ` · ${WIND_FEELS.find(w => w.id === manualForm.wind_feel)?.label}`}
+                        </div>
+                      </div>
+                      {manualWeather && <div style={{ fontSize: 16, fontWeight: 800, color: C.green }}>{manualWeather.wind}kn</div>}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={() => setManualStep(2)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
+                    <button onClick={handleManualSessionSave} disabled={manualSaving || manualPhotoUploading}
+                      style={{ flex: 1, padding: "14px", background: C.green, color: "#FFF", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: (manualSaving || manualPhotoUploading) ? "not-allowed" : "pointer", opacity: (manualSaving || manualPhotoUploading) ? 0.6 : 1 }}>
+                      {manualPhotoUploading ? "Foto uploaden..." : manualSaving ? "Opslaan..." : "✓ Log sessie"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        )}
 
         {/* Logout */}
         <button onClick={async () => { await clearAuth(); window.location.href = "/login"; }} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "13px", background: "none", border: `1px solid ${C.cardBorder}`, borderRadius: 12, color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
