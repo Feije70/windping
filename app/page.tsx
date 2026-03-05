@@ -305,6 +305,7 @@ interface RecentSession {
   status: string;
   rating: number | null;
   gear_type: string | null;
+  gear_size: string | null;
   forecast_wind: number | null;
   forecast_dir: string | null;
   photo_url: string | null;
