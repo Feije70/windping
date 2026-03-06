@@ -466,6 +466,24 @@ function Dashboard() {
 
   // Handmatige sessie modal
   const [showManualSession, setShowManualSession] = useState(false);
+
+  // Lees spot terug van spot-select pagina via localStorage
+  useEffect(() => {
+    function checkSpotFromStorage() {
+      const spotId = localStorage.getItem("session_spot_id");
+      const spotName = localStorage.getItem("session_spot_name");
+      if (spotId && spotName) {
+        setManualSpotId(Number(spotId));
+        setShowManualSession(true);
+        setManualStep("pick");
+        localStorage.removeItem("session_spot_id");
+        localStorage.removeItem("session_spot_name");
+      }
+    }
+    window.addEventListener("focus", checkSpotFromStorage);
+    checkSpotFromStorage();
+    return () => window.removeEventListener("focus", checkSpotFromStorage);
+  }, []);
   const [manualSpotId, setManualSpotId] = useState<number | "">("");
   const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
   const [manualWeather, setManualWeather] = useState<{wind: number; gust: number; dir: number; dirStr: string} | null>(null);
@@ -1027,7 +1045,7 @@ function Dashboard() {
                               <div style={{ padding: "12px 14px", fontSize: 13, color: C.muted }}>Geen eigen spots</div>
                             )}
                           </div>
-                          <a href="/spots" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, textDecoration: "none" }}>
+                          <a href="/spot-select" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, textDecoration: "none" }}>
                             <span style={{ fontSize: 14, fontWeight: 600, color: C.navy }}>Andere spot kiezen</span>
                             <span style={{ fontSize: 14, color: C.sky }}>→</span>
                           </a>
@@ -1436,7 +1454,7 @@ function LandingPage() {
           <h3 style={{ ...h, fontSize: 18, fontWeight: 800, color: C.navy, margin: "0 0 6px" }}>Vind Jouw Spot</h3>
           <p style={{ fontSize: 12, color: C.sub, lineHeight: 1.55, margin: "0 0 16px" }}>Ontdek kite- en windsurfspots door heel Europa en Marokko. Staat jouw spot er niet bij? Voeg hem toe.</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Link href="/spots" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 20px", background: C.oceanTint, color: C.sky, fontWeight: 600, fontSize: 13, borderRadius: 12, textDecoration: "none" }}>{Icons.search({ color: C.sky })} Bekijk spots</Link>
+            <Link href="/spot-select" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 20px", background: C.oceanTint, color: C.sky, fontWeight: 600, fontSize: 13, borderRadius: 12, textDecoration: "none" }}>{Icons.search({ color: C.sky })} Bekijk spots</Link>
             <Link href="/signup" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 20px", background: C.cream, color: C.sub, fontWeight: 600, fontSize: 13, borderRadius: 12, border: `1px solid ${C.cardBorder}`, textDecoration: "none" }}>{Icons.plus({ color: C.sub })} Voeg jouw spot toe</Link>
           </div>
         </div>
@@ -1456,7 +1474,7 @@ function LandingPage() {
         <div style={{ maxWidth: 520, margin: "0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Logo variant="icon" size={20} /><span style={{ fontSize: 11, color: C.sub }}>© 2026 WindPing</span></div>
           <nav style={{ display: "flex", gap: 20 }}>
-            <Link href="/spots" style={{ fontSize: 12, color: C.sub, textDecoration: "none" }}>Spots</Link>
+            <Link href="/spot-select" style={{ fontSize: 12, color: C.sub, textDecoration: "none" }}>Spots</Link>
             <Link href="/login" style={{ fontSize: 12, color: C.sub, textDecoration: "none" }}>Log in</Link>
             <Link href="/signup" style={{ fontSize: 12, color: C.sky, textDecoration: "none", fontWeight: 600 }}>Aanmelden</Link>
           </nav>
