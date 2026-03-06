@@ -687,7 +687,8 @@ function Dashboard() {
   }
 
   const handleManualSessionSave = async () => {
-    if (!manualSpotId || !manualRating || !userId) return;
+    console.log("Save check:", { manualSpotId, manualRating, userId, manualPhotoUploading, manualSaving });
+    if (!manualSpotId || !manualRating || !userId) { console.log("Blocked by guard"); return; }
     setManualSaving(true);
     setManualError("");
     try {
