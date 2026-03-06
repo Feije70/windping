@@ -709,11 +709,13 @@ function Dashboard() {
         body.forecast_gust = manualWeather.gust;
         body.forecast_dir = manualWeather.dirStr;
       }
-      await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
+      const saveRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
         method: "POST",
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
         body: JSON.stringify(body),
       });
+      console.log("Save status:", saveRes.status, await saveRes.text());
+      if (!saveRes.ok) { setManualError("Opslaan mislukt: " + saveRes.status); setManualSaving(false); return; }
       setShowManualSession(false);
       resetManualSession();
       loadData();
