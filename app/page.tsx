@@ -473,9 +473,7 @@ function Dashboard() {
     function checkSpotFromStorage() {
       const spotId = localStorage.getItem("session_spot_id");
       const spotName = localStorage.getItem("session_spot_name");
-      console.log("localStorage check:", { spotId, spotName });
       if (spotId && spotName) {
-        console.log("Setting spotId:", Number(spotId));
         setManualSpotId(Number(spotId));
         setShowManualSession(true);
         setManualStep(1);
@@ -678,8 +676,7 @@ function Dashboard() {
   }
 
   const handleManualSessionSave = async () => {
-    console.log("Save check:", { manualSpotId, manualRating, userId, manualPhotoUploading, manualSaving });
-    if (!manualSpotId || !manualRating || !userId) { console.log("Blocked by guard"); return; }
+    if (!manualSpotId || !manualRating || !userId) return;
     setManualSaving(true);
     setManualError("");
     try {
@@ -706,7 +703,6 @@ function Dashboard() {
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
         body: JSON.stringify(body),
       });
-      console.log("Save status:", saveRes.status, await saveRes.text());
       if (!saveRes.ok) { setManualError("Opslaan mislukt: " + saveRes.status); setManualSaving(false); return; }
       setShowManualSession(false);
       resetManualSession();
