@@ -418,11 +418,15 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
                   </div>
                 </div>
               )}
-              {(latest.gear_type || latest.gear_size) && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-                  {latest.gear_type && <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: C.sky + "12", borderRadius: 7, padding: "3px 9px" }}>{latest.gear_type.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}</span>}
-                  {latest.gear_size && <span style={{ fontSize: 11, color: C.sub, padding: "3px 0" }}>{latest.gear_size}</span>}
-                  {latest.notes && <div style={{ fontSize: 12, color: C.sub, marginTop: 6, lineHeight: 1.5 }}>{latest.notes}</div>}
+              {(latest.gear_type || latest.gear_size || latest.notes) && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {(latest.gear_type || latest.gear_size) && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      {latest.gear_type && <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: C.sky + "12", borderRadius: 7, padding: "3px 9px" }}>{latest.gear_type.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}</span>}
+                      {latest.gear_size && <span style={{ fontSize: 11, color: C.sub }}>{latest.gear_size}</span>}
+                    </div>
+                  )}
+                  {latest.notes && <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>{latest.notes}</div>}
                 </div>
               )}
             </div>
