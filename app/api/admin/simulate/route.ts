@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
     const { data } = await client
       .from("users")
       .select("id, name, email")
-      .order("name");
+      .order("id", { ascending: true });
     return NextResponse.json({ users: data || [] });
   }
 
@@ -94,18 +94,22 @@ export async function GET(req: NextRequest) {
   if (action === "user_feed" && userId) {
     const { data: friendships } = await client
       .from("friendships")
-      .select("user_id, friend_id")
-      .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
-      .eq("status", "accepted");
+      .select("user_id, friend_id, status")
+      .or(`user_id.eq.${userId},friend_id.eq.${userId}`);
 
-    const friendIds = (friendships || []).map(f =>
+    const acceptedFriendships = (friendships || []).filter(f => f.status === "accepted");
+    const friendIds = acceptedFriendships.map(f =>
       f.user_id === Number(userId) ? f.friend_id : f.user_id
     );
 
-    if (friendIds.length === 0) return NextResponse.json({ feed: [], friendCount: 0 });
+    if (friendIds.length === 0) return NextResponse.json({
+      feed: [],
+      friendCount: 0,
+      debug: { totalFriendships: (friendships || []).length, acceptedFriendships: 0 }
+    });
 
     const since = new Date();
-    since.setDate(since.getDate() - 14);
+    since.setDate(since.getDate() - 90); // 90 dagen terug
 
     const { data: sessions } = await client
       .from("sessions")
@@ -140,7 +144,11 @@ export async function GET(req: NextRequest) {
       notes: s.notes,
     }));
 
-    return NextResponse.json({ feed, friendCount: friendIds.length });
+    return NextResponse.json({
+      feed,
+      friendCount: friendIds.length,
+      debug: { totalFriendships: (friendships || []).length, acceptedFriendships: acceptedFriendships.length, friendIds, sessionCount: (sessions || []).length }
+    });
   }
 
   // Get all spots
