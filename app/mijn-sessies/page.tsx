@@ -112,7 +112,6 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
   async function handleDelete() {
     setDeleting(true);
     try {
-      const { getValidToken, SUPABASE_URL, SUPABASE_ANON_KEY } = await import("@/lib/supabase");
       const token = await getValidToken();
       await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}`, {
         method: "DELETE",
