@@ -467,17 +467,6 @@ function Dashboard() {
   // Handmatige sessie modal
   const [showManualSession, setShowManualSession] = useState(false);
 
-  // Lees spot terug van spot-select/spot-create via localStorage
-  useEffect(() => {
-    const spotId = localStorage.getItem("session_spot_id");
-    if (spotId) {
-      setManualSpotId(Number(spotId));
-      setShowManualSession(true);
-      setManualStep(1);
-      localStorage.removeItem("session_spot_id");
-      localStorage.removeItem("session_spot_name");
-    }
-  }, []);
 
   // Lees spot terug van spot-select pagina via localStorage
   useEffect(() => {
@@ -487,7 +476,7 @@ function Dashboard() {
       if (spotId && spotName) {
         setManualSpotId(Number(spotId));
         setShowManualSession(true);
-        setManualStep("pick");
+        setManualStep(1);
         localStorage.removeItem("session_spot_id");
         localStorage.removeItem("session_spot_name");
       }
