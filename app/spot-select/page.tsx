@@ -70,7 +70,9 @@ export default function SpotSelectPage() {
     : null;
 
   function selectSpot(spot: Spot) {
-    router.push(`/?spot_id=${spot.id}&spot_name=${encodeURIComponent(spot.display_name)}&open_session=true`);
+    localStorage.setItem("session_spot_id", String(spot.id));
+    localStorage.setItem("session_spot_name", spot.display_name);
+    router.push("/");
   }
 
   function SpotRow({ spot, showDist }: { spot: Spot & { distance?: number }; showDist?: boolean }) {
