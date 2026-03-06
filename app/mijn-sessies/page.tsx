@@ -115,7 +115,7 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
       const token = await getValidToken();
       await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}`, {
         method: "DELETE",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, Prefer: "return=minimal" },
       });
       onClose();
       window.location.reload();
