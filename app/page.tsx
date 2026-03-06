@@ -378,9 +378,9 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
       </div>
 
       {latest && (
-        <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, overflow: "hidden", marginBottom: 12 }}>
+        <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, marginBottom: 12 }}>
           {/* Foto + info — klikbaar naar sessie pagina */}
-          <a href={`/sessie/${latest.id}`} style={{ display: "block", textDecoration: "none" }}>
+          <a href={`/sessie/${latest.id}`} style={{ display: "block", textDecoration: "none", borderRadius: "16px 16px 0 0", overflow: "hidden" }}>
             {latest.photo_url && (
               <div style={{ position: "relative" }}>
                 <img src={latest.photo_url} alt="" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
