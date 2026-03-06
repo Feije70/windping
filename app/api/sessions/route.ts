@@ -322,9 +322,6 @@ export async function DELETE(req: NextRequest) {
 
     if (error) throw error;
 
-    // Recalculate stats after delete (trigger handles this, but belt+suspenders)
-    await updateUserStats(supabase, userId);
-
     return NextResponse.json({ success: true });
   } catch (e: any) {
     console.error("DELETE /api/sessions error:", e);
