@@ -467,24 +467,19 @@ function Dashboard() {
   // Handmatige sessie modal
   const [showManualSession, setShowManualSession] = useState(false);
 
-  // Lees spot terug van spot-select pagina via localStorage
+  // Lees spot terug via URL params
+  const searchParams = useSearchParams();
   useEffect(() => {
-    function checkSpotFromStorage() {
-      const spotId = localStorage.getItem("session_spot_id");
-      const spotName = localStorage.getItem("session_spot_name");
-      if (spotId && spotName) {
-        setManualSpotId(Number(spotId));
-        setShowManualSession(true);
-        setManualStep("pick");
-        localStorage.removeItem("session_spot_id");
-        localStorage.removeItem("session_spot_name");
-      }
+    const spotId = searchParams.get("spot_id");
+    const spotName = searchParams.get("spot_name");
+    const openSession = searchParams.get("open_session");
+    if (spotId && openSession === "true") {
+      setManualSpotId(Number(spotId));
+      setShowManualSession(true);
+      setManualStep("pick");
+      router.replace("/");
     }
-    window.addEventListener("focus", checkSpotFromStorage);
-    window.addEventListener("popstate", checkSpotFromStorage);
-    checkSpotFromStorage();
-    return () => { window.removeEventListener("focus", checkSpotFromStorage); window.removeEventListener("popstate", checkSpotFromStorage); };
-  }, []);
+  }, [searchParams]);
   const [manualSpotId, setManualSpotId] = useState<number | "">("");
   const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
   const [manualWeather, setManualWeather] = useState<{wind: number; gust: number; dir: number; dirStr: string} | null>(null);
