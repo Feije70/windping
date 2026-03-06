@@ -122,6 +122,16 @@ export default function SpotSelectPage() {
           </div>
         </div>
 
+        <div style={{ padding: "8px 16px 0" }}>
+            <button onClick={() => router.push("/spot-create")} style={{
+              width: "100%", padding: "13px 16px", background: C.card,
+              border: `1.5px dashed ${C.sky}60`, borderRadius: 14, marginBottom: 4,
+              cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              <span style={{ fontSize: 14, fontWeight: 600, color: C.sky }}>+ Nieuwe spot toevoegen</span>
+            </button>
+          </div>
         <div style={{ padding: "12px 16px" }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: 40 }}>
@@ -174,15 +184,7 @@ export default function SpotSelectPage() {
                 </div>
               </div>
 
-              {/* Nieuwe spot aanmaken */}
-              <button onClick={() => router.push("/spot-create")} style={{
-                width: "100%", padding: "14px 16px", background: C.card,
-                border: `1.5px dashed ${C.cardBorder}`, borderRadius: 14,
-                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-                <span style={{ fontSize: 14, fontWeight: 600, color: C.sky }}>Nieuwe spot toevoegen</span>
-              </button>
+
             </>
           )}
         </div>

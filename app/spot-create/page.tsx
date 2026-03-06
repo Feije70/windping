@@ -120,8 +120,7 @@ export default function SpotCreatePage() {
 
       localStorage.setItem("session_spot_id", String(newSpot.id));
       localStorage.setItem("session_spot_name", newSpot.display_name);
-      router.back();
-      router.back();
+      router.push("/");
     } catch (e) {
       console.error(e);
       setError("Er ging iets mis. Probeer opnieuw.");
