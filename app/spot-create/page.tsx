@@ -118,7 +118,9 @@ export default function SpotCreatePage() {
         body: JSON.stringify({ user_id: userId, spot_id: newSpot.id }),
       });
 
-      router.push(`/?spot_id=${newSpot.id}&spot_name=${encodeURIComponent(newSpot.display_name)}&open_session=true`);
+      localStorage.setItem("session_spot_id", String(newSpot.id));
+      localStorage.setItem("session_spot_name", newSpot.display_name);
+      router.push("/");
     } catch (e) {
       console.error(e);
       setError("Er ging iets mis. Probeer opnieuw.");
