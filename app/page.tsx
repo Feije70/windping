@@ -430,11 +430,6 @@ function SessionStatsSection({ stats, sessions, spotNames, userId }: { stats: Se
               </div>
             )}
           </div>
-          {latest.id && userId && (
-            <div style={{ padding: "0 14px 0" }}>
-              <SessionReactions sessionId={latest.id} ownerId={userId} />
-            </div>
-          )}
           <div style={{ padding: "0 14px 14px", display: "flex", gap: 8 }}>
             {latest.id && (<>
             <a
@@ -567,10 +562,12 @@ function FeedCard({ item, userId, token }: { item: any; userId: number | null; t
         </div>
       )}
 
-      {/* Reactions */}
-      <div style={{ padding: "0 14px 12px" }}>
-        <SessionReactions sessionId={item.id} ownerId={item.friendId} userId={userId} token={token} />
-      </div>
+      {/* Reactions — alleen bij completed sessies */}
+      {item.status === "completed" && (
+        <div style={{ padding: "0 14px 12px" }}>
+          <SessionReactions sessionId={item.id} ownerId={item.friendId} userId={userId} token={token} />
+        </div>
+      )}
     </div>
   );
 }
