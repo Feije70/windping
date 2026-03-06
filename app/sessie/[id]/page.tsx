@@ -1,6 +1,7 @@
 import { Metadata } from "next";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
+import DeleteSessionButton from "./DeleteSessionButton";
 
 const SUPABASE_URL = "https://kaimbtcuyemwzvhsqwgu.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_ds6_HWMJEYxEnvrnEefeRg_q2T-ROO_";
@@ -145,6 +146,11 @@ export default async function ShareSessionPage({ params }: { params: Promise<{ i
               <div style={{ fontSize: 14, color: "#1F354C", lineHeight: 1.6 }}>{session.notes}</div>
             </div>
           )}
+
+          {/* Delete */}
+          <div style={{ textAlign: "center", marginBottom: 16 }}>
+            <DeleteSessionButton sessionId={session.id} />
+          </div>
 
           {/* CTA */}
           <div style={{ background: "#1F354C", borderRadius: 16, padding: "20px", textAlign: "center" }}>
