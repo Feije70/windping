@@ -1,4 +1,5 @@
 "use client";
+import React from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
@@ -105,6 +106,23 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
 
 function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
   const spot = s._spotName || "Spot";
+  const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const { getValidToken, SUPABASE_URL, SUPABASE_ANON_KEY } = await import("@/lib/supabase");
+      const token = await getValidToken();
+      await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}`, {
+        method: "DELETE",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+      });
+      onClose();
+      window.location.reload();
+    } catch { setDeleting(false); }
+  }
+
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, background: C.cream, overflowY: "auto" }}>
       <div style={{ position: "sticky", top: 0, zIndex: 10, background: C.cream, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
@@ -166,6 +184,17 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
             <div style={{ fontSize: 14, color: C.navy, lineHeight: 1.6 }}>{s.notes}</div>
           </div>
         )}
+
+        <div style={{ marginTop: 24, textAlign: "center" }}>
+          {!confirmDelete ? (
+            <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#8A9BB0", fontWeight: 500 }}>🗑 Verwijder sessie</button>
+          ) : (
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              <button onClick={() => setConfirmDelete(false)} style={{ padding: "8px 16px", background: "#F6F1EB", border: "1px solid #E2D9CE", borderRadius: 10, color: "#1F354C", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Annuleer</button>
+              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: "#C97A63", border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{deleting ? "Verwijderen..." : "Ja, verwijder"}</button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
