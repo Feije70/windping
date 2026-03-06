@@ -378,13 +378,13 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
       </div>
 
       {latest && (
-        <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, marginBottom: 12 }}>
-          {/* Foto + info — klikbaar naar sessie pagina */}
-          <a href={`/sessie/${latest.id}`} style={{ display: "block", textDecoration: "none", borderRadius: "16px 16px 0 0", overflow: "hidden" }}>
-            {latest.photo_url && (
-              <div style={{ position: "relative" }}>
-                <img src={latest.photo_url} alt="" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
-                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 30%, rgba(31,53,76,0.85) 100%)" }} />
+        <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, marginBottom: 12, overflow: "hidden" }}>
+          {/* Foto met kliklaag */}
+          {latest.photo_url && (
+            <div style={{ position: "relative" }}>
+              <img src={latest.photo_url} alt="" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 30%, rgba(31,53,76,0.85) 100%)" }} />
+              <a href={`/sessie/${latest.id}`} style={{ position: "absolute", inset: 0, textDecoration: "none" }}>
                 <div style={{ position: "absolute", bottom: 12, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>{latestSpot}</div>
@@ -404,35 +404,36 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
                     )}
                   </div>
                 </div>
+              </a>
+            </div>
+          )}
+          {/* Info tekst */}
+          <div style={{ padding: "12px 14px 10px" }}>
+            {!latest.photo_url && (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{latestSpot}</div>
+                  <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>{dateLabelFn(latest.session_date)}</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {latest.forecast_wind && <div style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{latest.forecast_wind}<span style={{ fontSize: 10 }}>kn</span>{latest.forecast_dir && <span style={{ fontSize: 10, color: C.sub, fontWeight: 500 }}> {latest.forecast_dir}</span>}</div>}
+                  {latest.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColorsL[latest.rating] }}>{ratingLabelsL[latest.rating]}</div>}
+                </div>
               </div>
             )}
-            <div style={{ padding: "12px 14px 10px" }}>
-              {!latest.photo_url && (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{latestSpot}</div>
-                    <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>{dateLabelFn(latest.session_date)}</div>
+            {(latest.gear_type || latest.gear_size || latest.notes) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {(latest.gear_type || latest.gear_size) && (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    {latest.gear_type && <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: C.sky + "12", borderRadius: 7, padding: "3px 9px" }}>{latest.gear_type.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}</span>}
+                    {latest.gear_size && <span style={{ fontSize: 11, color: C.sub }}>{latest.gear_size}</span>}
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {latest.forecast_wind && <div style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{latest.forecast_wind}<span style={{ fontSize: 10 }}>kn</span>{latest.forecast_dir && <span style={{ fontSize: 10, color: C.sub, fontWeight: 500 }}> {latest.forecast_dir}</span>}</div>}
-                    {latest.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColorsL[latest.rating] }}>{ratingLabelsL[latest.rating]}</div>}
-                  </div>
-                </div>
-              )}
-              {(latest.gear_type || latest.gear_size || latest.notes) && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {(latest.gear_type || latest.gear_size) && (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                      {latest.gear_type && <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: C.sky + "12", borderRadius: 7, padding: "3px 9px" }}>{latest.gear_type.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}</span>}
-                      {latest.gear_size && <span style={{ fontSize: 11, color: C.sub }}>{latest.gear_size}</span>}
-                    </div>
-                  )}
-                  {latest.notes && <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>{latest.notes}</div>}
-                </div>
-              )}
-            </div>
-          </a>
-          {/* Knoppen — los van de link erboven */}
+                )}
+                {latest.notes && <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>{latest.notes}</div>}
+              </div>
+            )}
+          </div>
+          {/* Knoppen */}
           <div style={{ padding: "0 14px 12px", display: "flex", gap: 8 }}>
             <a
               href={`https://wa.me/?text=${encodeURIComponent(
