@@ -728,10 +728,20 @@ function Dashboard() {
       }
       const saveRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
         method: "POST",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
         body: JSON.stringify(body),
       });
       if (!saveRes.ok) { setManualError("Opslaan mislukt: " + saveRes.status); setManualSaving(false); return; }
+      const saved = await saveRes.json();
+      const newSessionId = saved?.[0]?.id;
+      // Notify friends (fire and forget)
+      if (newSessionId) {
+        fetch(`/api/sessions`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ session_id: newSessionId, _notify_only: true }),
+        }).catch(() => {});
+      }
       setShowManualSession(false);
       resetManualSession();
       loadData();

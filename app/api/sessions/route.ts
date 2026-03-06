@@ -129,6 +129,63 @@ function calculateStats(sessions: any[]) {
   };
 }
 
+/* ── Notify friends when session is completed ── */
+async function notifyFriendsSessionCompleted(supabase: any, userId: number, sessionId: number) {
+  try {
+    // Get session + spot name
+    const { data: session } = await supabase
+      .from("sessions")
+      .select("spot_id, forecast_wind, forecast_dir, rating, spots(display_name)")
+      .eq("id", sessionId)
+      .single();
+    if (!session) return;
+
+    // Get user name
+    const { data: user } = await supabase
+      .from("users")
+      .select("name")
+      .eq("id", userId)
+      .single();
+    const userName = user?.name || "Iemand";
+
+    // Get friend ids
+    const { data: friendships } = await supabase
+      .from("friendships")
+      .select("user_id, friend_id")
+      .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
+      .eq("status", "accepted");
+    if (!friendships?.length) return;
+
+    const friendIds = friendships.map((f: any) => f.user_id === userId ? f.friend_id : f.user_id);
+
+    const spotName = session.spots?.display_name || "een spot";
+    const wind = session.forecast_wind ? ` · ${session.forecast_wind}kn` : "";
+    const ratingEmojis: Record<number, string> = { 1: "😬", 2: "😐", 3: "👌", 4: "😎", 5: "🤙" };
+    const emoji = session.rating ? ratingEmojis[session.rating] || "🏄" : "🏄";
+
+    const title = `${emoji} ${userName} was op ${spotName}`;
+    const message = `${spotName}${wind}${session.forecast_dir ? " " + session.forecast_dir : ""}`;
+    const url = `/sessie/${sessionId}`;
+
+    // Push to each friend
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://www.windping.com";
+    await Promise.allSettled(
+      friendIds.map((friendId: number) =>
+        fetch(`${baseUrl}/api/push/send`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.CRON_SECRET || ""}`,
+          },
+          body: JSON.stringify({ userId: friendId, title, message, url, alertType: "session" }),
+        })
+      )
+    );
+  } catch (e) {
+    console.error("notifyFriends error:", e);
+  }
+}
+
 /* ── POST: Create session ("Ik ga!" or direct complete) ── */
 export async function POST(req: NextRequest) {
   try {
@@ -189,13 +246,19 @@ export async function PATCH(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     
     const body = await req.json();
-    const { session_id, ...updates } = body;
-    
+    const { session_id, _notify_only, ...updates } = body;
+
     if (!session_id) {
       return NextResponse.json({ error: "session_id required" }, { status: 400 });
     }
-    
+
     const supabase = sb();
+
+    // Notify-only: just push to friends, no DB update
+    if (_notify_only) {
+      notifyFriendsSessionCompleted(supabase, userId, session_id).catch(() => {});
+      return NextResponse.json({ ok: true });
+    }
     
     // Verify ownership
     const { data: session } = await supabase
@@ -236,7 +299,12 @@ export async function PATCH(req: NextRequest) {
     if (updates.status === "completed" || updates.rating) {
       await updateUserStats(supabase, userId);
     }
-    
+
+    // Notify friends when session is completed
+    if (updates.status === "completed") {
+      notifyFriendsSessionCompleted(supabase, userId, session_id).catch(() => {});
+    }
+
     return NextResponse.json({ session: data });
   } catch (e: any) {
     console.error("PATCH /api/sessions error:", e);
