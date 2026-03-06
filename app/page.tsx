@@ -405,7 +405,7 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
                 </div>
               </div>
             )}
-            <div style={{ padding: "12px 14px" }}>
+            <div style={{ padding: "12px 14px 14px" }}>
               {!latest.photo_url && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                   <div>
@@ -637,7 +637,8 @@ function Dashboard() {
   useEffect(() => { loadData(); }, [loadData]);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Goedemorgen" : hour < 18 ? "Goedemiddag" : "Goedenavond";
-  const feedItems = bundleAlertsByDate(recentAlerts);
+  const today = new Date().toISOString().split("T")[0];
+  const feedItems = bundleAlertsByDate(recentAlerts).filter(item => item.targetDate >= today);
 
   // Fetch weer voor handmatige sessie
   const fetchManualWeather = async (spotId: number, date: string, dagdelen: string[]) => {
