@@ -1409,6 +1409,7 @@ function SimulatorTab({ token }: { token: string | null }) {
   const [userFriendships, setUserFriendships] = useState<any[]>([]);
   const [userFeed, setUserFeed] = useState<any[]>([]);
   const [feedFriendCount, setFeedFriendCount] = useState(0);
+  const [feedDebug, setFeedDebug] = useState<any>(null);
   const [activePanel, setActivePanel] = useState<"sessions" | "friends" | "feed" | "create">("feed");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
@@ -1474,6 +1475,7 @@ function SimulatorTab({ token }: { token: string | null }) {
     setUserFriendships(friendRes.friendships || []);
     setUserFeed(feedRes.feed || []);
     setFeedFriendCount(feedRes.friendCount || 0);
+    setFeedDebug(feedRes.debug || null);
     setLoading(false);
   }
 
@@ -1531,25 +1533,22 @@ function SimulatorTab({ token }: { token: string | null }) {
 
       {/* User picker */}
       <div style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 10, letterSpacing: "0.06em" }}>SELECTEER GEBRUIKER</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8, letterSpacing: "0.06em" }}>SELECTEER GEBRUIKER</div>
+        <select
+          value={selectedUser?.id || ""}
+          onChange={e => {
+            const user = simUsers.find(u => u.id === Number(e.target.value));
+            if (user) selectUser(user);
+          }}
+          style={{ width: "100%", padding: "10px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 13, color: C.navy, outline: "none" }}
+        >
+          <option value="">Kies gebruiker...</option>
           {simUsers.map(u => (
-            <button key={u.id} onClick={() => selectUser(u)} style={{
-              padding: "10px 14px", borderRadius: 10, textAlign: "left", cursor: "pointer",
-              background: selectedUser?.id === u.id ? `${C.sky}15` : C.creamDark,
-              border: `1.5px solid ${selectedUser?.id === u.id ? C.sky : "transparent"}`,
-              display: "flex", alignItems: "center", gap: 10,
-            }}>
-              <div style={{ width: 28, height: 28, borderRadius: "50%", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-                {(u.name || u.email || "?").charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{u.name || "—"}</div>
-                <div style={{ fontSize: 10, color: C.muted }}>{u.email}</div>
-              </div>
-            </button>
+            <option key={u.id} value={u.id}>
+              {u.name || u.email?.split("@")[0] || "?"} — {u.email}
+            </option>
           ))}
-        </div>
+        </select>
       </div>
 
       {/* Panel */}
@@ -1591,13 +1590,22 @@ function SimulatorTab({ token }: { token: string | null }) {
             {/* FEED PANEL */}
             {!loading && activePanel === "feed" && (
               <div>
-                <div style={{ fontSize: 12, color: C.sub, marginBottom: 12 }}>
-                  Dit is wat <strong style={{ color: C.navy }}>{selectedUser.name || selectedUser.email}</strong> ziet in zijn feed.
-                  {feedFriendCount === 0 && <span style={{ color: C.amber }}> Nog geen vrienden — voeg vrienden toe via het 🤝 tabblad.</span>}
+                <div style={{ fontSize: 12, color: C.sub, marginBottom: 8, padding: "8px 12px", background: C.oceanTint, borderRadius: 8 }}>
+                  👁️ <strong>Feed viewer</strong> — Dit is exact wat {selectedUser.name || selectedUser.email} ziet op zijn homepage. Handig om te controleren of sessies van vrienden correct verschijnen.
                 </div>
-                {userFeed.length === 0 ? (
+                {feedDebug && (
+                  <div style={{ fontSize: 11, color: C.muted, marginBottom: 10, padding: "6px 10px", background: C.creamDark, borderRadius: 6 }}>
+                    Debug: {feedDebug.totalFriendships} vriendschappen totaal · {feedDebug.acceptedFriendships} accepted · {feedDebug.sessionCount ?? 0} sessies gevonden (laatste 90 dagen)
+                  </div>
+                )}
+                {feedFriendCount === 0 && (
+                  <div style={{ color: C.amber, fontSize: 12, marginBottom: 10 }}>
+                    ⚠️ Geen vrienden — voeg vrienden toe via het 🤝 tabblad om de feed te testen.
+                  </div>
+                )}
+                {userFeed.length === 0 && feedFriendCount > 0 ? (
                   <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>
-                    Geen sessies in feed — vrienden moeten sessies loggen.
+                    Vrienden hebben de afgelopen 90 dagen geen sessies gelogd. Maak er een aan via ➕ Simuleer.
                   </div>
                 ) : userFeed.map((item: any) => (
                   <div key={item.id} style={{ padding: "10px 12px", background: C.creamDark, borderRadius: 10, marginBottom: 8 }}>
@@ -1622,6 +1630,9 @@ function SimulatorTab({ token }: { token: string | null }) {
             {/* SESSIONS PANEL */}
             {!loading && activePanel === "sessions" && (
               <div>
+                <div style={{ fontSize: 12, color: C.sub, marginBottom: 10, padding: "8px 12px", background: C.oceanTint, borderRadius: 8 }}>
+                  📋 <strong>Sessies</strong> — Alle sessies van deze gebruiker. Je kunt sessies verwijderen of nieuwe aanmaken via ➕ Simuleer. Gesimuleerde sessies verschijnen direct in de feed van vrienden.
+                </div>
                 {userSessions.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>Geen sessies</div>
                 ) : userSessions.map((s: any) => (
@@ -1647,6 +1658,9 @@ function SimulatorTab({ token }: { token: string | null }) {
             {/* FRIENDS PANEL */}
             {!loading && activePanel === "friends" && (
               <div>
+                <div style={{ fontSize: 12, color: C.sub, marginBottom: 10, padding: "8px 12px", background: C.oceanTint, borderRadius: 8 }}>
+                  🤝 <strong>Vrienden</strong> — Beheer vriendschappen voor deze gebruiker. Maak een vriendschap aan om de feed te testen: koppel twee gebruikers en maak dan via ➕ Simuleer een sessie aan namens de vriend. Die sessie verschijnt dan in de feed.
+                </div>
                 {/* Add friendship */}
                 <div style={{ marginBottom: 14, padding: "12px", background: C.creamDark, borderRadius: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8 }}>VRIENDSCHAP AANMAKEN</div>
