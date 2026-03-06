@@ -8,65 +8,87 @@ const h = { fontFamily: fonts.heading };
 export default function SpotCreatePage() {
   const router = useRouter();
   const mapRef = useRef<HTMLDivElement>(null);
-  const [map, setMap] = useState<any>(null);
-  const [marker, setMarker] = useState<any>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const markerRef = useRef<any>(null);
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     if (isTokenExpired()) { window.location.href = "/login"; return; }
+    if (mapInstanceRef.current) return;
 
-    // Load Google Maps
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyDummyKeyReplaceThis&callback=initMap`;
-    script.async = true;
-    (window as any).initMap = () => {
+    // Load Leaflet CSS
+    if (!document.querySelector('link[href*="leaflet"]')) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(link);
+    }
+
+    function initMap(centerLat: number, centerLng: number) {
+      if (!mapRef.current || mapInstanceRef.current) return;
+      const L = (window as any).L;
+      if (!L) return;
+
+      // Fix voor Leaflet icon path in Next.js
+      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+        iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+        shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
+      });
+
+      const map = L.map(mapRef.current).setView([centerLat, centerLng], 10);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap",
+      }).addTo(map);
+
+      map.on("click", (e: any) => {
+        const { lat: clickLat, lng: clickLng } = e.latlng;
+        if (markerRef.current) {
+          markerRef.current.setLatLng([clickLat, clickLng]);
+        } else {
+          markerRef.current = L.marker([clickLat, clickLng], { draggable: true }).addTo(map);
+          markerRef.current.on("dragend", (ev: any) => {
+            setLat(ev.target.getLatLng().lat);
+            setLng(ev.target.getLatLng().lng);
+          });
+        }
+        setLat(clickLat);
+        setLng(clickLng);
+      });
+
+      mapInstanceRef.current = map;
+      setMapReady(true);
+
+      // Fix kaart grootte na render
+      setTimeout(() => map.invalidateSize(), 100);
+    }
+
+    // Load Leaflet JS
+    if ((window as any).L) {
       navigator.geolocation?.getCurrentPosition(
-        pos => initializeMap(pos.coords.latitude, pos.coords.longitude),
-        () => initializeMap(52.3, 4.9), // Default: Nederland
+        pos => initMap(pos.coords.latitude, pos.coords.longitude),
+        () => initMap(52.3, 4.9),
         { timeout: 5000 }
       );
-    };
-    document.head.appendChild(script);
-    return () => { document.head.removeChild(script); };
+    } else {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.onload = () => {
+        navigator.geolocation?.getCurrentPosition(
+          pos => initMap(pos.coords.latitude, pos.coords.longitude),
+          () => initMap(52.3, 4.9),
+          { timeout: 5000 }
+        );
+      };
+      document.head.appendChild(script);
+    }
   }, []);
-
-  function initializeMap(centerLat: number, centerLng: number) {
-    if (!mapRef.current) return;
-    const googleMap = new (window as any).google.maps.Map(mapRef.current, {
-      center: { lat: centerLat, lng: centerLng },
-      zoom: 10,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: false,
-    });
-
-    const googleMarker = new (window as any).google.maps.Marker({
-      map: googleMap,
-      draggable: true,
-      visible: false,
-    });
-
-    googleMap.addListener("click", (e: any) => {
-      const clickLat = e.latLng.lat();
-      const clickLng = e.latLng.lng();
-      googleMarker.setPosition(e.latLng);
-      googleMarker.setVisible(true);
-      setLat(clickLat);
-      setLng(clickLng);
-    });
-
-    googleMarker.addListener("dragend", (e: any) => {
-      setLat(e.latLng.lat());
-      setLng(e.latLng.lng());
-    });
-
-    setMap(googleMap);
-    setMarker(googleMarker);
-  }
 
   async function saveSpot() {
     if (!lat || !lng || !name.trim()) { setError("Kies een locatie op de kaart en geef een naam op."); return; }
@@ -82,7 +104,6 @@ export default function SpotCreatePage() {
       if (!users?.length) throw new Error("User not found");
       const userId = users[0].id;
 
-      // Spot aanmaken
       const spotRes = await fetch(`${SUPABASE_URL}/rest/v1/spots`, {
         method: "POST",
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
@@ -91,14 +112,12 @@ export default function SpotCreatePage() {
       const spotData = await spotRes.json();
       const newSpot = Array.isArray(spotData) ? spotData[0] : spotData;
 
-      // Toevoegen aan user_spots
       await fetch(`${SUPABASE_URL}/rest/v1/user_spots`, {
         method: "POST",
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: userId, spot_id: newSpot.id }),
       });
 
-      // Terug naar spot-select met nieuwe spot geselecteerd
       localStorage.setItem("session_spot_id", String(newSpot.id));
       localStorage.setItem("session_spot_name", newSpot.display_name);
       router.back();
@@ -112,7 +131,7 @@ export default function SpotCreatePage() {
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <div style={{ maxWidth: 480, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", flex: 1 }}>
+      <div style={{ maxWidth: 480, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", minHeight: "100vh" }}>
 
         {/* Header */}
         <div style={{ padding: "16px 16px 12px", borderBottom: `1px solid ${C.cardBorder}`, background: C.cream }}>
@@ -124,29 +143,15 @@ export default function SpotCreatePage() {
             }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
             </button>
-            <span style={{ ...h, fontSize: 20, fontWeight: 800, color: C.navy }}>Nieuwe spot</span>
+            <div>
+              <span style={{ ...h, fontSize: 20, fontWeight: 800, color: C.navy }}>Nieuwe spot</span>
+              <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>Tik op de kaart om je spot te markeren</div>
+            </div>
           </div>
         </div>
 
-        {/* Kaart */}
-        <div ref={mapRef} style={{ flex: 1, minHeight: 320, background: C.cardBorder }} />
-
-        {/* Instructie */}
-        {!lat && (
-          <div style={{ padding: "12px 16px", background: `${C.sky}15`, borderTop: `1px solid ${C.sky}30` }}>
-            <div style={{ fontSize: 13, color: C.sky, fontWeight: 600, textAlign: "center" }}>
-              Tik op de kaart om je spot te markeren
-            </div>
-          </div>
-        )}
-
-        {/* Naam invoer + opslaan */}
-        <div style={{ padding: "16px", borderTop: `1px solid ${C.cardBorder}` }}>
-          {lat && (
-            <div style={{ fontSize: 11, color: C.muted, marginBottom: 10, textAlign: "center" }}>
-              📍 {lat.toFixed(4)}, {lng?.toFixed(4)}
-            </div>
-          )}
+        {/* Naam invoer bovenaan */}
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.cardBorder}`, background: C.cream }}>
           <input
             type="text"
             placeholder="Naam van de spot..."
@@ -154,17 +159,35 @@ export default function SpotCreatePage() {
             onChange={e => setName(e.target.value)}
             style={{
               width: "100%", padding: "12px 14px", background: C.card,
-              border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14,
-              color: C.navy, outline: "none", marginBottom: 12, boxSizing: "border-box",
+              border: `1.5px solid ${name ? C.sky : C.cardBorder}`, borderRadius: 12, fontSize: 14,
+              color: C.navy, outline: "none", boxSizing: "border-box",
             }}
           />
-          {error && <div style={{ fontSize: 12, color: "#C97A63", marginBottom: 10 }}>{error}</div>}
+        </div>
+
+        {/* Kaart */}
+        <div ref={mapRef} style={{ flex: 1, minHeight: 400 }} />
+
+        {/* Instructie + opslaan onderin */}
+        <div style={{ padding: "12px 16px 32px", borderTop: `1px solid ${C.cardBorder}`, background: C.cream }}>
+          {!lat && (
+            <div style={{ fontSize: 13, color: C.sky, fontWeight: 600, textAlign: "center", marginBottom: 10 }}>
+              👆 Tik op de kaart om een locatie te kiezen
+            </div>
+          )}
+          {lat && (
+            <div style={{ fontSize: 11, color: C.muted, textAlign: "center", marginBottom: 10 }}>
+              📍 {lat.toFixed(5)}, {lng?.toFixed(5)}
+            </div>
+          )}
+          {error && <div style={{ fontSize: 12, color: "#C97A63", marginBottom: 10, textAlign: "center" }}>{error}</div>}
           <button onClick={saveSpot} disabled={saving || !lat || !name.trim()} style={{
-            width: "100%", padding: "14px", background: (saving || !lat || !name.trim()) ? C.cardBorder : C.sky,
-            color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700,
-            cursor: (saving || !lat || !name.trim()) ? "not-allowed" : "pointer",
+            width: "100%", padding: "14px", borderRadius: 12, fontSize: 15, fontWeight: 700,
+            border: "none", cursor: (saving || !lat || !name.trim()) ? "not-allowed" : "pointer",
+            background: (saving || !lat || !name.trim()) ? C.cardBorder : C.sky,
+            color: (saving || !lat || !name.trim()) ? C.muted : "#fff",
           }}>
-            {saving ? "Opslaan..." : "Spot opslaan"}
+            {saving ? "Opslaan..." : "Spot opslaan →"}
           </button>
         </div>
       </div>
