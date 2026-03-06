@@ -125,12 +125,12 @@ export async function GET(req: NextRequest) {
 
       const { data: sessions, error: sessError } = await supabase
         .from("sessions")
-        .select("id, created_by, spot_id, session_date, status, going_at, rating, gear_type, gear_size, wind_feel, image_url")
+        .select("id, created_by, spot_id, session_date, status, going_at, rating, gear_type, gear_size, forecast_wind, forecast_dir, photo_url, notes")
         .in("created_by", friendIds)
         .in("status", ["going", "completed"])
         .gte("session_date", since.toISOString().split("T")[0])
-        .order("going_at", { ascending: false })
-        .limit(10);
+        .order("created_at", { ascending: false })
+        .limit(20);
 
       // Get spot names separately
       const spotIds = [...new Set((sessions || []).map(s => s.spot_id))];
@@ -152,23 +152,22 @@ export async function GET(req: NextRequest) {
       const nameMap: Record<number, string> = {};
       (users || []).forEach(u => { nameMap[u.id] = u.name || u.email?.split("@")[0] || "Vriend"; });
 
-      const activity = (sessions || []).map(s => {
-        return {
-          id: s.id,
-          friendName: nameMap[s.created_by] || "Vriend",
-          friendId: s.created_by,
-          spotName: spotMap[s.spot_id] || "Onbekend",
-          spotId: s.spot_id,
-          sessionDate: s.session_date,
-          status: s.status,
-          goingAt: s.going_at,
-          rating: s.rating,
-          gearType: s.gear_type,
-          gearSize: s.gear_size,
-          windFeel: s.wind_feel,
-          imageUrl: s.image_url,
-        };
-      });
+      const activity = (sessions || []).map(s => ({
+        id: s.id,
+        friendName: nameMap[s.created_by] || "Vriend",
+        friendId: s.created_by,
+        spotName: spotMap[s.spot_id] || "Onbekend",
+        spotId: s.spot_id,
+        sessionDate: s.session_date,
+        status: s.status,
+        rating: s.rating,
+        gearType: s.gear_type,
+        gearSize: s.gear_size,
+        forecastWind: s.forecast_wind,
+        forecastDir: s.forecast_dir,
+        photoUrl: s.photo_url,
+        notes: s.notes,
+      }));
 
       return NextResponse.json({ activity });
     }
