@@ -315,7 +315,7 @@ interface RecentSession {
 
 function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionStats; sessions: RecentSession[]; spotNames: Record<number, string> }) {
   const completed = sessions.filter(s => s.status === "completed");
-  const hasData = stats.total_sessions > 0 || completed.length > 0;
+  const hasData = completed.length > 0;
 
   if (!hasData) {
     return (
