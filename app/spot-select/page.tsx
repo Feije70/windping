@@ -57,11 +57,11 @@ export default function SpotSelectPage() {
     ...s,
     distance: (userLat && userLon && s.latitude && s.longitude)
       ? calcDistance(userLat, userLon, s.latitude, s.longitude)
-      : null,
+      : undefined,
   }));
 
   const nearby = spotsWithDistance
-    .filter(s => s.distance !== null && s.distance < 100)
+    .filter(s => s.distance !== undefined && s.distance < 100)
     .sort((a, b) => (a.distance ?? 999) - (b.distance ?? 999));
 
   const searchLower = search.toLowerCase();
@@ -75,7 +75,7 @@ export default function SpotSelectPage() {
     router.back();
   }
 
-  function SpotRow({ spot, showDist }: { spot: Spot & { distance?: number | null }; showDist?: boolean }) {
+  function SpotRow({ spot, showDist }: { spot: Spot & { distance?: number }; showDist?: boolean }) {
     return (
       <button onClick={() => selectSpot(spot)} style={{
         width: "100%", padding: "14px 16px", textAlign: "left", background: "none",
@@ -84,7 +84,7 @@ export default function SpotSelectPage() {
       }}>
         <span>{spot.display_name}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {showDist && spot.distance != null && (
+          {showDist && spot.distance != undefined && (
             <span style={{ fontSize: 11, color: C.muted, fontWeight: 400 }}>{Math.round(spot.distance)} km</span>
           )}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
