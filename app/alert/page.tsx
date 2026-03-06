@@ -89,6 +89,7 @@ export default function AlertPage() {
   const [goingSessions, setGoingSessions] = useState<Record<string, any>>({});
   const [logSession, setLogSession] = useState<any>(null);
   const [logForm, setLogForm] = useState({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" });
+  const [logDagdelen, setLogDagdelen] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   // Photo upload state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -241,7 +242,8 @@ export default function AlertPage() {
       if (logForm.gear_type) update.gear_type = logForm.gear_type;
       if (logForm.gear_size) update.gear_size = logForm.gear_size;
       if (logForm.duration_minutes > 0) update.duration_minutes = logForm.duration_minutes;
-      if (logForm.notes) update.notes = logForm.notes;
+      const noteParts = [logDagdelen.length > 0 ? logDagdelen.join("/") : "", logForm.notes].filter(Boolean);
+      if (noteParts.length > 0) update.notes = noteParts.join(" · ");
       if (photoUrl) update.photo_url = photoUrl;
 
       await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${logSession.id}`, {
@@ -253,6 +255,7 @@ export default function AlertPage() {
       setGoingSessions(prev => ({ ...prev, [key]: { ...prev[key], status: "completed", rating: logForm.rating, photo_url: photoUrl } }));
       setLogSession(null);
       setLogForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" });
+      setLogDagdelen([]);
       setPhotoFile(null);
       setPhotoPreview(null);
     } catch (e) { console.error("Complete session error:", e); }
@@ -416,7 +419,7 @@ export default function AlertPage() {
                         return (
                           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                             {isPast ? (
-                              <button onClick={() => { setLogSession({ ...session, spotName: spot.spotName }); setLogForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" }); setPhotoFile(null); setPhotoPreview(null); }}
+                              <button onClick={() => { setLogSession({ ...session, spotName: spot.spotName }); setLogForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" }); setLogDagdelen([]); setPhotoFile(null); setPhotoPreview(null); }}
                                 style={{ flex: 1, padding: "10px", background: C.sky, border: "none", borderRadius: 10, color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                                 🏄 Log je sessie
                               </button>
@@ -496,6 +499,32 @@ export default function AlertPage() {
             
             <h3 style={{ ...h, fontSize: 18, fontWeight: 800, color: C.navy, margin: "0 0 4px" }}>Sessie loggen</h3>
             <div style={{ fontSize: 13, color: C.sub, marginBottom: 20 }}>{logSession.spotName} · {formatDateLabel(logSession.session_date)}</div>
+
+            {/* Dagdeel */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Wanneer was je op het water?</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                {([
+                  { id: "ochtend", label: "Ochtend", sub: "6–12u" },
+                  { id: "middag",  label: "Middag",  sub: "12–17u" },
+                  { id: "avond",   label: "Avond",   sub: "17–22u" },
+                ] as const).map(d => {
+                  const active = logDagdelen.includes(d.id);
+                  return (
+                    <button key={d.id} onClick={() => setLogDagdelen(prev =>
+                      prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id]
+                    )} style={{
+                      padding: "12px 6px", borderRadius: 12, border: `2px solid ${active ? C.sky : C.cardBorder}`,
+                      background: active ? `${C.sky}12` : C.cream, cursor: "pointer", transition: "all 0.2s",
+                      display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                    }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: active ? C.sky : C.navy }}>{d.label}</span>
+                      <span style={{ fontSize: 10, color: C.muted }}>{d.sub}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Rating */}
             <div style={{ marginBottom: 20 }}>

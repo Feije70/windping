@@ -503,6 +503,7 @@ function Dashboard() {
   const [manualPhotoUrl, setManualPhotoUrl] = useState<string | null>(null);
   const [manualPhotoUploading, setManualPhotoUploading] = useState(false);
   const [manualError, setManualError] = useState("");
+  const [manualDagdelen, setManualDagdelen] = useState<string[]>([]); // "ochtend" | "middag" | "avond"
   const [allPublicSpots, setAllPublicSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
 
   const goSpots = spots.filter(s => s.match === "go");
@@ -635,7 +636,7 @@ function Dashboard() {
   const feedItems = bundleAlertsByDate(recentAlerts);
 
   // Fetch weer voor handmatige sessie
-  const fetchManualWeather = async (spotId: number, date: string) => {
+  const fetchManualWeather = async (spotId: number, date: string, dagdelen: string[]) => {
     const spot = allSpots.find(s => s.id === spotId);
     if (!spot) return;
     setManualWeatherLoading(true);
@@ -644,10 +645,19 @@ function Dashboard() {
       const url = `${OM_BASE}?latitude=${spot.lat}&longitude=${spot.lng}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Europe/Amsterdam&start_date=${date}&end_date=${date}`;
       const res = await fetch(url);
       const data = await res.json();
-      const midday = 12; // gebruik middagwaarden
-      const wind = Math.round(data.hourly.wind_speed_10m[midday] || 0);
-      const gust = Math.round(data.hourly.wind_gusts_10m[midday] || 0);
-      const dir = Math.round(data.hourly.wind_direction_10m[midday] || 0);
+      // Bepaal uren op basis van geselecteerde dagdelen
+      const ranges: number[] = [];
+      if (dagdelen.includes("ochtend")) for (let h = 6; h < 12; h++) ranges.push(h);
+      if (dagdelen.includes("middag"))  for (let h = 12; h < 17; h++) ranges.push(h);
+      if (dagdelen.includes("avond"))   for (let h = 17; h <= 21; h++) ranges.push(h);
+      const hours = ranges.length > 0 ? ranges : [12]; // fallback: middag
+      const winds = hours.map(h => data.hourly.wind_speed_10m[h] || 0);
+      const gusts = hours.map(h => data.hourly.wind_gusts_10m[h] || 0);
+      const dirs  = hours.map(h => data.hourly.wind_direction_10m[h] || 0);
+      const avg = (arr: number[]) => Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+      const wind = avg(winds);
+      const gust = avg(gusts);
+      const dir  = avg(dirs);
       const dirStr = degToDir(dir);
       setManualWeather({ wind, gust, dir, dirStr });
     } catch { setManualWeather(null); }
@@ -684,6 +694,7 @@ function Dashboard() {
     setManualNotes("");
     setManualPhotoUrl(null);
     setManualError("");
+    setManualDagdelen([]);
   }
 
   const handleManualSessionSave = async () => {
@@ -702,7 +713,8 @@ function Dashboard() {
         gear_size: manualBuildGearSize(),
       };
       if (manualWindFeel) body.wind_feel = manualWindFeel;
-      if (manualNotes) body.notes = manualNotes;
+      if (manualDagdelen.length > 0) body.notes = [manualDagdelen.join("/"), manualNotes].filter(Boolean).join(" · ");
+      else if (manualNotes) body.notes = manualNotes;
       if (manualPhotoUrl) body.photo_url = manualPhotoUrl;
       if (manualWeather) {
         body.forecast_wind = manualWeather.wind;
@@ -1072,7 +1084,31 @@ function Dashboard() {
                         onChange={e => setManualDate(e.target.value)}
                         style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy, boxSizing: "border-box", outline: "none" }} />
                     </div>
-                    <button onClick={async () => { if (!manualSpotId) return; await fetchManualWeather(Number(manualSpotId), manualDate); setManualStep(1); }}
+                    <div style={{ marginBottom: 24 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>DAGDEEL</label>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                        {([
+                          { id: "ochtend", label: "Ochtend", sub: "6–12u" },
+                          { id: "middag",  label: "Middag",  sub: "12–17u" },
+                          { id: "avond",   label: "Avond",   sub: "17–22u" },
+                        ] as const).map(d => {
+                          const active = manualDagdelen.includes(d.id);
+                          return (
+                            <button key={d.id} onClick={() => setManualDagdelen(prev =>
+                              prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id]
+                            )} style={{
+                              padding: "12px 6px", borderRadius: 12, border: `2px solid ${active ? C.sky : C.cardBorder}`,
+                              background: active ? `${C.sky}12` : C.card, cursor: "pointer", transition: "all 0.2s",
+                              display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                            }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: active ? C.sky : C.navy }}>{d.label}</span>
+                              <span style={{ fontSize: 10, color: C.muted }}>{d.sub}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <button onClick={async () => { if (!manualSpotId) return; await fetchManualWeather(Number(manualSpotId), manualDate, manualDagdelen); setManualStep(1); }}
                       disabled={!manualSpotId}
                       style={{ width: "100%", padding: "14px", background: manualSpotId ? C.sky : C.cardBorder, border: "none", borderRadius: 12, color: "#FFF", fontSize: 15, fontWeight: 700, cursor: manualSpotId ? "pointer" : "not-allowed", opacity: manualSpotId ? 1 : 0.6 }}>
                       Volgende →
