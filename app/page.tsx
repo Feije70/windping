@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
 import { Icons } from "@/components/Icons";
