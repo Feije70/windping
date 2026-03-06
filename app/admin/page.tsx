@@ -385,7 +385,7 @@ function RedFlagsPanel({ flags }: { flags: HealthData["redFlags"] }) {
 
 export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users">("health");
+  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator">("stats");
   const [stats, setStats] = useState({ users: 0, spots: 0, alerts: 0, alertsToday: 0 });
   const [history, setHistory] = useState<AlertHistoryItem[]>([]);
   const [users, setUsers] = useState<UserInfo[]>([]);
@@ -400,6 +400,7 @@ export default function AdminPage() {
   const [diagnoseUserId, setDiagnoseUserId] = useState<number | null>(null);
   const [diagnoseLoading, setDiagnoseLoading] = useState(false);
   const [health, setHealth] = useState<HealthData | null>(null);
+  const [adminToken, setAdminToken] = useState<string | null>(null);
 
   // Users tab state
   const [allUsers, setAllUsers] = useState<any[]>([]);
@@ -427,6 +428,7 @@ export default function AdminPage() {
   const loadData = useCallback(async () => {
     try {
       const token = await getValidToken();
+      if (token) setAdminToken(token);
       const res = await fetch("/api/admin", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -564,13 +566,15 @@ export default function AdminPage() {
         </div>
 
         {/* Tab navigation */}
-        <div style={{ display: "flex", gap: 4, marginBottom: 20, background: C.creamDark, padding: 4, borderRadius: 12 }}>
+        <div style={{ display: "flex", gap: 4, marginBottom: 20, background: C.creamDark, padding: 4, borderRadius: 12, flexWrap: "wrap" }}>
           {([
-            { id: "health" as const, label: "🩺 Health", badge: health?.redFlags.filter(f => f.severity === "critical").length || 0 },
-            { id: "test" as const, label: "🧪 Test", badge: 0 },
-            { id: "history" as const, label: "📜 History", badge: 0 },
-            { id: "diagnose" as const, label: "🔍 Diagnose", badge: 0 },
-            { id: "users" as const, label: "👤 Gebruikers", badge: 0 },
+            { id: "stats" as const,     label: "📊 Stats",      badge: 0 },
+            { id: "simulator" as const, label: "🎮 Simulator",  badge: 0 },
+            { id: "health" as const,    label: "🩺 Health",     badge: health?.redFlags.filter(f => f.severity === "critical").length || 0 },
+            { id: "test" as const,      label: "🧪 Test",       badge: 0 },
+            { id: "diagnose" as const,  label: "🔍 Diagnose",   badge: 0 },
+            { id: "history" as const,   label: "📜 History",    badge: 0 },
+            { id: "users" as const,     label: "👤 Gebruikers", badge: 0 },
           ]).map(t => (
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
@@ -1207,7 +1211,574 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* ═══ STATS TAB ═══ */}
+        {tab === "stats" && <StatsTab token={adminToken} />}
+
+        {/* ═══ SIMULATOR TAB ═══ */}
+        {tab === "simulator" && <SimulatorTab token={adminToken} />}
+
       </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   STATS TAB
+   ══════════════════════════════════════════════════════════════ */
+
+function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
+  return (
+    <div style={{ height: 6, background: C.creamDark, borderRadius: 3, overflow: "hidden", flex: 1 }}>
+      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 3, transition: "width 0.6s ease" }} />
+    </div>
+  );
+}
+
+function SparkBar({ data }: { data: Record<string, number> }) {
+  const entries = Object.entries(data);
+  const max = Math.max(...entries.map(([, v]) => v), 1);
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 40 }}>
+      {entries.map(([date, count]) => {
+        const h = max > 0 ? Math.max(4, Math.round((count / max) * 40)) : 4;
+        const isToday = date === new Date().toISOString().split("T")[0];
+        return (
+          <div key={date} title={`${date}: ${count} sessies`} style={{
+            flex: 1, height: h, borderRadius: 2,
+            background: isToday ? C.sky : count > 0 ? `${C.sky}60` : C.creamDark,
+            transition: "height 0.4s ease",
+          }} />
+        );
+      })}
+    </div>
+  );
+}
+
+function StatsTab({ token }: { token: string | null }) {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      if (!token) return;
+      try {
+        const res = await fetch("/api/admin/stats", { headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) setStats(await res.json());
+      } catch {}
+      setLoading(false);
+    }
+    load();
+  }, [token]);
+
+  if (loading) return (
+    <div style={{ textAlign: "center", padding: 40 }}>
+      <div style={{ width: 24, height: 24, border: `3px solid ${C.cardBorder}`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite", margin: "0 auto" }} />
+    </div>
+  );
+
+  if (!stats) return <div style={{ color: C.amber, fontSize: 13 }}>Stats konden niet worden geladen.</div>;
+
+  const { overview, topSpots, reactionCounts, sessionsByDay, ratingDist, topUsers } = stats;
+  const ratingLabels: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker", 5: "Epic" };
+  const ratingColors: Record<number, string> = { 1: C.terra, 2: C.terra, 3: C.gold, 4: C.sky, 5: C.green };
+  const maxRating = Math.max(...Object.values(ratingDist as Record<string, number>), 1);
+  const maxSpot = topSpots?.[0]?.count || 1;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* Overview grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {[
+          { label: "Gebruikers", value: overview.totalUsers, sub: `${overview.activeUsers30d} actief (30d)`, color: C.sky },
+          { label: "Sessies", value: overview.completedSessions, sub: `${overview.sessionsLast7d} deze week`, color: C.green },
+          { label: "Reacties", value: overview.totalReactions, sub: "🤙 stoked", color: C.gold },
+          { label: "Vriendschappen", value: overview.totalFriendships, sub: `${overview.totalSpots} spots totaal`, color: C.purple },
+        ].map(item => (
+          <div key={item.label} style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow }}>
+            <div style={{ fontSize: 26, fontWeight: 800, color: item.color, fontFamily: fonts.heading, letterSpacing: 1 }}>{item.value}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginTop: 2 }}>{item.label}</div>
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>{item.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Gem. rating */}
+      {overview.avgRating && (
+        <div style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ fontSize: 32, fontWeight: 800, color: C.gold, fontFamily: fonts.heading }}>{overview.avgRating}</div>
+          <div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>Gemiddelde sessierating</div>
+            <div style={{ fontSize: 10, color: C.muted }}>Over {overview.completedSessions} completed sessies</div>
+          </div>
+          <div style={{ marginLeft: "auto", fontSize: 24 }}>⭐</div>
+        </div>
+      )}
+
+      {/* Sessions last 14 days sparkbar */}
+      <div style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 10, letterSpacing: "0.06em" }}>SESSIES — LAATSTE 14 DAGEN</div>
+        <SparkBar data={sessionsByDay} />
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+          <span style={{ fontSize: 9, color: C.muted }}>14 dagen geleden</span>
+          <span style={{ fontSize: 9, color: C.sky, fontWeight: 700 }}>Vandaag</span>
+        </div>
+      </div>
+
+      {/* Top spots */}
+      {topSpots?.length > 0 && (
+        <div style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 12, letterSpacing: "0.06em" }}>TOP SPOTS</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {topSpots.slice(0, 8).map((spot: any, i: number) => (
+              <div key={spot.id}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: i === 0 ? C.gold : C.muted, width: 16 }}>#{i + 1}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>{spot.name}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    {spot.avgRating && <span style={{ fontSize: 10, color: C.gold }}>⭐ {spot.avgRating}</span>}
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.sky }}>{spot.count}</span>
+                  </div>
+                </div>
+                <MiniBar value={spot.count} max={maxSpot} color={i === 0 ? C.sky : `${C.sky}70`} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Rating distribution */}
+      <div style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 12, letterSpacing: "0.06em" }}>RATING VERDELING</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[5, 4, 3, 2, 1].map(r => (
+            <div key={r} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: ratingColors[r], width: 40 }}>{ratingLabels[r]}</span>
+              <MiniBar value={(ratingDist as any)[r] || 0} max={maxRating} color={ratingColors[r]} />
+              <span style={{ fontSize: 11, color: C.muted, width: 24, textAlign: "right" }}>{(ratingDist as any)[r] || 0}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Top loggers */}
+      {topUsers?.length > 0 && (
+        <div style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 12, letterSpacing: "0.06em" }}>TOP LOGGERS</div>
+          {topUsers.map((u: any, i: number) => (
+            <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i < topUsers.length - 1 ? `1px solid ${C.cardBorder}` : "none" }}>
+              <span style={{ fontSize: 14, width: 20 }}>{["🥇","🥈","🥉","4️⃣","5️⃣"][i]}</span>
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: C.navy }}>{u.name}</div>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.sky }}>{u.count} sessies</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Reactions */}
+      {Object.keys(reactionCounts).length > 0 && (
+        <div style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 10, letterSpacing: "0.06em" }}>REACTIES</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {Object.entries(reactionCounts).map(([type, count]) => (
+              <div key={type} style={{ flex: 1, textAlign: "center", padding: "10px 8px", background: C.oceanTint, borderRadius: 10 }}>
+                <div style={{ fontSize: 20, marginBottom: 4 }}>🤙</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: C.sky }}>{count as number}</div>
+                <div style={{ fontSize: 9, color: C.muted, marginTop: 2 }}>stoked</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SIMULATOR TAB
+   ══════════════════════════════════════════════════════════════ */
+
+function SimulatorTab({ token }: { token: string | null }) {
+  const [simUsers, setSimUsers] = useState<any[]>([]);
+  const [simSpots, setSimSpots] = useState<any[]>([]);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [userSessions, setUserSessions] = useState<any[]>([]);
+  const [userFriendships, setUserFriendships] = useState<any[]>([]);
+  const [userFeed, setUserFeed] = useState<any[]>([]);
+  const [feedFriendCount, setFeedFriendCount] = useState(0);
+  const [activePanel, setActivePanel] = useState<"sessions" | "friends" | "feed" | "create">("feed");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  // Create session form
+  const [createSpotId, setCreateSpotId] = useState<number | null>(null);
+  const [createStatus, setCreateStatus] = useState("completed");
+  const [createRating, setCreateRating] = useState<number>(4);
+  const [createWind, setCreateWind] = useState<number>(18);
+  const [createDir, setCreateDir] = useState("SW");
+  const [createGearType, setCreateGearType] = useState("kite twintip");
+  const [createGearSize, setCreateGearSize] = useState("9");
+  const [createNotes, setCreateNotes] = useState("");
+  const [createDate, setCreateDate] = useState(new Date().toISOString().split("T")[0]);
+
+  // Add friend form
+  const [friendTargetId, setFriendTargetId] = useState<number | null>(null);
+
+  async function adminFetch(url: string) {
+    const t = token || (await import("@/lib/supabase").then(m => m.getValidToken()))
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${t}` } });
+    return res.json();
+  }
+
+  async function adminPost(url: string, body: any) {
+    const t = token || (await import("@/lib/supabase").then(m => m.getValidToken()))
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  }
+
+  async function adminDelete(url: string) {
+    const t = token || (await import("@/lib/supabase").then(m => m.getValidToken()))
+    await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${t}` } });
+  }
+
+  useEffect(() => {
+    async function load() {
+      const [usersRes, spotsRes] = await Promise.all([
+        adminFetch("/api/admin/simulate?action=users"),
+        adminFetch("/api/admin/simulate?action=spots"),
+      ]);
+      setSimUsers(usersRes.users || []);
+      setSimSpots(spotsRes.spots || []);
+      if (usersRes.users?.length) setCreateSpotId(null);
+    }
+    load();
+  }, []);
+
+  async function selectUser(user: any) {
+    setSelectedUser(user);
+    setMsg("");
+    setLoading(true);
+    const [sessRes, friendRes, feedRes] = await Promise.all([
+      adminFetch(`/api/admin/simulate?action=user_sessions&user_id=${user.id}`),
+      adminFetch(`/api/admin/simulate?action=user_friendships&user_id=${user.id}`),
+      adminFetch(`/api/admin/simulate?action=user_feed&user_id=${user.id}`),
+    ]);
+    setUserSessions(sessRes.sessions || []);
+    setUserFriendships(friendRes.friendships || []);
+    setUserFeed(feedRes.feed || []);
+    setFeedFriendCount(feedRes.friendCount || 0);
+    setLoading(false);
+  }
+
+  async function createSession() {
+    if (!selectedUser || !createSpotId) return;
+    setLoading(true);
+    const res = await adminPost("/api/admin/simulate", {
+      action: "create_session",
+      userId: selectedUser.id,
+      spotId: createSpotId,
+      sessionDate: createDate,
+      status: createStatus,
+      rating: createStatus === "completed" ? createRating : null,
+      gearType: createGearType || null,
+      gearSize: createGearSize || null,
+      forecastWind: createWind,
+      forecastDir: createDir,
+      notes: createNotes || null,
+    });
+    if (res.error) { setMsg("❌ " + res.error); }
+    else { setMsg("✓ Sessie aangemaakt!"); await selectUser(selectedUser); setActivePanel("sessions"); }
+    setLoading(false);
+  }
+
+  async function deleteSession(id: number) {
+    if (!confirm("Sessie verwijderen?")) return;
+    await adminDelete(`/api/admin/simulate?action=session&id=${id}`);
+    setUserSessions(prev => prev.filter(s => s.id !== id));
+    setMsg("✓ Sessie verwijderd");
+  }
+
+  async function createFriendship() {
+    if (!selectedUser || !friendTargetId) return;
+    setLoading(true);
+    const res = await adminPost("/api/admin/simulate", {
+      action: "create_friendship",
+      userId1: selectedUser.id,
+      userId2: friendTargetId,
+    });
+    if (res.error) setMsg("❌ " + res.error);
+    else { setMsg("✓ Vriendschap aangemaakt!"); await selectUser(selectedUser); }
+    setLoading(false);
+  }
+
+  async function deleteFriendship(id: number) {
+    await adminDelete(`/api/admin/simulate?action=friendship&id=${id}`);
+    setUserFriendships(prev => prev.filter(f => f.id !== id));
+    setMsg("✓ Vriendschap verwijderd");
+  }
+
+  const ratingLabels: Record<number, string> = { 1: "Shit 😬", 2: "Mwah 😐", 3: "Oké 👌", 4: "Lekker 😎", 5: "EPIC 🤙" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      {/* User picker */}
+      <div style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 10, letterSpacing: "0.06em" }}>SELECTEER GEBRUIKER</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+          {simUsers.map(u => (
+            <button key={u.id} onClick={() => selectUser(u)} style={{
+              padding: "10px 14px", borderRadius: 10, textAlign: "left", cursor: "pointer",
+              background: selectedUser?.id === u.id ? `${C.sky}15` : C.creamDark,
+              border: `1.5px solid ${selectedUser?.id === u.id ? C.sky : "transparent"}`,
+              display: "flex", alignItems: "center", gap: 10,
+            }}>
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                {(u.name || u.email || "?").charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{u.name || "—"}</div>
+                <div style={{ fontSize: 10, color: C.muted }}>{u.email}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Panel */}
+      {selectedUser && (
+        <div style={{ background: C.card, borderRadius: 14, boxShadow: C.cardShadow, overflow: "hidden" }}>
+
+          {/* Panel tabs */}
+          <div style={{ display: "flex", borderBottom: `1px solid ${C.cardBorder}` }}>
+            {([
+              { id: "feed" as const,     label: `👁️ Feed (${feedFriendCount} vrienden)` },
+              { id: "sessions" as const, label: `📋 Sessies (${userSessions.length})` },
+              { id: "friends" as const,  label: `🤝 Vrienden (${userFriendships.filter(f => f.status === "accepted").length})` },
+              { id: "create" as const,   label: "➕ Simuleer" },
+            ]).map(p => (
+              <button key={p.id} onClick={() => setActivePanel(p.id)} style={{
+                flex: 1, padding: "10px 4px", fontSize: 11, fontWeight: 700,
+                background: activePanel === p.id ? C.cream : "transparent",
+                color: activePanel === p.id ? C.sky : C.muted,
+                border: "none", cursor: "pointer",
+                borderBottom: activePanel === p.id ? `2px solid ${C.sky}` : "2px solid transparent",
+              }}>{p.label}</button>
+            ))}
+          </div>
+
+          <div style={{ padding: 16 }}>
+            {msg && (
+              <div style={{ padding: "8px 12px", borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 600,
+                background: msg.startsWith("✓") ? `${C.green}15` : `${C.terra}15`,
+                color: msg.startsWith("✓") ? C.green : C.terra,
+              }}>{msg}</div>
+            )}
+
+            {loading && (
+              <div style={{ textAlign: "center", padding: 20 }}>
+                <div style={{ width: 20, height: 20, border: `3px solid ${C.cardBorder}`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite", margin: "0 auto" }} />
+              </div>
+            )}
+
+            {/* FEED PANEL */}
+            {!loading && activePanel === "feed" && (
+              <div>
+                <div style={{ fontSize: 12, color: C.sub, marginBottom: 12 }}>
+                  Dit is wat <strong style={{ color: C.navy }}>{selectedUser.name || selectedUser.email}</strong> ziet in zijn feed.
+                  {feedFriendCount === 0 && <span style={{ color: C.amber }}> Nog geen vrienden — voeg vrienden toe via het 🤝 tabblad.</span>}
+                </div>
+                {userFeed.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>
+                    Geen sessies in feed — vrienden moeten sessies loggen.
+                  </div>
+                ) : userFeed.map((item: any) => (
+                  <div key={item.id} style={{ padding: "10px 12px", background: C.creamDark, borderRadius: 10, marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{item.friendName} · {item.spotName}</div>
+                      <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 6, fontWeight: 700,
+                        background: item.status === "completed" ? `${C.green}20` : `${C.sky}20`,
+                        color: item.status === "completed" ? C.green : C.sky,
+                      }}>{item.status}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.muted }}>
+                      {item.sessionDate} · {item.forecastWind}kn {item.forecastDir}
+                      {item.gearType && ` · ${item.gearType}`}
+                      {item.rating && ` · ${ratingLabels[item.rating]}`}
+                    </div>
+                    {item.notes && <div style={{ fontSize: 11, color: C.sub, marginTop: 4, fontStyle: "italic" }}>{item.notes}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* SESSIONS PANEL */}
+            {!loading && activePanel === "sessions" && (
+              <div>
+                {userSessions.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>Geen sessies</div>
+                ) : userSessions.map((s: any) => (
+                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.cardBorder}` }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{s.spots?.display_name || `Spot #${s.spot_id}`}</div>
+                      <div style={{ fontSize: 11, color: C.muted }}>
+                        {s.session_date} · {s.status}
+                        {s.forecast_wind && ` · ${s.forecast_wind}kn`}
+                        {s.gear_type && ` · ${s.gear_type}`}
+                        {s.rating && ` · ${ratingLabels[s.rating]}`}
+                      </div>
+                      {s.notes && <div style={{ fontSize: 11, color: C.sub, fontStyle: "italic" }}>{s.notes}</div>}
+                    </div>
+                    <button onClick={() => deleteSession(s.id)} style={{ padding: "4px 10px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 6, fontSize: 11, color: "#DC2626", cursor: "pointer", fontWeight: 600 }}>
+                      Verwijder
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* FRIENDS PANEL */}
+            {!loading && activePanel === "friends" && (
+              <div>
+                {/* Add friendship */}
+                <div style={{ marginBottom: 14, padding: "12px", background: C.creamDark, borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8 }}>VRIENDSCHAP AANMAKEN</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <select value={friendTargetId || ""} onChange={e => setFriendTargetId(Number(e.target.value))}
+                      style={{ flex: 1, padding: "8px 10px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 12, color: C.navy }}>
+                      <option value="">Kies gebruiker...</option>
+                      {simUsers.filter(u => u.id !== selectedUser.id).map(u => (
+                        <option key={u.id} value={u.id}>{u.name || u.email}</option>
+                      ))}
+                    </select>
+                    <button onClick={createFriendship} disabled={!friendTargetId || loading} style={{ padding: "8px 14px", background: C.sky, color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                      Toevoegen
+                    </button>
+                  </div>
+                </div>
+
+                {userFriendships.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>Geen vriendschappen</div>
+                ) : userFriendships.map((f: any) => (
+                  <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.cardBorder}` }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>{f.friendName}</div>
+                      <div style={{ fontSize: 10, color: C.muted }}>{f.status}</div>
+                    </div>
+                    <button onClick={() => deleteFriendship(f.id)} style={{ padding: "4px 10px", background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 6, fontSize: 11, color: "#DC2626", cursor: "pointer", fontWeight: 600 }}>
+                      Verwijder
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* CREATE SESSION PANEL */}
+            {!loading && activePanel === "create" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ fontSize: 12, color: C.sub }}>
+                  Maak een sessie aan namens <strong style={{ color: C.navy }}>{selectedUser.name || selectedUser.email}</strong>.
+                  Deze verschijnt direct in de feed van zijn vrienden.
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>SPOT</label>
+                  <select value={createSpotId || ""} onChange={e => setCreateSpotId(Number(e.target.value))}
+                    style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy }}>
+                    <option value="">Kies spot...</option>
+                    {simSpots.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}
+                  </select>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>DATUM</label>
+                    <input type="date" value={createDate} onChange={e => setCreateDate(e.target.value)}
+                      style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>STATUS</label>
+                    <select value={createStatus} onChange={e => setCreateStatus(e.target.value)}
+                      style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy }}>
+                      <option value="completed">completed</option>
+                      <option value="going">going</option>
+                    </select>
+                  </div>
+                </div>
+
+                {createStatus === "completed" && (
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>RATING</label>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {[1, 2, 3, 4, 5].map(r => (
+                        <button key={r} onClick={() => setCreateRating(r)} style={{
+                          flex: 1, padding: "6px 0", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", border: "none",
+                          background: createRating === r ? C.sky : C.creamDark,
+                          color: createRating === r ? "#fff" : C.muted,
+                        }}>{r}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>WIND (KN)</label>
+                    <input type="number" value={createWind} onChange={e => setCreateWind(Number(e.target.value))}
+                      style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>RICHTING</label>
+                    <select value={createDir} onChange={e => setCreateDir(e.target.value)}
+                      style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy }}>
+                      {["N","NE","E","SE","S","SW","W","NW"].map(d => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>GEAR TYPE</label>
+                    <select value={createGearType} onChange={e => setCreateGearType(e.target.value)}
+                      style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy }}>
+                      <option value="kite twintip">kite twintip</option>
+                      <option value="kite surfboard">kite surfboard</option>
+                      <option value="kite foil">kite foil</option>
+                      <option value="windsurf">windsurf</option>
+                      <option value="wingfoil">wingfoil</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>MAAT</label>
+                    <input value={createGearSize} onChange={e => setCreateGearSize(e.target.value)} placeholder="bijv. 9"
+                      style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, boxSizing: "border-box" }} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>NOTITIE (optioneel)</label>
+                  <input value={createNotes} onChange={e => setCreateNotes(e.target.value)} placeholder="Super sessie!"
+                    style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, boxSizing: "border-box" }} />
+                </div>
+
+                <button onClick={createSession} disabled={!createSpotId || loading} style={{
+                  width: "100%", padding: "12px", background: C.green, color: "#fff", border: "none", borderRadius: 10,
+                  fontSize: 14, fontWeight: 700, cursor: createSpotId ? "pointer" : "not-allowed", opacity: createSpotId ? 1 : 0.5,
+                }}>
+                  {loading ? "Aanmaken..." : `✓ Sessie aanmaken namens ${selectedUser.name || selectedUser.email}`}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
