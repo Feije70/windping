@@ -468,19 +468,7 @@ function Dashboard() {
   // Handmatige sessie modal
   const [showManualSession, setShowManualSession] = useState(false);
 
-  // Lees spot terug via URL params
   const searchParams = useSearchParams();
-  useEffect(() => {
-    const spotId = searchParams.get("spot_id");
-    const spotName = searchParams.get("spot_name");
-    const openSession = searchParams.get("open_session");
-    if (spotId && openSession === "true") {
-      setManualSpotId(Number(spotId));
-      setShowManualSession(true);
-      setManualStep("pick");
-      router.replace("/");
-    }
-  }, [searchParams]);
   const [manualSpotId, setManualSpotId] = useState<number | "">("");
   const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
   const [manualWeather, setManualWeather] = useState<{wind: number; gust: number; dir: number; dirStr: string} | null>(null);
