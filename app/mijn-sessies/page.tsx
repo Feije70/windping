@@ -104,22 +104,38 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
   );
 }
 
-function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
+function SessionDetail({ s, userId, onClose }: { s: Session; userId: number; onClose: () => void }) {
   const spot = s._spotName || "Spot";
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [deleteError, setDeleteError] = React.useState<string | null>(null);
 
   async function handleDelete() {
     setDeleting(true);
+    setDeleteError(null);
     try {
       const token = await getValidToken();
-      await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}`, {
-        method: "DELETE",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, Prefer: "return=minimal" },
-      });
+      const delRes = await fetch(
+        `${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}&created_by=eq.${userId}`,
+        {
+          method: "DELETE",
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, Prefer: "return=minimal" },
+        }
+      );
+      if (!delRes.ok) {
+        const errText = await delRes.text();
+        console.error("DELETE session failed:", delRes.status, errText);
+        setDeleteError("Verwijderen mislukt. Probeer opnieuw.");
+        setDeleting(false);
+        return;
+      }
       onClose();
       window.location.reload();
-    } catch { setDeleting(false); }
+    } catch (e) {
+      console.error("DELETE session error:", e);
+      setDeleteError("Verwijderen mislukt. Probeer opnieuw.");
+      setDeleting(false);
+    }
   }
 
   return (
@@ -185,12 +201,15 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
         )}
 
         <div style={{ marginTop: 24, textAlign: "center" }}>
+          {deleteError && (
+            <div style={{ fontSize: 13, color: C.terra, marginBottom: 10 }}>{deleteError}</div>
+          )}
           {!confirmDelete ? (
-            <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#8A9BB0", fontWeight: 500 }}>🗑 Verwijder sessie</button>
+            <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: C.sub, fontWeight: 500 }}>Verwijder sessie</button>
           ) : (
             <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              <button onClick={() => setConfirmDelete(false)} style={{ padding: "8px 16px", background: "#F6F1EB", border: "1px solid #E2D9CE", borderRadius: 10, color: "#1F354C", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Annuleer</button>
-              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: "#C97A63", border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{deleting ? "Verwijderen..." : "Ja, verwijder"}</button>
+              <button onClick={() => { setConfirmDelete(false); setDeleteError(null); }} style={{ padding: "8px 16px", background: C.cream, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.navy, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Annuleer</button>
+              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: C.terra, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: deleting ? 0.7 : 1 }}>{deleting ? "Verwijderen..." : "Ja, verwijder"}</button>
             </div>
           )}
         </div>
@@ -203,6 +222,7 @@ export default function MijnSessiesPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Session | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -217,6 +237,7 @@ export default function MijnSessiesPage() {
         const users = await userRes.json();
         if (!users?.length) return;
         const userId = users[0].id;
+        setUserId(userId);
 
         const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url,image_url`, {
           headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
@@ -267,7 +288,7 @@ export default function MijnSessiesPage() {
           ))
         )}
       </div>
-      {selected && <SessionDetail s={selected} onClose={() => setSelected(null)} />}
+      {selected && userId && <SessionDetail s={selected} userId={userId} onClose={() => setSelected(null)} />}
       <NavBar />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
