@@ -430,6 +430,7 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
             )}
           </div>
           <div style={{ padding: "0 14px 14px", display: "flex", gap: 8 }}>
+            {latest.id && (<>
             <a
               href={`https://wa.me/?text=${encodeURIComponent([
                 latest.rating ? ({1:"Shit 😬",2:"Mwah 😐",3:"Oké 👌",4:"Lekker! 😎",5:"EPIC! 🤙"} as any)[latest.rating] : "Sessie gelogd",
@@ -449,6 +450,7 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
             >
               Deel sessie →
             </a>
+            </>)}
           </div>
         </div>
       )}
@@ -622,7 +624,7 @@ function Dashboard() {
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
           });
           if (sessRes.ok) setRecentSessions(await sessRes.json() || []);
-          const statsRes = await fetch(`${SUPABASE_URL}/rest/v1/user_stats?created_by=eq.${user.id}&select=*`, {
+          const statsRes = await fetch(`${SUPABASE_URL}/rest/v1/user_stats?user_id=eq.${user.id}&select=*`, {
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
           });
           if (statsRes.ok) {
