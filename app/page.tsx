@@ -547,6 +547,17 @@ function Dashboard() {
       ]);
       const names: Record<number, string> = {};
       (spotsData || []).forEach((s: any) => { names[s.id] = s.display_name; });
+      
+      // Haal ook namen op van spots in recente sessies die niet in user_spots zitten
+      try {
+        const sessRes2 = await sbGet(`sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=spot_id`);
+        const sessionSpotIds = (sessRes2 || []).map((s: any) => s.spot_id).filter((id: number) => !names[id]);
+        if (sessionSpotIds.length > 0) {
+          const extraSpots = await sbGet(`spots?id=in.(${sessionSpotIds.join(",")})&select=id,display_name`);
+          (extraSpots || []).forEach((s: any) => { names[s.id] = s.display_name; });
+        }
+      } catch {}
+      
       setSpotNames(names);
       setAllSpots((spotsData || []).filter((s: any) => s.latitude && s.longitude).map((s: any) => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude })));
       // Load ALL public spots for manual session spot picker
