@@ -144,8 +144,12 @@ export default function SpotSelectPage() {
           ) : filtered ? (
             /* Zoekresultaten */
             filtered.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "40px 20px", color: C.muted, fontSize: 14 }}>
-                Geen spots gevonden voor &ldquo;{search}&rdquo;
+              <div style={{ textAlign: "center", padding: "32px 20px" }}>
+                <div style={{ fontSize: 14, color: C.muted, marginBottom: 16 }}>Geen spots gevonden voor &ldquo;{search}&rdquo;</div>
+                <button onClick={() => router.push("/spot-create")} style={{
+                  padding: "11px 20px", background: C.sky, border: "none", borderRadius: 12,
+                  cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#fff",
+                }}>+ Zelf aanmaken</button>
               </div>
             ) : (
               <div style={{ background: C.card, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.06)" }}>
