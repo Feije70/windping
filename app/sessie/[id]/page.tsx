@@ -1,8 +1,8 @@
 import { Metadata } from "next";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
-import DeleteSessionButton from "./DeleteSessionButton";
-import ShareSessionButton from "./ShareSessionButton";
+import OwnerActions from "./OwnerActions";
+import VisitorCTA from "./VisitorCTA";
 
 const SUPABASE_URL = "https://kaimbtcuyemwzvhsqwgu.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_ds6_HWMJEYxEnvrnEefeRg_q2T-ROO_";
@@ -11,7 +11,7 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_A
 async function getSession(id: string) {
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,photo_url,notes&limit=1`,
+    `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,created_by,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,photo_url,notes&limit=1`,
     {
       headers: {
         apikey: key,
@@ -148,33 +148,17 @@ export default async function ShareSessionPage({ params }: { params: Promise<{ i
             </div>
           )}
 
-          {/* Share */}
-          <ShareSessionButton
+          <OwnerActions
             sessionId={session.id}
+            createdBy={session.created_by}
             spotName={session.spotName}
             wind={session.forecast_wind}
             dir={session.forecast_dir}
             rating={session.rating}
           />
 
-          {/* Delete */}
-          <div style={{ textAlign: "center", marginBottom: 16 }}>
-            <DeleteSessionButton sessionId={session.id} />
-          </div>
-
-          {/* CTA */}
-          <div style={{ background: "#1F354C", borderRadius: 16, padding: "20px", textAlign: "center" }}>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>Ook je sessies bijhouden?</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>Join WindPing 🤙</div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-              <Link href="/signup" style={{ display: "inline-block", padding: "11px 22px", background: "#10B981", color: "#fff", borderRadius: 12, fontSize: 14, fontWeight: 700, textDecoration: "none" }}>
-                Aanmelden
-              </Link>
-              <Link href="/login" style={{ display: "inline-block", padding: "11px 22px", background: "rgba(255,255,255,0.1)", color: "#fff", borderRadius: 12, fontSize: 14, fontWeight: 600, textDecoration: "none" }}>
-                Inloggen
-              </Link>
-            </div>
-          </div>
+          {/* CTA — alleen voor bezoekers zichtbaar (OwnerActions toont niets als je eigenaar bent) */}
+          <VisitorCTA sessionId={session.id} />
         </div>
       </div>
     </div>
