@@ -473,7 +473,9 @@ function Dashboard() {
     function checkSpotFromStorage() {
       const spotId = localStorage.getItem("session_spot_id");
       const spotName = localStorage.getItem("session_spot_name");
+      console.log("localStorage check:", { spotId, spotName });
       if (spotId && spotName) {
+        console.log("Setting spotId:", Number(spotId));
         setManualSpotId(Number(spotId));
         setShowManualSession(true);
         setManualStep(1);
