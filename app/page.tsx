@@ -481,8 +481,9 @@ function Dashboard() {
       }
     }
     window.addEventListener("focus", checkSpotFromStorage);
+    window.addEventListener("popstate", checkSpotFromStorage);
     checkSpotFromStorage();
-    return () => window.removeEventListener("focus", checkSpotFromStorage);
+    return () => { window.removeEventListener("focus", checkSpotFromStorage); window.removeEventListener("popstate", checkSpotFromStorage); };
   }, []);
   const [manualSpotId, setManualSpotId] = useState<number | "">("");
   const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
