@@ -108,6 +108,10 @@ export default function SpotSelectPage() {
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
             </button>
             <span style={{ ...h, fontSize: 20, fontWeight: 800, color: C.navy }}>Kies een spot</span>
+            <button onClick={() => router.push("/spot-create")} style={{
+              marginLeft: "auto", background: "none", border: "none", cursor: "pointer",
+              fontSize: 12, color: C.sky, fontWeight: 600, padding: "4px 0",
+            }}>+ Nieuw</button>
           </div>
           <div style={{ position: "relative" }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2" strokeLinecap="round"
