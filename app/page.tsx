@@ -393,7 +393,7 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
                     {latest.forecast_wind && (
                       <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", borderRadius: 9, padding: "5px 9px", textAlign: "center" }}>
                         <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{latest.forecast_wind}</div>
-                        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>KN</div>
+                        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>{latest.forecast_dir ? `${latest.forecast_dir} · KN` : "KN"}</div>
                       </div>
                     )}
                     {latest.rating && (
@@ -413,7 +413,7 @@ function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionSta
                     <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>{dateLabelFn(latest.session_date)}</div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {latest.forecast_wind && <div style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{latest.forecast_wind}<span style={{ fontSize: 10 }}>kn</span></div>}
+                    {latest.forecast_wind && <div style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{latest.forecast_wind}<span style={{ fontSize: 10 }}>kn</span>{latest.forecast_dir && <span style={{ fontSize: 10, color: C.sub, fontWeight: 500 }}> {latest.forecast_dir}</span>}</div>}
                     {latest.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColorsL[latest.rating] }}>{ratingLabelsL[latest.rating]}</div>}
                   </div>
                 </div>
