@@ -1005,20 +1005,34 @@ function Dashboard() {
                   <>
                     <div style={{ marginBottom: 16 }}>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>SPOT</label>
-                      <select value={manualSpotId} onChange={e => setManualSpotId(Number(e.target.value) || "")}
-                        style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy, outline: "none" }}>
-                        <option value="">Kies een spot...</option>
-                        {allSpots.length > 0 && (
-                          <optgroup label="Mijn spots">
-                            {allSpots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                          </optgroup>
-                        )}
-                        {otherSpots.length > 0 && (
-                          <optgroup label="Alle spots">
-                            {otherSpots.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                          </optgroup>
-                        )}
-                      </select>
+                      {manualSpotId ? (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.sky}`, borderRadius: 12 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{allSpots.find(s => s.id === manualSpotId)?.name || otherSpots.find(s => s.id === manualSpotId)?.name || "Spot"}</span>
+                          <button onClick={() => setManualSpotId("")} style={{ fontSize: 11, color: C.sky, fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}>Wijzig</button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, overflow: "hidden" }}>
+                            {allSpots.length > 0 ? (
+                              <>
+                                <div style={{ padding: "8px 14px 4px", fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.5 }}>MIJN SPOTS</div>
+                                {allSpots.map(s => (
+                                  <button key={s.id} onClick={() => setManualSpotId(s.id)}
+                                    style={{ padding: "10px 14px", textAlign: "left", background: "none", border: "none", borderTop: `1px solid ${C.cardBorder}`, cursor: "pointer", fontSize: 14, fontWeight: 600, color: C.navy }}>
+                                    {s.name}
+                                  </button>
+                                ))}
+                              </>
+                            ) : (
+                              <div style={{ padding: "12px 14px", fontSize: 13, color: C.muted }}>Geen eigen spots</div>
+                            )}
+                          </div>
+                          <a href="/spots" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, textDecoration: "none" }}>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: C.navy }}>Andere spot kiezen</span>
+                            <span style={{ fontSize: 14, color: C.sky }}>→</span>
+                          </a>
+                        </div>
+                      )}
                     </div>
                     <div style={{ marginBottom: 24 }}>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>DATUM</label>
