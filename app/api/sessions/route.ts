@@ -292,6 +292,46 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/* ── DELETE: Remove a session ── */
+export async function DELETE(req: NextRequest) {
+  try {
+    const userId = await getUserId(req);
+    if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const url = new URL(req.url);
+    const sessionId = url.searchParams.get("id");
+    if (!sessionId) return NextResponse.json({ error: "Session id required" }, { status: 400 });
+
+    const supabase = sb();
+
+    // Verify ownership before deleting
+    const { data: session } = await supabase
+      .from("sessions")
+      .select("id, created_by")
+      .eq("id", sessionId)
+      .eq("created_by", userId)
+      .single();
+
+    if (!session) return NextResponse.json({ error: "Not found or not authorized" }, { status: 404 });
+
+    const { error } = await supabase
+      .from("sessions")
+      .delete()
+      .eq("id", sessionId)
+      .eq("created_by", userId);
+
+    if (error) throw error;
+
+    // Recalculate stats after delete (trigger handles this, but belt+suspenders)
+    await updateUserStats(supabase, userId);
+
+    return NextResponse.json({ success: true });
+  } catch (e: any) {
+    console.error("DELETE /api/sessions error:", e);
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
 /* ── Recalculate user stats + badges ── */
 async function updateUserStats(supabase: any, userId: number) {
   try {

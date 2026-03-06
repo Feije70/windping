@@ -115,16 +115,13 @@ function SessionDetail({ s, userId, onClose }: { s: Session; userId: number; onC
     setDeleteError(null);
     try {
       const token = await getValidToken();
-      const delRes = await fetch(
-        `${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}&created_by=eq.${userId}`,
-        {
-          method: "DELETE",
-          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, Prefer: "return=minimal" },
-        }
-      );
+      const delRes = await fetch(`/api/sessions?id=${s.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!delRes.ok) {
-        const errText = await delRes.text();
-        console.error("DELETE session failed:", delRes.status, errText);
+        const errJson = await delRes.json().catch(() => ({}));
+        console.error("DELETE session failed:", delRes.status, errJson);
         setDeleteError("Verwijderen mislukt. Probeer opnieuw.");
         setDeleting(false);
         return;
