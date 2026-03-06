@@ -978,7 +978,7 @@ function Dashboard() {
           return (
             <div style={{ position: "fixed", inset: 0, background: "rgba(31,53,76,0.55)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 16 }}
               onClick={(e) => { if (e.target === e.currentTarget) { setShowManualSession(false); resetManualSession(); } }}>
-              <div style={{ background: C.cream, borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 480, padding: "24px 20px 48px", maxHeight: "85vh", overflowY: "auto" }}>
+              <div style={{ background: C.cream, borderRadius: "20px 20px 20px 20px", width: "100%", maxWidth: 480, padding: "24px 20px 48px", maxHeight: "85vh", overflowY: "auto" }}>
 
                 {/* Header */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
