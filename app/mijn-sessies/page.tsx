@@ -1,5 +1,4 @@
 "use client";
-import React from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
@@ -20,7 +19,6 @@ interface Session {
   wind_feel: string | null;
   notes: string | null;
   photo_url: string | null;
-  image_url: string | null;
   _spotName?: string;
 }
 
@@ -47,9 +45,9 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
       overflow: "hidden", marginBottom: 12, cursor: "pointer",
       borderLeft: s.rating ? `3px solid ${ratingColors[s.rating]}` : `3px solid ${C.cardBorder}`,
     }}>
-      {(s.photo_url || s.image_url) && (
+      {s.photo_url && (
         <div style={{ position: "relative" }}>
-          <img src={s.photo_url || s.image_url || ""} alt="" style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }} />
+          <img src={s.photo_url} alt="" style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.5) 100%)" }} />
           <div style={{ position: "absolute", bottom: 10, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
             <div>
@@ -66,7 +64,7 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
         </div>
       )}
       <div style={{ padding: "12px 14px" }}>
-        {!(s.photo_url || s.image_url) && (
+        {!s.photo_url && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{spot}</div>
@@ -104,37 +102,8 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
   );
 }
 
-function SessionDetail({ s, userId, onClose }: { s: Session; userId: number; onClose: () => void }) {
+function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
   const spot = s._spotName || "Spot";
-  const [confirmDelete, setConfirmDelete] = React.useState(false);
-  const [deleting, setDeleting] = React.useState(false);
-  const [deleteError, setDeleteError] = React.useState<string | null>(null);
-
-  async function handleDelete() {
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      const token = await getValidToken();
-      const delRes = await fetch(`/api/sessions?id=${s.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!delRes.ok) {
-        const errJson = await delRes.json().catch(() => ({}));
-        console.error("DELETE session failed:", delRes.status, errJson);
-        setDeleteError("Verwijderen mislukt. Probeer opnieuw.");
-        setDeleting(false);
-        return;
-      }
-      onClose();
-      window.location.reload();
-    } catch (e) {
-      console.error("DELETE session error:", e);
-      setDeleteError("Verwijderen mislukt. Probeer opnieuw.");
-      setDeleting(false);
-    }
-  }
-
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, background: C.cream, overflowY: "auto" }}>
       <div style={{ position: "sticky", top: 0, zIndex: 10, background: C.cream, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
@@ -147,9 +116,9 @@ function SessionDetail({ s, userId, onClose }: { s: Session; userId: number; onC
         <span style={{ ...h, fontSize: 17, fontWeight: 700, color: C.navy }}>Sessie detail</span>
       </div>
       <div style={{ padding: "0 16px 120px" }}>
-        {(s.photo_url || s.image_url) && (
+        {s.photo_url && (
           <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
-            <img src={s.photo_url || s.image_url || ""} alt="" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} />
+            <img src={s.photo_url} alt="" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} />
           </div>
         )}
         <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, padding: "16px", marginBottom: 12 }}>
@@ -196,20 +165,6 @@ function SessionDetail({ s, userId, onClose }: { s: Session; userId: number; onC
             <div style={{ fontSize: 14, color: C.navy, lineHeight: 1.6 }}>{s.notes}</div>
           </div>
         )}
-
-        <div style={{ marginTop: 24, textAlign: "center" }}>
-          {deleteError && (
-            <div style={{ fontSize: 13, color: C.terra, marginBottom: 10 }}>{deleteError}</div>
-          )}
-          {!confirmDelete ? (
-            <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: C.sub, fontWeight: 500 }}>Verwijder sessie</button>
-          ) : (
-            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              <button onClick={() => { setConfirmDelete(false); setDeleteError(null); }} style={{ padding: "8px 16px", background: C.cream, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.navy, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Annuleer</button>
-              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: C.terra, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: deleting ? 0.7 : 1 }}>{deleting ? "Verwijderen..." : "Ja, verwijder"}</button>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -219,7 +174,6 @@ export default function MijnSessiesPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Session | null>(null);
-  const [userId, setUserId] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -234,9 +188,8 @@ export default function MijnSessiesPage() {
         const users = await userRes.json();
         if (!users?.length) return;
         const userId = users[0].id;
-        setUserId(userId);
 
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url,image_url`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url`, {
           headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
         });
         const data: Session[] = await res.json() || [];
@@ -285,7 +238,7 @@ export default function MijnSessiesPage() {
           ))
         )}
       </div>
-      {selected && userId && <SessionDetail s={selected} userId={userId} onClose={() => setSelected(null)} />}
+      {selected && <SessionDetail s={selected} onClose={() => setSelected(null)} />}
       <NavBar />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
