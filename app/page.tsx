@@ -9,7 +9,7 @@ import NavBar from "@/components/NavBar";
 import { Logo } from "@/components/Logo";
 import { WPing } from "@/components/WPing";
 import { getEmail, isTokenExpired, getAuthId, getValidToken, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
-import PhotoCropModal from "@/app/components/PhotoCropModal";
+import PhotoCropModal, { cropStyle } from "@/app/components/PhotoCropModal";
 
 const h = { fontFamily: fonts.heading };
 const OM_BASE = "https://api.open-meteo.com/v1/forecast";
@@ -319,6 +319,23 @@ interface RecentSession {
 function SessionStatsSection({ stats, sessions, spotNames, userId }: { stats: SessionStats; sessions: RecentSession[]; spotNames: Record<number, string>; userId: number | null }) {
   const completed = sessions.filter(s => s.status === "completed");
   const hasData = completed.length > 0;
+  const [cropSessionId, setCropSessionId] = useState<number | null>(null);
+  const [cropPhotoUrl, setCropPhotoUrl] = useState<string | null>(null);
+  const [cropPosition, setCropPosition] = useState<string>("50% 50%");
+  const [localCrops, setLocalCrops] = useState<Record<number, string>>({});
+
+  async function saveCrop(sessionId: number, pos: string) {
+    setLocalCrops(prev => ({ ...prev, [sessionId]: pos }));
+    setCropSessionId(null);
+    try {
+      const token = await getValidToken();
+      await fetch(`/api/sessions?id=${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ photo_crop: pos }),
+      });
+    } catch (e) { console.error("crop save error", e); }
+  }
 
   if (!hasData) {
     return (
@@ -384,8 +401,9 @@ function SessionStatsSection({ stats, sessions, spotNames, userId }: { stats: Se
         <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, overflow: "hidden", marginBottom: 12 }}>
           {latest.photo_url && (
             <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", overflow: "hidden" }}>
-              <img src={latest.photo_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: latest.photo_crop || "50% 50%", display: "block" }} />
+              <img src={latest.photo_url} alt="" style={cropStyle(localCrops[latest.id] || latest.photo_crop)} />
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 30%, rgba(31,53,76,0.85) 100%)" }} />
+              <button onClick={() => { setCropSessionId(latest.id); setCropPhotoUrl(latest.photo_url); setCropPosition(localCrops[latest.id] || latest.photo_crop || "50% 50%"); }} style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.45)", border: "none", borderRadius: 8, padding: "5px 8px", cursor: "pointer", color: "#fff", fontSize: 14, lineHeight: 1 }}>✂️</button>
               <div style={{ position: "absolute", bottom: 12, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>{latestSpot}</div>
@@ -475,6 +493,14 @@ function SessionStatsSection({ stats, sessions, spotNames, userId }: { stats: Se
         <Link href="/mijn-sessies" style={{ display: "block", textAlign: "center", marginTop: 10, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
           Alle {stats.total_sessions} sessies bekijken →
         </Link>
+      )}
+      {cropSessionId && cropPhotoUrl && (
+        <PhotoCropModal
+          imageUrl={cropPhotoUrl}
+          initialPosition={cropPosition}
+          onConfirm={(pos) => saveCrop(cropSessionId, pos)}
+          onCancel={() => setCropSessionId(null)}
+        />
       )}
     </div>
   );
@@ -637,7 +663,7 @@ function Dashboard() {
   const [manualWindFeel, setManualWindFeel] = useState<string | null>(null);
   const [manualNotes, setManualNotes] = useState("");
   const [manualPhotoUrl, setManualPhotoUrl] = useState<string | null>(null);
-  const [manualPhotoCrop, setManualPhotoCrop] = useState<string>("50% 50%");
+  const [manualPhotoCrop, setManualPhotoCrop] = useState<string>("");
   const [showManualCropModal, setShowManualCropModal] = useState(false);
   const [manualPhotoUploading, setManualPhotoUploading] = useState(false);
   const [manualError, setManualError] = useState("");
@@ -1460,7 +1486,7 @@ function Dashboard() {
                       {manualPhotoUrl ? (
                         <div style={{ position: "relative", borderRadius: 12, overflow: "hidden" }}>
                           <div style={{ width: "100%", aspectRatio: "4/3", overflow: "hidden", borderRadius: 12 }}>
-                            <img src={manualPhotoUrl} alt="Sessie foto" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: manualPhotoCrop, display: "block" }} />
+                            <img src={manualPhotoUrl} alt="Sessie foto" style={cropStyle(manualPhotoCrop)} />
                           </div>
                           <button onClick={() => setShowManualCropModal(true)} style={{ position: "absolute", bottom: 8, right: 44, padding: "4px 10px", borderRadius: 20, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>✂️ Bijsnijden</button>
                           <button onClick={() => { setManualPhotoUrl(null); setManualPhotoCrop("50% 50%"); }} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>

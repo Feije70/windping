@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import OwnerActions from "./OwnerActions";
 import VisitorCTA from "./VisitorCTA";
+import { cropStyle } from "@/app/components/PhotoCropModal";
 import SessionReactions from "@/app/components/SessionReactions";
 
 const SUPABASE_URL = "https://kaimbtcuyemwzvhsqwgu.supabase.co";
@@ -95,7 +96,7 @@ export default async function ShareSessionPage({ params }: { params: Promise<{ i
         <div style={{ background: "#1F354C", position: "relative", overflow: "hidden" }}>
           {session.photo_url && (
             <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", overflow: "hidden" }}>
-              <img src={session.photo_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: (session as any).photo_crop || "50% 50%", display: "block", opacity: 0.85 }} />
+              <img src={session.photo_url} alt="" style={{ ...cropStyle((session as any).photo_crop), opacity: 0.85 }} />
             </div>
           )}
           <div style={{
