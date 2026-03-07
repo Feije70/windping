@@ -281,6 +281,7 @@ export async function PATCH(req: NextRequest) {
     if (updates.duration_minutes !== undefined) updateData.duration_minutes = updates.duration_minutes;
     if (updates.notes !== undefined) updateData.notes = updates.notes;
     if (updates.photo_url) updateData.image_url = updates.photo_url;
+    if (updates.photo_crop !== undefined) updateData.photo_crop = updates.photo_crop;
     
     if (updates.status === "completed") {
       updateData.completed_at = new Date().toISOString();

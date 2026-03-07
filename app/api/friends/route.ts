@@ -125,7 +125,7 @@ export async function GET(req: NextRequest) {
 
       const { data: sessions, error: sessError } = await supabase
         .from("sessions")
-        .select("id, created_by, spot_id, session_date, status, going_at, rating, gear_type, gear_size, forecast_wind, forecast_dir, photo_url, notes")
+        .select("id, created_by, spot_id, session_date, status, going_at, rating, gear_type, gear_size, forecast_wind, forecast_dir, photo_url, photo_crop, notes")
         .in("created_by", friendIds)
         .in("status", ["going", "completed"])
         .gte("session_date", since.toISOString().split("T")[0])
@@ -166,6 +166,7 @@ export async function GET(req: NextRequest) {
         forecastWind: s.forecast_wind,
         forecastDir: s.forecast_dir,
         photoUrl: s.photo_url,
+        photoCrop: s.photo_crop,
         notes: s.notes,
       }));
 

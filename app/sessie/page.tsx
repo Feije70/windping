@@ -1,18 +1,15 @@
 import { Metadata } from "next";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
-import OwnerActions from "./OwnerActions";
-import VisitorCTA from "./VisitorCTA";
-import SessionReactions from "@/app/components/SessionReactions";
 
 const SUPABASE_URL = "https://kaimbtcuyemwzvhsqwgu.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_ds6_HWMJEYxEnvrnEefeRg_q2T-ROO_";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
 
 async function getSession(id: string) {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_ANON_KEY;
+  const key = SUPABASE_ANON_KEY;
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,created_by,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,photo_url,photo_crop,notes&limit=1`,
+    `${SUPABASE_URL}/rest/v1/sessions?id=eq.${id}&status=eq.completed&select=id,spot_id,session_date,rating,gear_type,gear_size,wind_feel,forecast_wind,forecast_dir,photo_url,notes&limit=1`,
     {
       headers: {
         apikey: key,
@@ -94,9 +91,7 @@ export default async function ShareSessionPage({ params }: { params: Promise<{ i
         {/* Share card */}
         <div style={{ background: "#1F354C", position: "relative", overflow: "hidden" }}>
           {session.photo_url && (
-            <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", overflow: "hidden" }}>
-              <img src={session.photo_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: (session as any).photo_crop || "50% 50%", display: "block", opacity: 0.85 }} />
-            </div>
+            <img src={session.photo_url} alt="" style={{ width: "100%", height: 320, objectFit: "cover", display: "block", opacity: 0.85 }} />
           )}
           <div style={{
             padding: session.photo_url ? "0" : "60px 24px 32px",
@@ -151,19 +146,19 @@ export default async function ShareSessionPage({ params }: { params: Promise<{ i
             </div>
           )}
 
-          <SessionReactions sessionId={session.id} ownerId={session.created_by} />
-
-          <OwnerActions
-            sessionId={session.id}
-            createdBy={session.created_by}
-            spotName={session.spotName}
-            wind={session.forecast_wind}
-            dir={session.forecast_dir}
-            rating={session.rating}
-          />
-
-          {/* CTA — alleen voor bezoekers zichtbaar (OwnerActions toont niets als je eigenaar bent) */}
-          <VisitorCTA sessionId={session.id} />
+          {/* CTA */}
+          <div style={{ background: "#1F354C", borderRadius: 16, padding: "20px", textAlign: "center" }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>Ook je sessies bijhouden?</div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>Join WindPing 🤙</div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+              <Link href="/signup" style={{ display: "inline-block", padding: "11px 22px", background: "#10B981", color: "#fff", borderRadius: 12, fontSize: 14, fontWeight: 700, textDecoration: "none" }}>
+                Aanmelden
+              </Link>
+              <Link href="/login" style={{ display: "inline-block", padding: "11px 22px", background: "rgba(255,255,255,0.1)", color: "#fff", borderRadius: 12, fontSize: 14, fontWeight: 600, textDecoration: "none" }}>
+                Inloggen
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

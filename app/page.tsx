@@ -9,6 +9,7 @@ import NavBar from "@/components/NavBar";
 import { Logo } from "@/components/Logo";
 import { WPing } from "@/components/WPing";
 import { getEmail, isTokenExpired, getAuthId, getValidToken, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import PhotoCropModal from "@/app/components/PhotoCropModal";
 
 const h = { fontFamily: fonts.heading };
 const OM_BASE = "https://api.open-meteo.com/v1/forecast";
@@ -311,6 +312,7 @@ interface RecentSession {
   forecast_wind: number | null;
   forecast_dir: string | null;
   photo_url: string | null;
+  photo_crop: string | null;
   spots?: { display_name: string };
 }
 
@@ -381,8 +383,8 @@ function SessionStatsSection({ stats, sessions, spotNames, userId }: { stats: Se
       {latest && (
         <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, overflow: "hidden", marginBottom: 12 }}>
           {latest.photo_url && (
-            <div style={{ position: "relative" }}>
-              <img src={latest.photo_url} alt="" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+            <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", overflow: "hidden" }}>
+              <img src={latest.photo_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: latest.photo_crop || "50% 50%", display: "block" }} />
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 30%, rgba(31,53,76,0.85) 100%)" }} />
               <div style={{ position: "absolute", bottom: 12, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
                 <div>
@@ -520,8 +522,8 @@ function FeedCard({ item, userId, token }: { item: any; userId: number | null; t
 
       {/* Photo */}
       {item.photoUrl && (
-        <div style={{ position: "relative" }}>
-          <img src={item.photoUrl} alt="" style={{ width: "100%", height: 200, objectFit: "cover", display: "block" }} />
+        <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", overflow: "hidden" }}>
+          <img src={item.photoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: item.photoCrop || "50% 50%", display: "block" }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(31,53,76,0.7) 100%)" }} />
           <div style={{ position: "absolute", bottom: 10, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
             <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", ...hf }}>{item.spotName}</div>
@@ -635,6 +637,8 @@ function Dashboard() {
   const [manualWindFeel, setManualWindFeel] = useState<string | null>(null);
   const [manualNotes, setManualNotes] = useState("");
   const [manualPhotoUrl, setManualPhotoUrl] = useState<string | null>(null);
+  const [manualPhotoCrop, setManualPhotoCrop] = useState<string>("50% 50%");
+  const [showManualCropModal, setShowManualCropModal] = useState(false);
   const [manualPhotoUploading, setManualPhotoUploading] = useState(false);
   const [manualError, setManualError] = useState("");
   const [manualDagdelen, setManualDagdelen] = useState<string[]>([]); // "ochtend" | "middag" | "avond"
@@ -735,7 +739,7 @@ function Dashboard() {
             const cached = sessionStorage.getItem("wp_sessions");
             if (cached) setRecentSessions(JSON.parse(cached));
           } catch {}
-          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,photo_url,notes`, {
+          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,photo_url,photo_crop,notes`, {
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
           });
           if (sessRes.ok) {
@@ -861,6 +865,7 @@ function Dashboard() {
       if (manualDagdelen.length > 0) body.notes = [manualDagdelen.join("/"), manualNotes].filter(Boolean).join(" · ");
       else if (manualNotes) body.notes = manualNotes;
       if (manualPhotoUrl) body.photo_url = manualPhotoUrl;
+      if (manualPhotoCrop !== "50% 50%") body.photo_crop = manualPhotoCrop;
       if (manualWeather) {
         body.forecast_wind = manualWeather.wind;
         body.forecast_gust = manualWeather.gust;
@@ -1454,8 +1459,11 @@ function Dashboard() {
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6, letterSpacing: 0.5 }}>FOTO (optioneel)</label>
                       {manualPhotoUrl ? (
                         <div style={{ position: "relative", borderRadius: 12, overflow: "hidden" }}>
-                          <img src={manualPhotoUrl} alt="Sessie foto" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
-                          <button onClick={() => setManualPhotoUrl(null)} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                          <div style={{ width: "100%", aspectRatio: "4/3", overflow: "hidden", borderRadius: 12 }}>
+                            <img src={manualPhotoUrl} alt="Sessie foto" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: manualPhotoCrop, display: "block" }} />
+                          </div>
+                          <button onClick={() => setShowManualCropModal(true)} style={{ position: "absolute", bottom: 8, right: 44, padding: "4px 10px", borderRadius: 20, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>✂️ Bijsnijden</button>
+                          <button onClick={() => { setManualPhotoUrl(null); setManualPhotoCrop("50% 50%"); }} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
                         </div>
                       ) : (
                         <div onClick={() => { if (!manualPhotoUploading) document.getElementById("manual-photo-input")?.click(); }}
@@ -1479,7 +1487,7 @@ function Dashboard() {
                             formData.append("session_id", "temp_" + Date.now());
                             const res = await fetch("/api/upload", { method: "POST", body: formData });
                             const data = await res.json();
-                            if (res.ok && data.url) { setManualPhotoUrl(data.url); }
+                            if (res.ok && data.url) { setManualPhotoUrl(data.url); setShowManualCropModal(true); }
                             else { setManualError(`Foto upload mislukt: ${data.error || "onbekend"}`); }
                           } catch { setManualError("Foto upload mislukt."); }
                           setManualPhotoUploading(false);
@@ -1677,7 +1685,17 @@ function LandingPage() {
           </nav>
         </div>
       </footer>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}@keyframes scrollPulse{0%,100%{opacity:0.3;transform:scaleY(1)}50%{opacity:0.8;transform:scaleY(1.3)}}`}</style>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}@keyframes scrollPulse{0%,100%{opacity:0.3;transform:scaleY(1)}50%{opacity:0.8;transform:scaleY(1.3)}}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+
+      {/* Manual crop modal */}
+      {showManualCropModal && manualPhotoUrl && (
+        <PhotoCropModal
+          imageUrl={manualPhotoUrl}
+          initialPosition={manualPhotoCrop}
+          onConfirm={(pos) => { setManualPhotoCrop(pos); setShowManualCropModal(false); }}
+          onCancel={() => setShowManualCropModal(false)}
+        />
+      )}
     </main>
   );
 }
