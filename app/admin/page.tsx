@@ -1527,6 +1527,7 @@ function SimulatorTab({ token }: { token: string | null }) {
   }
 
   const ratingLabels: Record<number, string> = { 1: "Shit 😬", 2: "Mwah 😐", 3: "Oké 👌", 4: "Lekker 😎", 5: "EPIC 🤙" };
+  const [spotSearch, setSpotSearch] = useState("");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -1554,6 +1555,24 @@ function SimulatorTab({ token }: { token: string | null }) {
       {/* Panel */}
       {selectedUser && (
         <div style={{ background: C.card, borderRadius: 14, boxShadow: C.cardShadow, overflow: "hidden" }}>
+
+          {/* Context header */}
+          <div style={{ padding: "12px 16px", background: `${C.sky}10`, borderBottom: `1px solid ${C.cardBorder}`, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark || C.navy})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+              {(selectedUser.name || selectedUser.email || "?").charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{selectedUser.name || selectedUser.email}</div>
+              <div style={{ fontSize: 11, color: C.muted }}>
+                {userFriendships.filter(f => f.status === "accepted").length} vrienden
+                {userFriendships.filter(f => f.status === "accepted").length > 0 && (
+                  <span> — {userFriendships.filter(f => f.status === "accepted").map((f: any) => f.friendName).join(", ")}</span>
+                )}
+                {" · "}
+                {userSessions.length} sessies
+              </div>
+            </div>
+          </div>
 
           {/* Panel tabs */}
           <div style={{ display: "flex", borderBottom: `1px solid ${C.cardBorder}` }}>
@@ -1638,7 +1657,7 @@ function SimulatorTab({ token }: { token: string | null }) {
                 ) : userSessions.map((s: any) => (
                   <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.cardBorder}` }}>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{s.spots?.display_name || `Spot #${s.spot_id}`}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{s.spotName || s.spots?.display_name || `Spot #${s.spot_id}`}</div>
                       <div style={{ fontSize: 11, color: C.muted }}>
                         {s.session_date} · {s.status}
                         {s.forecast_wind && ` · ${s.forecast_wind}kn`}
@@ -1704,11 +1723,28 @@ function SimulatorTab({ token }: { token: string | null }) {
 
                 <div>
                   <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>SPOT</label>
-                  <select value={createSpotId || ""} onChange={e => setCreateSpotId(Number(e.target.value))}
-                    style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy }}>
-                    <option value="">Kies spot...</option>
-                    {simSpots.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}
-                  </select>
+                  <input
+                    type="text"
+                    placeholder="Zoek spot... (200 beschikbaar)"
+                    value={spotSearch}
+                    onChange={e => { setSpotSearch(e.target.value); setCreateSpotId(null); }}
+                    style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${createSpotId ? C.green : C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, boxSizing: "border-box" }}
+                  />
+                  {spotSearch.length >= 2 && !createSpotId && (
+                    <div style={{ background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginTop: 4, maxHeight: 160, overflowY: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}>
+                      {simSpots.filter(s => s.display_name.toLowerCase().includes(spotSearch.toLowerCase())).slice(0, 8).map(s => (
+                        <div key={s.id} onClick={() => { setCreateSpotId(s.id); setSpotSearch(s.display_name); }}
+                          style={{ padding: "8px 12px", fontSize: 13, color: C.navy, cursor: "pointer", borderBottom: `1px solid ${C.cardBorder}` }}
+                          onMouseEnter={e => (e.currentTarget.style.background = C.creamDark)}
+                          onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                        >{s.display_name}</div>
+                      ))}
+                      {simSpots.filter(s => s.display_name.toLowerCase().includes(spotSearch.toLowerCase())).length === 0 && (
+                        <div style={{ padding: "8px 12px", fontSize: 12, color: C.muted }}>Geen resultaten</div>
+                      )}
+                    </div>
+                  )}
+                  {createSpotId && <div style={{ fontSize: 11, color: C.green, marginTop: 4 }}>✓ Spot geselecteerd (ID: {createSpotId})</div>}
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>

@@ -45,14 +45,29 @@ export async function GET(req: NextRequest) {
 
   // Get user's sessions
   if (action === "user_sessions" && userId) {
-    const { data: sessions } = await client
+    const { data: sessions, error } = await client
       .from("sessions")
-      .select("id, session_date, status, spot_id, rating, gear_type, gear_size, forecast_wind, forecast_dir, photo_url, notes, created_at, spots(display_name)")
-      .eq("created_by", userId)
+      .select("id, session_date, status, spot_id, rating, gear_type, gear_size, forecast_wind, forecast_dir, photo_url, notes, created_at")
+      .eq("created_by", Number(userId))
       .order("session_date", { ascending: false })
       .limit(20);
 
-    return NextResponse.json({ sessions: sessions || [] });
+    if (error) return NextResponse.json({ error: error.message, sessions: [] });
+
+    // Fetch spot names separately (PostgREST join unreliable)
+    const spotIds = [...new Set((sessions || []).map(s => s.spot_id))];
+    let spotMap: Record<number, string> = {};
+    if (spotIds.length > 0) {
+      const { data: spots } = await client.from("spots").select("id, display_name").in("id", spotIds);
+      (spots || []).forEach((s: any) => { spotMap[s.id] = s.display_name; });
+    }
+
+    const enriched = (sessions || []).map(s => ({
+      ...s,
+      spotName: spotMap[s.spot_id] || `Spot #${s.spot_id}`,
+    }));
+
+    return NextResponse.json({ sessions: enriched });
   }
 
   // Get user's friendships
