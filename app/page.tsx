@@ -280,8 +280,10 @@ function bundleAlertsByDate(alerts: any[]): BundledFeedItem[] {
     return { targetDate: date, dateLabel, latestCreatedAt: data.latestCreatedAt, goSpots, downgradeSpots, alertType };
   });
 
+  const todayStr = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })();
   return items
-    .sort((a, b) => b.targetDate.localeCompare(a.targetDate))
+    .filter(item => item.targetDate >= todayStr)
+    .sort((a, b) => a.targetDate.localeCompare(b.targetDate))
     .slice(0, 5);
 }
 
@@ -817,7 +819,7 @@ function Dashboard() {
   useEffect(() => { loadData(); }, [loadData]);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Goedemorgen" : hour < 18 ? "Goedemiddag" : "Goedenavond";
-  const today = new Date().toISOString().split("T")[0];
+  const today = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })();
   const feedItems = bundleAlertsByDate(recentAlerts).filter(item => item.targetDate >= today);
 
   // Fetch weer voor handmatige sessie
