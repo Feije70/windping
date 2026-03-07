@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
 
   // Create a session on behalf of a user
   if (action === "create_session") {
-    const { userId, spotId, sessionDate, status, rating, gearType, gearSize, forecastWind, forecastDir, notes } = body;
+    const { userId, spotId, sessionDate, status, rating, gearType, gearSize, forecastWind, forecastDir, notes, photoUrl } = body;
     const { data, error } = await client
       .from("sessions")
       .insert({
@@ -214,11 +214,35 @@ export async function POST(req: NextRequest) {
         forecast_wind: forecastWind || null,
         forecast_dir: forecastDir || null,
         notes: notes || null,
+        photo_url: photoUrl || null,
       })
       .select()
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Trigger push to friends if completed session
+    if ((status || "completed") === "completed" && data) {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://www.windping.com";
+        const { data: user } = await client.from("users").select("name").eq("id", userId).single();
+        const { data: spot } = await client.from("spots").select("display_name").eq("id", spotId).single();
+        const { data: friendships } = await client.from("friendships").select("user_id, friend_id").or(`user_id.eq.${userId},friend_id.eq.${userId}`).eq("status", "accepted");
+        const friendIds = (friendships || []).map((f: any) => f.user_id === userId ? f.friend_id : f.user_id);
+        const userName = user?.name || "Iemand";
+        const spotName = spot?.display_name || "een spot";
+        const ratingEmojis: Record<number, string> = { 1: "😬", 2: "😐", 3: "👌", 4: "😎", 5: "🤙" };
+        const emoji = rating ? ratingEmojis[rating] || "🏄" : "🏄";
+        await Promise.allSettled(friendIds.map((friendId: number) =>
+          fetch(`${baseUrl}/api/push/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.CRON_SECRET || ""}` },
+            body: JSON.stringify({ userId: friendId, title: `${emoji} ${userName} was op ${spotName}`, message: `${spotName}${forecastWind ? ` · ${forecastWind}kn` : ""}`, url: `/sessie/${data.id}`, alertType: "session" }),
+          })
+        ));
+      } catch (e) { console.error("Simulator push failed:", e); }
+    }
+
     return NextResponse.json({ success: true, session: data });
   }
 

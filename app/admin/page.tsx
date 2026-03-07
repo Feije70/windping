@@ -1424,6 +1424,8 @@ function SimulatorTab({ token }: { token: string | null }) {
   const [createGearSize, setCreateGearSize] = useState("9");
   const [createNotes, setCreateNotes] = useState("");
   const [createDate, setCreateDate] = useState(new Date().toISOString().split("T")[0]);
+  const [createPhotoUrl, setCreatePhotoUrl] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   // Add friend form
   const [friendTargetId, setFriendTargetId] = useState<number | null>(null);
@@ -1494,9 +1496,10 @@ function SimulatorTab({ token }: { token: string | null }) {
       forecastWind: createWind,
       forecastDir: createDir,
       notes: createNotes || null,
+      photoUrl: createPhotoUrl || null,
     });
     if (res.error) { setMsg("❌ " + res.error); }
-    else { setMsg("✓ Sessie aangemaakt!"); await selectUser(selectedUser); setActivePanel("sessions"); }
+    else { setMsg("✓ Sessie aangemaakt! Push verstuurd naar vrienden."); setCreatePhotoUrl(null); await selectUser(selectedUser); setActivePanel("sessions"); }
     setLoading(false);
   }
 
@@ -1810,6 +1813,35 @@ function SimulatorTab({ token }: { token: string | null }) {
                     <input value={createGearSize} onChange={e => setCreateGearSize(e.target.value)} placeholder="bijv. 9"
                       style={{ width: "100%", padding: "8px 12px", background: C.creamDark, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, boxSizing: "border-box" }} />
                   </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>FOTO (optioneel)</label>
+                  {createPhotoUrl ? (
+                    <div style={{ position: "relative", borderRadius: 10, overflow: "hidden" }}>
+                      <img src={createPhotoUrl} alt="Sessie foto" style={{ width: "100%", height: 140, objectFit: "cover", display: "block" }} />
+                      <button onClick={() => setCreatePhotoUrl(null)} style={{ position: "absolute", top: 6, right: 6, width: 26, height: 26, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                    </div>
+                  ) : (
+                    <div onClick={() => document.getElementById("sim-photo-upload")?.click()}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "18px", borderRadius: 10, border: `2px dashed ${C.cardBorder}`, background: C.creamDark, cursor: "pointer", fontSize: 13, color: C.muted }}>
+                      {photoUploading ? "⏳ Uploaden..." : "📷 Klik om foto toe te voegen"}
+                    </div>
+                  )}
+                  <input id="sim-photo-upload" type="file" accept="image/*" style={{ display: "none" }} onChange={async e => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setPhotoUploading(true);
+                    const fd = new FormData(); fd.append("file", file);
+                    try {
+                      const res = await fetch("/api/upload", { method: "POST", body: fd });
+                      const data = await res.json();
+                      if (data.url) setCreatePhotoUrl(data.url);
+                      else setMsg("❌ Foto upload mislukt");
+                    } catch { setMsg("❌ Foto upload mislukt"); }
+                    setPhotoUploading(false);
+                    e.target.value = "";
+                  }} />
                 </div>
 
                 <div>
