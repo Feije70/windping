@@ -624,6 +624,7 @@ function Dashboard() {
   const [spotNames, setSpotNames] = useState<Record<number, string>>({});
   const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
   const [friendActivity, setFriendActivity] = useState<any[]>([]);
+  const [unreadFriendCount, setUnreadFriendCount] = useState(0);
   const [showWelcome, setShowWelcome] = useState(false);
   const [allSpots, setAllSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
 
@@ -798,6 +799,14 @@ function Dashboard() {
           if (actRes.ok) {
             const actData = await actRes.json();
             setFriendActivity(actData.activity || []);
+          }
+          // Haal unread count op via feed endpoint
+          const feedRes = await fetch("/api/friends?type=feed", {
+            headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+          });
+          if (feedRes.ok) {
+            const feedData = await feedRes.json();
+            setUnreadFriendCount(feedData.unreadCount || 0);
           }
         }
       } catch (e) { console.error("Friend activity load error:", e); }
@@ -1077,12 +1086,27 @@ function Dashboard() {
           {/* Friend feed */}
           {friendActivity.length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8, paddingLeft: 2 }}>
-                Vrienden
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", paddingLeft: 2 }}>
+                  Vrienden
+                </div>
+                <Link href="/vrienden/feed" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
+                  Bekijk alle
+                  {unreadFriendCount > 0 && (
+                    <span style={{ background: C.sky, color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: "50%", width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      {unreadFriendCount > 9 ? "9+" : unreadFriendCount}
+                    </span>
+                  )}
+                </Link>
               </div>
-              {friendActivity.map((a: any) => (
+              {friendActivity.slice(0, 2).map((a: any) => (
                 <FeedCard key={a.id} item={a} userId={userId} token={validToken} />
               ))}
+              {friendActivity.length > 2 && (
+                <Link href="/vrienden/feed" style={{ display: "block", textAlign: "center", padding: "10px", background: C.card, borderRadius: 12, fontSize: 12, fontWeight: 600, color: C.sky, textDecoration: "none", boxShadow: C.cardShadow }}>
+                  +{friendActivity.length - 2} meer sessies van vrienden →
+                </Link>
+              )}
             </div>
           )}
 

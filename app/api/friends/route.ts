@@ -108,6 +108,75 @@ export async function GET(req: NextRequest) {
     const userId = await getUserId(req);
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    if (type === "feed") {
+      // Volledige vrienden-feed — alle sessies, geen tijdslimiet
+      const { data: friendships } = await supabase
+        .from("friendships")
+        .select("user_id, friend_id")
+        .or(`user_id.eq.${userId},friend_id.eq.${userId}`)
+        .eq("status", "accepted");
+
+      const friendIds = (friendships || []).map(f => f.user_id === userId ? f.friend_id : f.user_id);
+      if (friendIds.length === 0) return NextResponse.json({ sessions: [], unreadCount: 0 });
+
+      // Haal last_seen_feed op
+      const { data: userData } = await supabase
+        .from("users")
+        .select("last_seen_feed")
+        .eq("id", userId)
+        .single();
+      const lastSeen = userData?.last_seen_feed || null;
+
+      const { data: sessions } = await supabase
+        .from("sessions")
+        .select("id, created_by, spot_id, session_date, status, rating, gear_type, gear_size, forecast_wind, forecast_dir, photo_url, photo_crop, notes, created_at")
+        .in("created_by", friendIds)
+        .in("status", ["going", "completed"])
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      const spotIds = [...new Set((sessions || []).map(s => s.spot_id))];
+      let spotMap: Record<number, string> = {};
+      if (spotIds.length > 0) {
+        const { data: spots } = await supabase.from("spots").select("id, display_name").in("id", spotIds);
+        (spots || []).forEach(sp => { spotMap[sp.id] = sp.display_name; });
+      }
+
+      const { data: users } = await supabase.from("users").select("id, name, email").in("id", friendIds);
+      const nameMap: Record<number, string> = {};
+      (users || []).forEach(u => { nameMap[u.id] = u.name || u.email?.split("@")[0] || "Vriend"; });
+
+      const activity = (sessions || []).map(s => ({
+        id: s.id,
+        friendName: nameMap[s.created_by] || "Vriend",
+        friendId: s.created_by,
+        spotName: spotMap[s.spot_id] || "Onbekend",
+        spotId: s.spot_id,
+        sessionDate: s.session_date,
+        createdAt: s.created_at,
+        status: s.status,
+        rating: s.rating,
+        gearType: s.gear_type,
+        gearSize: s.gear_size,
+        forecastWind: s.forecast_wind,
+        forecastDir: s.forecast_dir,
+        photoUrl: s.photo_url,
+        photoCrop: s.photo_crop,
+        notes: s.notes,
+        isNew: lastSeen ? new Date(s.created_at) > new Date(lastSeen) : true,
+      }));
+
+      const unreadCount = activity.filter(a => a.isNew).length;
+
+      return NextResponse.json({ sessions: activity, unreadCount, lastSeen });
+    }
+
+    if (type === "mark_seen") {
+      // Wordt aangeroepen als gebruiker de feed opent
+      await supabase.from("users").update({ last_seen_feed: new Date().toISOString() }).eq("id", userId);
+      return NextResponse.json({ ok: true });
+    }
+
     if (type === "activity") {
       // Get friend IDs
       const { data: friendships } = await supabase
