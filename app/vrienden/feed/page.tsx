@@ -22,7 +22,7 @@ function timeAgo(dateStr: string) {
   return d.toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
 }
 
-function SessionCard({ item, isNew }: { item: any; isNew: boolean }) {
+function SessionCard({ item, isNew, onHide }: { item: any; isNew: boolean; onHide: (id: number) => void }) {
   return (
     <div style={{
       background: C.card, borderRadius: 16, overflow: "hidden",
@@ -48,6 +48,7 @@ function SessionCard({ item, isNew }: { item: any; isNew: boolean }) {
               {ratingLabels[item.rating]}
             </div>
           )}
+          <button onClick={() => onHide(item.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 18, lineHeight: 1, padding: "2px 4px", opacity: 0.5 }} title="Verbergen">×</button>
         </div>
       </div>
 
@@ -129,6 +130,16 @@ export default function VriendenFeedPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function hideSession(sessionId: number) {
+    setSessions(prev => prev.filter(s => s.id !== sessionId));
+    try {
+      const token = await getValidToken();
+      await fetch(`/api/friends?type=hide_session&session_id=${sessionId}`, {
+        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+      });
+    } catch (e) { console.error(e); }
+  }
+
   return (
     <div style={{ background: C.cream, minHeight: "100vh" }}>
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 16px 100px" }}>
@@ -160,7 +171,7 @@ export default function VriendenFeedPage() {
             </Link>
           </div>
         ) : (
-          sessions.map(s => <SessionCard key={s.id} item={s} isNew={s.isNew} />)
+          sessions.map(s => <SessionCard key={s.id} item={s} isNew={s.isNew} onHide={hideSession} />)
         )}
       </div>
       <NavBar />

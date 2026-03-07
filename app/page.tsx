@@ -526,8 +526,17 @@ function dateLabelFn(dateStr: string) {
   return d.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
 }
 
-function FeedCard({ item, userId, token }: { item: any; userId: number | null; token: string | null }) {
+function FeedCard({ item, userId, token, onHide }: { item: any; userId: number | null; token: string | null; onHide?: (id: number) => void }) {
   const hf = { fontFamily: fonts.heading };
+
+  async function hideSession() {
+    if (!token) return;
+    onHide?.(item.id);
+    await fetch(`/api/friends?type=hide_session&session_id=${item.id}`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+    });
+  }
+
   return (
     <div style={{ background: C.card, borderRadius: 16, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 12 }}>
       {/* Header */}
@@ -547,6 +556,7 @@ function FeedCard({ item, userId, token }: { item: any; userId: number | null; t
             {ratingLabels[item.rating]}
           </div>
         )}
+        <button onClick={hideSession} style={{ marginLeft: 4, background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 16, lineHeight: 1, padding: "2px 4px", opacity: 0.5 }} title="Verbergen">×</button>
       </div>
 
       {/* Photo */}
@@ -1102,7 +1112,7 @@ function Dashboard() {
                 </Link>
               </div>
               {friendActivity.slice(0, 2).map((a: any) => (
-                <FeedCard key={a.id} item={a} userId={userId} token={validToken} />
+                <FeedCard key={a.id} item={a} userId={userId} token={validToken} onHide={(id) => setFriendActivity(prev => prev.filter(x => x.id !== id))} />
               ))}
               {friendActivity.length > 2 && (
                 <Link href="/vrienden/feed" style={{ display: "block", textAlign: "center", padding: "10px", background: C.card, borderRadius: 12, fontSize: 12, fontWeight: 600, color: C.sky, textDecoration: "none", boxShadow: C.cardShadow }}>

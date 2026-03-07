@@ -108,6 +108,13 @@ export async function GET(req: NextRequest) {
     const userId = await getUserId(req);
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    if (type === "hide_session") {
+      const sessionId = url.searchParams.get("session_id");
+      if (!sessionId) return NextResponse.json({ error: "Missing session_id" }, { status: 400 });
+      await supabase.from("hidden_sessions").upsert({ user_id: userId, session_id: Number(sessionId) });
+      return NextResponse.json({ ok: true });
+    }
+
     if (type === "feed") {
       // Volledige vrienden-feed — alle sessies, geen tijdslimiet
       const { data: friendships } = await supabase
@@ -126,6 +133,13 @@ export async function GET(req: NextRequest) {
         .eq("id", userId)
         .single();
       const lastSeen = userData?.last_seen_feed || null;
+
+      // Haal verborgen sessies op
+      const { data: hiddenData } = await supabase
+        .from("hidden_sessions")
+        .select("session_id")
+        .eq("user_id", userId);
+      const hiddenIds = new Set((hiddenData || []).map(h => h.session_id));
 
       const { data: sessions } = await supabase
         .from("sessions")
@@ -146,25 +160,27 @@ export async function GET(req: NextRequest) {
       const nameMap: Record<number, string> = {};
       (users || []).forEach(u => { nameMap[u.id] = u.name || u.email?.split("@")[0] || "Vriend"; });
 
-      const activity = (sessions || []).map(s => ({
-        id: s.id,
-        friendName: nameMap[s.created_by] || "Vriend",
-        friendId: s.created_by,
-        spotName: spotMap[s.spot_id] || "Onbekend",
-        spotId: s.spot_id,
-        sessionDate: s.session_date,
-        createdAt: s.created_at,
-        status: s.status,
-        rating: s.rating,
-        gearType: s.gear_type,
-        gearSize: s.gear_size,
-        forecastWind: s.forecast_wind,
-        forecastDir: s.forecast_dir,
-        photoUrl: s.photo_url,
-        photoCrop: s.photo_crop,
-        notes: s.notes,
-        isNew: lastSeen ? new Date(s.created_at) > new Date(lastSeen) : true,
-      }));
+      const activity = (sessions || [])
+        .filter(s => !hiddenIds.has(s.id))
+        .map(s => ({
+          id: s.id,
+          friendName: nameMap[s.created_by] || "Vriend",
+          friendId: s.created_by,
+          spotName: spotMap[s.spot_id] || "Onbekend",
+          spotId: s.spot_id,
+          sessionDate: s.session_date,
+          createdAt: s.created_at,
+          status: s.status,
+          rating: s.rating,
+          gearType: s.gear_type,
+          gearSize: s.gear_size,
+          forecastWind: s.forecast_wind,
+          forecastDir: s.forecast_dir,
+          photoUrl: s.photo_url,
+          photoCrop: s.photo_crop,
+          notes: s.notes,
+          isNew: lastSeen ? new Date(s.created_at) > new Date(lastSeen) : true,
+        }));
 
       const unreadCount = activity.filter(a => a.isNew).length;
 
@@ -187,6 +203,13 @@ export async function GET(req: NextRequest) {
 
       const friendIds = (friendships || []).map(f => f.user_id === userId ? f.friend_id : f.user_id);
       if (friendIds.length === 0) return NextResponse.json({ activity: [] });
+
+      // Haal verborgen sessies op
+      const { data: hiddenDataA } = await supabase
+        .from("hidden_sessions")
+        .select("session_id")
+        .eq("user_id", userId);
+      const hiddenIdsA = new Set((hiddenDataA || []).map(h => h.session_id));
 
       // Get recent "going" sessions from friends
       const since = new Date();
@@ -221,23 +244,25 @@ export async function GET(req: NextRequest) {
       const nameMap: Record<number, string> = {};
       (users || []).forEach(u => { nameMap[u.id] = u.name || u.email?.split("@")[0] || "Vriend"; });
 
-      const activity = (sessions || []).map(s => ({
-        id: s.id,
-        friendName: nameMap[s.created_by] || "Vriend",
-        friendId: s.created_by,
-        spotName: spotMap[s.spot_id] || "Onbekend",
-        spotId: s.spot_id,
-        sessionDate: s.session_date,
-        status: s.status,
-        rating: s.rating,
-        gearType: s.gear_type,
-        gearSize: s.gear_size,
-        forecastWind: s.forecast_wind,
-        forecastDir: s.forecast_dir,
-        photoUrl: s.photo_url,
-        photoCrop: s.photo_crop,
-        notes: s.notes,
-      }));
+      const activity = (sessions || [])
+        .filter(s => !hiddenIdsA.has(s.id))
+        .map(s => ({
+          id: s.id,
+          friendName: nameMap[s.created_by] || "Vriend",
+          friendId: s.created_by,
+          spotName: spotMap[s.spot_id] || "Onbekend",
+          spotId: s.spot_id,
+          sessionDate: s.session_date,
+          status: s.status,
+          rating: s.rating,
+          gearType: s.gear_type,
+          gearSize: s.gear_size,
+          forecastWind: s.forecast_wind,
+          forecastDir: s.forecast_dir,
+          photoUrl: s.photo_url,
+          photoCrop: s.photo_crop,
+          notes: s.notes,
+        }));
 
       return NextResponse.json({ activity });
     }
