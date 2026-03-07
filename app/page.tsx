@@ -9,7 +9,8 @@ import NavBar from "@/components/NavBar";
 import { Logo } from "@/components/Logo";
 import { WPing } from "@/components/WPing";
 import { getEmail, isTokenExpired, getAuthId, getValidToken, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
-import PhotoCropModal, { cropStyle } from "@/app/components/PhotoCropModal";
+import PhotoCropModal from "@/app/components/PhotoCropModal"
+import { cropStyle } from "@/lib/cropStyle";
 
 const h = { fontFamily: fonts.heading };
 const OM_BASE = "https://api.open-meteo.com/v1/forecast";

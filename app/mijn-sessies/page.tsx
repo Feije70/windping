@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
-import PhotoCropModal, { cropStyle } from "@/app/components/PhotoCropModal";
+import PhotoCropModal from "@/app/components/PhotoCropModal"
+import { cropStyle } from "@/lib/cropStyle";
 import { getValidToken, isTokenExpired, getAuthId, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 const h = { fontFamily: fonts.heading };
 

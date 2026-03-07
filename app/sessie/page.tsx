@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import PhotoCropModal, { cropStyle } from "@/app/components/PhotoCropModal";
+import PhotoCropModal from "@/app/components/PhotoCropModal"
+import { cropStyle } from "@/lib/cropStyle";
 import { colors as C, fonts } from "@/lib/design";
 import { getValidToken, isTokenExpired, getAuthId, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 

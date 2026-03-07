@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import OwnerActions from "./OwnerActions";
 import VisitorCTA from "./VisitorCTA";
-import { cropStyle } from "@/app/components/PhotoCropModal";
+import { cropStyle } from "@/lib/cropStyle";
 import SessionReactions from "@/app/components/SessionReactions";
 
 const SUPABASE_URL = "https://kaimbtcuyemwzvhsqwgu.supabase.co";
