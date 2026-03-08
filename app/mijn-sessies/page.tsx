@@ -4,8 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
-import PhotoCropModal from "@/app/components/PhotoCropModal"
-import { cropStyle } from "@/lib/cropStyle";
 import { getValidToken, isTokenExpired, getAuthId, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 const h = { fontFamily: fonts.heading };
 
@@ -23,7 +21,6 @@ interface Session {
   notes: string | null;
   photo_url: string | null;
   image_url: string | null;
-  photo_crop: string | null;
   _spotName?: string;
 }
 
@@ -42,7 +39,7 @@ function dateLabel(dateStr: string) {
   return d.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
-function SessionCard({ s, onClick, onCrop }: { s: Session; onClick: () => void; onCrop: (s: Session) => void }) {
+function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
   const spot = s._spotName || "Spot";
   return (
     <div onClick={onClick} style={{
@@ -51,10 +48,9 @@ function SessionCard({ s, onClick, onCrop }: { s: Session; onClick: () => void; 
       borderLeft: s.rating ? `3px solid ${ratingColors[s.rating]}` : `3px solid ${C.cardBorder}`,
     }}>
       {(s.photo_url || s.image_url) && (
-        <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", overflow: "hidden" }}>
-          <img src={s.photo_url || s.image_url || ""} alt="" style={cropStyle(s.photo_crop)} />
+        <div style={{ position: "relative" }}>
+          <img src={s.photo_url || s.image_url || ""} alt="" style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.5) 100%)" }} />
-          <button onClick={(e) => { e.stopPropagation(); onCrop(s); }} style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.45)", border: "none", borderRadius: 8, padding: "5px 8px", cursor: "pointer", color: "#fff", fontSize: 14, lineHeight: 1 }}>✂️</button>
           <div style={{ position: "absolute", bottom: 10, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{spot}</div>
@@ -82,19 +78,20 @@ function SessionCard({ s, onClick, onCrop }: { s: Session; onClick: () => void; 
             </div>
           </div>
         )}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const }}>
           {s.gear_type && !isJson(s.gear_type) && (
-            <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: `${C.sky}12`, borderRadius: 7, padding: "3px 9px" }}>
-              {s.gear_type.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}
-            </span>
-          )}
-          {s.gear_size && !isJson(s.gear_size) && (
-            <span style={{ fontSize: 11, color: C.sub, padding: "3px 0" }}>{s.gear_size}</span>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.sky, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>
+                {s.gear_type.replace(/^zeil/, "windsurf").replace(/-/g, " ")}{s.gear_size && !isJson(s.gear_size) ? ` ${s.gear_size}m²` : ""}
+              </span>
+            </div>
           )}
           {s.wind_feel && (
-            <span style={{ fontSize: 11, fontWeight: 600, color: C.green, background: `${C.green}12`, borderRadius: 7, padding: "3px 9px" }}>
-              {windFeelLabels[s.wind_feel] || s.wind_feel}
-            </span>
+            <>
+              {s.gear_type && <span style={{ color: C.muted, fontSize: 11 }}>·</span>}
+              <span style={{ fontSize: 11, fontWeight: 600, color: C.green }}>{windFeelLabels[s.wind_feel] || s.wind_feel}</span>
+            </>
           )}
         </div>
         {s.notes && (
@@ -108,35 +105,22 @@ function SessionCard({ s, onClick, onCrop }: { s: Session; onClick: () => void; 
   );
 }
 
-function SessionDetail({ s, userId, onClose }: { s: Session; userId: number; onClose: () => void }) {
+function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
   const spot = s._spotName || "Spot";
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
-  const [deleteError, setDeleteError] = React.useState<string | null>(null);
 
   async function handleDelete() {
     setDeleting(true);
-    setDeleteError(null);
     try {
       const token = await getValidToken();
-      const delRes = await fetch(`/api/sessions?id=${s.id}`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, Prefer: "return=minimal" },
       });
-      if (!delRes.ok) {
-        const errJson = await delRes.json().catch(() => ({}));
-        console.error("DELETE session failed:", delRes.status, errJson);
-        setDeleteError("Verwijderen mislukt. Probeer opnieuw.");
-        setDeleting(false);
-        return;
-      }
       onClose();
       window.location.reload();
-    } catch (e) {
-      console.error("DELETE session error:", e);
-      setDeleteError("Verwijderen mislukt. Probeer opnieuw.");
-      setDeleting(false);
-    }
+    } catch { setDeleting(false); }
   }
 
   return (
@@ -152,8 +136,8 @@ function SessionDetail({ s, userId, onClose }: { s: Session; userId: number; onC
       </div>
       <div style={{ padding: "0 16px 120px" }}>
         {(s.photo_url || s.image_url) && (
-          <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 16, aspectRatio: "4/3" }}>
-            <img src={s.photo_url || s.image_url || ""} alt="" style={cropStyle(s.photo_crop)} />
+          <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
+            <img src={s.photo_url || s.image_url || ""} alt="" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} />
           </div>
         )}
         <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, padding: "16px", marginBottom: 12 }}>
@@ -202,15 +186,12 @@ function SessionDetail({ s, userId, onClose }: { s: Session; userId: number; onC
         )}
 
         <div style={{ marginTop: 24, textAlign: "center" }}>
-          {deleteError && (
-            <div style={{ fontSize: 13, color: C.terra, marginBottom: 10 }}>{deleteError}</div>
-          )}
           {!confirmDelete ? (
-            <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: C.sub, fontWeight: 500 }}>Verwijder sessie</button>
+            <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#8A9BB0", fontWeight: 500 }}>🗑 Verwijder sessie</button>
           ) : (
             <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              <button onClick={() => { setConfirmDelete(false); setDeleteError(null); }} style={{ padding: "8px 16px", background: C.cream, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.navy, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Annuleer</button>
-              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: C.terra, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: deleting ? 0.7 : 1 }}>{deleting ? "Verwijderen..." : "Ja, verwijder"}</button>
+              <button onClick={() => setConfirmDelete(false)} style={{ padding: "8px 16px", background: "#F6F1EB", border: "1px solid #E2D9CE", borderRadius: 10, color: "#1F354C", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Annuleer</button>
+              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: "#C97A63", border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{deleting ? "Verwijderen..." : "Ja, verwijder"}</button>
             </div>
           )}
         </div>
@@ -223,23 +204,6 @@ export default function MijnSessiesPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Session | null>(null);
-  const [userId, setUserId] = useState<number | null>(null);
-  const [cropSession, setCropSession] = useState<Session | null>(null);
-  const [localCrops, setLocalCrops] = useState<Record<number, string>>({});
-
-  async function saveCrop(sessionId: number, pos: string) {
-    setLocalCrops(prev => ({ ...prev, [sessionId]: pos }));
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, photo_crop: pos } : s));
-    setCropSession(null);
-    try {
-      const token = await getValidToken();
-      await fetch(`/api/sessions?id=${sessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ photo_crop: pos }),
-      });
-    } catch (e) { console.error("crop save error", e); }
-  }
 
   useEffect(() => {
     (async () => {
@@ -254,9 +218,8 @@ export default function MijnSessiesPage() {
         const users = await userRes.json();
         if (!users?.length) return;
         const userId = users[0].id;
-        setUserId(userId);
 
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url,photo_crop,image_url`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url,image_url`, {
           headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
         });
         const data: Session[] = await res.json() || [];
@@ -286,7 +249,7 @@ export default function MijnSessiesPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
           </Link>
           <span style={{ ...h, fontSize: 22, fontWeight: 800, color: C.navy }}>Mijn sessies</span>
-          {!loading && <span style={{ fontSize: 12, color: C.muted, marginLeft: "auto" }}>{sessions.length} sessies</span>}
+          {!loading && sessions.length > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginLeft: "auto", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, padding: "3px 9px" }}>{sessions.length}</span>}
         </div>
 
         {loading ? (
@@ -301,19 +264,11 @@ export default function MijnSessiesPage() {
           </div>
         ) : (
           sessions.map(s => (
-            <SessionCard key={s.id} s={s} onClick={() => setSelected(s)} onCrop={(s) => setCropSession(s)} />
+            <SessionCard key={s.id} s={s} onClick={() => setSelected(s)} />
           ))
         )}
       </div>
-      {selected && userId && <SessionDetail s={selected} userId={userId} onClose={() => setSelected(null)} />}
-      {cropSession && (
-        <PhotoCropModal
-          imageUrl={cropSession.photo_url || cropSession.image_url || ""}
-          initialPosition={localCrops[cropSession.id] || cropSession.photo_crop || "50% 50%"}
-          onConfirm={(pos) => saveCrop(cropSession.id, pos)}
-          onCancel={() => setCropSession(null)}
-        />
-      )}
+      {selected && <SessionDetail s={selected} onClose={() => setSelected(null)} />}
       <NavBar />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>

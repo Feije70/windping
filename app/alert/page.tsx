@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { getValidToken, getAuthId, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
@@ -89,7 +90,6 @@ export default function AlertPage() {
   const [goingSessions, setGoingSessions] = useState<Record<string, any>>({});
   const [logSession, setLogSession] = useState<any>(null);
   const [logForm, setLogForm] = useState({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" });
-  const [logDagdelen, setLogDagdelen] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   // Photo upload state
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -242,8 +242,7 @@ export default function AlertPage() {
       if (logForm.gear_type) update.gear_type = logForm.gear_type;
       if (logForm.gear_size) update.gear_size = logForm.gear_size;
       if (logForm.duration_minutes > 0) update.duration_minutes = logForm.duration_minutes;
-      const noteParts = [logDagdelen.length > 0 ? logDagdelen.join("/") : "", logForm.notes].filter(Boolean);
-      if (noteParts.length > 0) update.notes = noteParts.join(" · ");
+      if (logForm.notes) update.notes = logForm.notes;
       if (photoUrl) update.photo_url = photoUrl;
 
       await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${logSession.id}`, {
@@ -255,7 +254,6 @@ export default function AlertPage() {
       setGoingSessions(prev => ({ ...prev, [key]: { ...prev[key], status: "completed", rating: logForm.rating, photo_url: photoUrl } }));
       setLogSession(null);
       setLogForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" });
-      setLogDagdelen([]);
       setPhotoFile(null);
       setPhotoPreview(null);
     } catch (e) { console.error("Complete session error:", e); }
@@ -287,16 +285,20 @@ export default function AlertPage() {
     if (!alertsByDate[a.target_date]) alertsByDate[a.target_date] = [];
     alertsByDate[a.target_date].push(a);
   }
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
+  const sortedFutureDates = Object.keys(alertsByDate).filter(d => d >= todayStr).sort();
+  const sortedPastDates = Object.keys(alertsByDate).filter(d => d < todayStr).sort().reverse();
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "24px 16px 100px" }}>
-        <h1 style={{ ...h, fontSize: 22, fontWeight: 800, marginBottom: 4 }}>
-          🔔 Wind Alerts
-        </h1>
-        <p style={{ fontSize: 13, color: C.sub, marginBottom: 24 }}>
-          Je recente alerts en forecasts
-        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <Link href="/" style={{ width: 36, height: 36, borderRadius: "50%", background: C.card, border: `1px solid ${C.cardBorder}`, display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none", flexShrink: 0 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          </Link>
+          <h1 style={{ ...h, fontSize: 22, fontWeight: 800, margin: 0 }}>Wind Alerts</h1>
+        </div>
 
         {loading && (
           <div style={{ textAlign: "center", padding: 40 }}>
@@ -313,17 +315,22 @@ export default function AlertPage() {
           </div>
         )}
 
-        {Object.entries(alertsByDate).map(([date, dateAlerts]) => {
+        {sortedFutureDates.map((date) => { const dateAlerts = alertsByDate[date];
           const goAlerts = dateAlerts.filter(a => a.alert_type === "go" || a.alert_type === "heads_up");
           const downgradeAlerts = dateAlerts.filter(a => a.alert_type === "downgrade");
-          const allSpots = goAlerts.flatMap(a => a.conditions?.spots || []);
+          const allSpots = Object.values(
+            goAlerts.flatMap((a: any) => a.conditions?.spots || []).reduce((acc: any, spot: any) => {
+              if (!acc[spot.spotId] || spot.wind > acc[spot.spotId].wind) acc[spot.spotId] = spot;
+              return acc;
+            }, {} as Record<number, any>)
+          ) as any[];
 
           return (
             <div key={date} style={{ marginBottom: 28 }}>
-              <div style={{ fontSize: 17, fontWeight: 700, color: C.sky, marginBottom: 12, ...h }}>
-                📅 {formatDateLabel(date)}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                <span style={{ ...h, fontSize: 18, fontWeight: 800, color: C.navy }}>{formatDateLabel(date)}</span>
                 {goAlerts.length > 0 && (
-                  <span style={{ fontSize: 13, color: C.green, fontWeight: 600, marginLeft: 8 }}>Go!</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: C.green, background: C.goBg, padding: "2px 8px", borderRadius: 6, letterSpacing: "0.5px" }}>GO</span>
                 )}
               </div>
 
@@ -336,26 +343,32 @@ export default function AlertPage() {
                   <div key={`${spot.spotId}-${i}`} style={{
                     background: C.card,
                     boxShadow: C.cardShadow,
-                    borderRadius: 14,
-                    padding: "14px 16px",
+                    borderRadius: 18,
+                    overflow: "hidden",
                     marginBottom: 10,
+                    border: `1.5px solid ${C.cardBorder}`,
                   }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                      <div>
-                        <div style={{ fontSize: 15, fontWeight: 700 }}>{spot.spotName}</div>
-                        {daypart && (
-                          <div style={{ fontSize: 12, color: C.sky, fontWeight: 600, marginTop: 2 }}>{daypart}</div>
-                        )}
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: C.green }}>{spot.wind}kn</div>
-                        <div style={{ fontSize: 11, color: C.sub }}>{spot.dir} · gusts {spot.gust}kn</div>
+                    {/* Spot card header — groene balk */}
+                    <div style={{ background: "linear-gradient(135deg, #1B6B4E 0%, #259068 60%, #2EAA7A 100%)", padding: "12px 16px 10px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", letterSpacing: "-0.2px" }}>{spot.spotName}</div>
+                          {daypart && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontWeight: 600, marginTop: 2 }}>{daypart}</div>}
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 1, justifyContent: "flex-end" }}>
+                            <span style={{ fontSize: 32, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-1px" }}>{spot.wind}</span>
+                            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", fontWeight: 700 }}>kn</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>{spot.dir} · gusts {spot.gust}kn</div>
+                        </div>
                       </div>
                     </div>
+                    <div style={{ padding: "12px 16px 10px" }}>
 
                     {hours.length > 0 && (
-                      <div style={{ overflowX: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 6 }}>
+                      <div style={{ overflowX: "auto", marginBottom: 4 }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 2 }}>
                           <tbody>
                             <tr>
                               {hours.map(hr => (
@@ -366,7 +379,7 @@ export default function AlertPage() {
                               {hours.map(hr => (
                                 <td key={hr.hour} style={{
                                   padding: "4px 0", textAlign: "center", fontSize: 14, fontWeight: 700,
-                                  color: hr.wind >= wMin ? C.green : C.sub,
+                                  color: hr.wind >= wMin ? C.green : C.muted,
                                 }}>
                                   {hr.wind}
                                 </td>
@@ -384,9 +397,7 @@ export default function AlertPage() {
                             </tr>
                           </tbody>
                         </table>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#374151", marginTop: 2 }}>
-                          <span>kn / gust / dir</span>
-                        </div>
+                        <div style={{ fontSize: 9, color: C.muted, marginTop: 4, letterSpacing: "0.3px" }}>kn · gust · richting</div>
                       </div>
                     )}
 
@@ -419,7 +430,7 @@ export default function AlertPage() {
                         return (
                           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                             {isPast ? (
-                              <button onClick={() => { setLogSession({ ...session, spotName: spot.spotName }); setLogForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" }); setLogDagdelen([]); setPhotoFile(null); setPhotoPreview(null); }}
+                              <button onClick={() => { setLogSession({ ...session, spotName: spot.spotName }); setLogForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" }); setPhotoFile(null); setPhotoPreview(null); }}
                                 style={{ flex: 1, padding: "10px", background: C.sky, border: "none", borderRadius: 10, color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                                 🏄 Log je sessie
                               </button>
@@ -448,46 +459,122 @@ export default function AlertPage() {
                       return (
                         <div style={{ marginTop: 10 }}>
                           <button onClick={() => handleIkGa(spot.spotId, date, alertId, spot.wind, spot.gust, spot.dir)}
-                            style={{ width: "100%", padding: "11px", background: C.green, border: "none", borderRadius: 10, color: "#FFF", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                            style={{ width: "100%", padding: "13px", background: "linear-gradient(135deg, #1B6B4E, #27A070)", border: "none", borderRadius: 12, color: "#FFF", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 14px rgba(39,160,112,0.3)" }}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                             Ik ga!
                           </button>
-                          <div style={{ textAlign: "center", marginTop: 6, fontSize: 10, color: C.muted, lineHeight: 1.4 }}>Log je sessie achteraf en laat je crew zien dat je gaat</div>
+                          <div style={{ textAlign: "center", marginTop: 8, fontSize: 10, color: C.muted, lineHeight: 1.5 }}>Log je sessie achteraf en laat je vrienden zien dat je gaat</div>
                         </div>
                       );
                     })()}
-                  </div>
+                  </div>{/* end card body padding */}
+                </div>
                 );
               })}
 
-              {downgradeAlerts.map((a, i) => (
-                <div key={`dg-${i}`} style={{
-                  background: C.terraTint,
-                  border: "none",
-                  borderRadius: 14,
-                  padding: "14px 16px",
-                  marginBottom: 10,
-                }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.amber, marginBottom: 6 }}>
-                    ⬇️ Forecast verslechterd
-                  </div>
-                  {(a.conditions?.spots || []).map((s: any, j: number) => {
-                    const reasons = a.conditions?.downgradeReasons?.[s.spotId] || [];
-                    return (
-                      <div key={j} style={{ marginBottom: 6 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>{s.spotName}</div>
-                        <div style={{ fontSize: 12, color: C.amber }}>{s.wind}kn {s.dir}</div>
-                        {reasons.map((r: string, k: number) => (
-                          <div key={k} style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>• {r}</div>
-                        ))}
+              {downgradeAlerts.flatMap((a, i) =>
+                (a.conditions?.spots || []).map((s: any, j: number) => {
+                  const reasons = a.conditions?.downgradeReasons?.[s.spotId] || [];
+                  return (
+                    <div key={`dg-${i}-${j}`} style={{
+                      background: "#FEF2F2",
+                      border: "1.5px solid rgba(220,38,38,0.12)",
+                      borderRadius: 18,
+                      overflow: "hidden",
+                      marginBottom: 10,
+                    }}>
+                      {/* Rode header balk */}
+                      <div style={{ background: "#DC2626", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "white", letterSpacing: "0.3px" }}>Alert ingetrokken</span>
+                        </div>
+                        <span style={{ fontSize: 18, fontWeight: 900, color: "rgba(255,255,255,0.9)", lineHeight: 1 }}>{s.wind}<span style={{ fontSize: 10, fontWeight: 600 }}>kn</span></span>
                       </div>
-                    );
-                  })}
-                </div>
-              ))}
+                      {/* Spot info */}
+                      <div style={{ padding: "12px 16px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{s.spotName}</div>
+                          <div style={{ fontSize: 11, color: "#EF4444" }}>{s.dir}</div>
+                        </div>
+                        {reasons.map((r: string, k: number) => (
+                          <div key={k} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, color: "#EF4444", marginTop: 4, lineHeight: 1.4 }}>
+                            <span style={{ marginTop: 1, flexShrink: 0 }}>•</span>
+                            <span>{r}</span>
+                          </div>
+                        ))}
+                        <button onClick={() => handleIkGa(s.spotId, date, a.id, s.wind, s.gust || 0, s.dir)}
+                          style={{ marginTop: 12, width: "100%", padding: "10px", background: "white", border: "1.5px solid #DC2626", borderRadius: 10, color: "#DC2626", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                          Ik ga toch
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           );
         })}
+
+        {/* ── Verleden alerts ── */}
+        {sortedPastDates.length > 0 && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "8px 0 16px" }}>
+              <div style={{ flex: 1, height: 1, background: C.cardBorder }} />
+              <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: "1px" }}>EERDER</span>
+              <div style={{ flex: 1, height: 1, background: C.cardBorder }} />
+            </div>
+            {sortedPastDates.map((date) => { const dateAlerts = alertsByDate[date];
+              const goAlerts = dateAlerts.filter((a: any) => a.alert_type === "go" || a.alert_type === "heads_up");
+              const downgradeAlerts = dateAlerts.filter((a: any) => a.alert_type === "downgrade");
+              const allSpots = Object.values(
+                goAlerts.flatMap((a: any) => a.conditions?.spots || []).reduce((acc: any, spot: any) => {
+                  if (!acc[spot.spotId] || spot.wind > acc[spot.spotId].wind) acc[spot.spotId] = spot;
+                  return acc;
+                }, {} as Record<number, any>)
+              ) as any[];
+              return (
+                <div key={date} style={{ marginBottom: 20, opacity: 0.7 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <span style={{ ...h, fontSize: 15, fontWeight: 700, color: C.sub }}>{formatDateLabel(date)}</span>
+                  </div>
+                  {allSpots.map((spot: any, i: number) => {
+                    const hours = hourlyData[`${spot.spotId}_${date}`] || [];
+                    const wMin = spot.userWindMin || 12;
+                    const daypart = getDaypartLabel(hours, wMin);
+                    return (
+                      <div key={i} style={{ background: C.card, borderRadius: 14, border: `1.5px solid ${C.cardBorder}`, marginBottom: 8, overflow: "hidden" }}>
+                        <div style={{ background: "linear-gradient(135deg, #4A7A65, #5A9A7A)", padding: "10px 14px" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{spot.spotName}</div>
+                              {daypart && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>{daypart}</div>}
+                            </div>
+                            <div style={{ fontSize: 22, fontWeight: 900, color: "rgba(255,255,255,0.8)", lineHeight: 1 }}>{spot.wind}<span style={{ fontSize: 10 }}>kn</span></div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {downgradeAlerts.flatMap((a: any, i: number) =>
+                    (a.conditions?.spots || []).map((s: any, j: number) => (
+                      <div key={`pdg-${i}-${j}`} style={{ background: "#FEF2F2", borderRadius: 14, border: "1.5px solid rgba(220,38,38,0.1)", marginBottom: 8, overflow: "hidden" }}>
+                        <div style={{ background: "#EF4444", padding: "8px 14px", display: "flex", alignItems: "center", gap: 6 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "white" }}>Alert ingetrokken</span>
+                          <span style={{ marginLeft: "auto", fontSize: 16, fontWeight: 800, color: "rgba(255,255,255,0.8)" }}>{s.wind}kn</span>
+                        </div>
+                        <div style={{ padding: "10px 14px" }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{s.spotName}</div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
 
       {/* ── Session Log Modal (met foto upload) ── */}
@@ -499,32 +586,6 @@ export default function AlertPage() {
             
             <h3 style={{ ...h, fontSize: 18, fontWeight: 800, color: C.navy, margin: "0 0 4px" }}>Sessie loggen</h3>
             <div style={{ fontSize: 13, color: C.sub, marginBottom: 20 }}>{logSession.spotName} · {formatDateLabel(logSession.session_date)}</div>
-
-            {/* Dagdeel */}
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Wanneer was je op het water?</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                {([
-                  { id: "ochtend", label: "Ochtend", sub: "6–12u" },
-                  { id: "middag",  label: "Middag",  sub: "12–17u" },
-                  { id: "avond",   label: "Avond",   sub: "17–22u" },
-                ] as const).map(d => {
-                  const active = logDagdelen.includes(d.id);
-                  return (
-                    <button key={d.id} onClick={() => setLogDagdelen(prev =>
-                      prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id]
-                    )} style={{
-                      padding: "12px 6px", borderRadius: 12, border: `2px solid ${active ? C.sky : C.cardBorder}`,
-                      background: active ? `${C.sky}12` : C.cream, cursor: "pointer", transition: "all 0.2s",
-                      display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-                    }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: active ? C.sky : C.navy }}>{d.label}</span>
-                      <span style={{ fontSize: 10, color: C.muted }}>{d.sub}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* Rating */}
             <div style={{ marginBottom: 20 }}>

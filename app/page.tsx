@@ -1,5 +1,4 @@
 "use client";
-import SessionReactions from "@/app/components/SessionReactions";
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
@@ -9,8 +8,6 @@ import NavBar from "@/components/NavBar";
 import { Logo } from "@/components/Logo";
 import { WPing } from "@/components/WPing";
 import { getEmail, isTokenExpired, getAuthId, getValidToken, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
-import PhotoCropModal from "@/app/components/PhotoCropModal"
-import { cropStyle } from "@/lib/cropStyle";
 
 const h = { fontFamily: fonts.heading };
 const OM_BASE = "https://api.open-meteo.com/v1/forecast";
@@ -231,12 +228,27 @@ interface BundledFeedItem {
 }
 
 function bundleAlertsByDate(alerts: any[]): BundledFeedItem[] {
-  const byDate: Record<string, { goSpots: Map<string, FeedSpot>; downgradeSpots: Map<string, FeedDowngradeSpot>; latestCreatedAt: string }> = {};
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  for (const a of alerts) {
+  // Track the latest alert per spot per date, so downgrade correctly overrides go
+  type SpotState = { type: "go"; spot: FeedSpot; ts: string } | { type: "downgrade"; spot: FeedDowngradeSpot; ts: string };
+  const byDate: Record<string, { spotStates: Map<string, SpotState>; latestCreatedAt: string }> = {};
+
+  // Process alerts in chronological order so newer alerts override older ones
+  const sorted = [...alerts].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  for (const a of sorted) {
     const date = a.target_date;
+
+    // Skip dates in the past (only show today and future on homepage)
+    const d = new Date(date + "T12:00:00");
+    const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diff = Math.round((target.getTime() - today.getTime()) / 86400000);
+    if (diff < 0) continue;
+
     if (!byDate[date]) {
-      byDate[date] = { goSpots: new Map(), downgradeSpots: new Map(), latestCreatedAt: a.created_at };
+      byDate[date] = { spotStates: new Map(), latestCreatedAt: a.created_at };
     }
     if (new Date(a.created_at) > new Date(byDate[date].latestCreatedAt)) {
       byDate[date].latestCreatedAt = a.created_at;
@@ -246,19 +258,21 @@ function bundleAlertsByDate(alerts: any[]): BundledFeedItem[] {
     if (a.alert_type === "go" || a.alert_type === "heads_up" || a.alert_type === "epic") {
       for (const s of spots) {
         const key = s.spotName || String(s.spotId);
-        byDate[date].goSpots.set(key, { spotName: s.spotName, wind: s.wind, dir: s.dir, gust: s.gust });
+        // Only set as go if there's no newer downgrade for this spot
+        const existing = byDate[date].spotStates.get(key);
+        if (!existing || existing.type !== "downgrade" || new Date(a.created_at) > new Date(existing.ts)) {
+          byDate[date].spotStates.set(key, { type: "go", spot: { spotName: s.spotName, wind: s.wind, dir: s.dir, gust: s.gust }, ts: a.created_at });
+        }
       }
     } else if (a.alert_type === "downgrade") {
       for (const s of spots) {
         const key = s.spotName || String(s.spotId);
         const reasons = a.conditions?.downgradeReasons?.[s.spotId] || [];
-        byDate[date].downgradeSpots.set(key, { spotName: s.spotName, wind: s.wind, dir: s.dir, reasons });
+        // Downgrade always overrides a previous go for the same spot
+        byDate[date].spotStates.set(key, { type: "downgrade", spot: { spotName: s.spotName, wind: s.wind, dir: s.dir, reasons }, ts: a.created_at });
       }
     }
   }
-
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   const items: BundledFeedItem[] = Object.entries(byDate).map(([date, data]) => {
     const d = new Date(date + "T12:00:00");
@@ -267,11 +281,20 @@ function bundleAlertsByDate(alerts: any[]): BundledFeedItem[] {
     let dateLabel = "onbekend";
     if (diff === 0) dateLabel = "vandaag";
     else if (diff === 1) dateLabel = "morgen";
-    else if (diff === -1) dateLabel = "gisteren";
-    else dateLabel = d.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
+    else if (diff === 2) dateLabel = "overmorgen";
+    else {
+      const weekday = d.toLocaleDateString("nl-NL", { weekday: "short" }).replace(".", "").toUpperCase();
+      const dag = d.getDate();
+      const maand = d.toLocaleDateString("nl-NL", { month: "short" }).replace(".", "").toUpperCase();
+      dateLabel = `${weekday} ${dag} ${maand}`;
+    }
 
-    const goSpots = Array.from(data.goSpots.values());
-    const downgradeSpots = Array.from(data.downgradeSpots.values());
+    const goSpots: FeedSpot[] = [];
+    const downgradeSpots: FeedDowngradeSpot[] = [];
+    for (const state of data.spotStates.values()) {
+      if (state.type === "go") goSpots.push(state.spot);
+      else downgradeSpots.push(state.spot);
+    }
 
     let alertType: "go" | "downgrade" | "mixed" = "go";
     if (goSpots.length > 0 && downgradeSpots.length > 0) alertType = "mixed";
@@ -280,9 +303,13 @@ function bundleAlertsByDate(alerts: any[]): BundledFeedItem[] {
     return { targetDate: date, dateLabel, latestCreatedAt: data.latestCreatedAt, goSpots, downgradeSpots, alertType };
   });
 
-  const todayStr = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })();
+  // Sort: soonest first (today before tomorrow before next week)
   return items
-    .filter(item => item.targetDate >= todayStr)
+    .filter(item => {
+      const d2 = new Date(item.targetDate + "T12:00:00");
+      const t2 = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate());
+      return t2 >= today;
+    })
     .sort((a, b) => a.targetDate.localeCompare(b.targetDate))
     .slice(0, 5);
 }
@@ -315,30 +342,12 @@ interface RecentSession {
   forecast_wind: number | null;
   forecast_dir: string | null;
   photo_url: string | null;
-  photo_crop: string | null;
   spots?: { display_name: string };
 }
 
-function SessionStatsSection({ stats, sessions, spotNames, userId }: { stats: SessionStats; sessions: RecentSession[]; spotNames: Record<number, string>; userId: number | null }) {
+function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionStats; sessions: RecentSession[]; spotNames: Record<number, string> }) {
   const completed = sessions.filter(s => s.status === "completed");
-  const hasData = completed.length > 0;
-  const [cropSessionId, setCropSessionId] = useState<number | null>(null);
-  const [cropPhotoUrl, setCropPhotoUrl] = useState<string | null>(null);
-  const [cropPosition, setCropPosition] = useState<string>("50% 50%");
-  const [localCrops, setLocalCrops] = useState<Record<number, string>>({});
-
-  async function saveCrop(sessionId: number, pos: string) {
-    setLocalCrops(prev => ({ ...prev, [sessionId]: pos }));
-    setCropSessionId(null);
-    try {
-      const token = await getValidToken();
-      await fetch(`/api/sessions?id=${sessionId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ photo_crop: pos }),
-      });
-    } catch (e) { console.error("crop save error", e); }
-  }
+  const hasData = stats.total_sessions > 0 || completed.length > 0;
 
   if (!hasData) {
     return (
@@ -401,213 +410,62 @@ function SessionStatsSection({ stats, sessions, spotNames, userId }: { stats: Se
       </div>
 
       {latest && (
-        <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, overflow: "hidden", marginBottom: 12 }}>
-          {latest.photo_url && (
-            <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", overflow: "hidden" }}>
-              <img src={latest.photo_url} alt="" style={cropStyle(localCrops[latest.id] || latest.photo_crop)} />
-              <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 30%, rgba(31,53,76,0.85) 100%)" }} />
-              <button onClick={() => { setCropSessionId(latest.id); setCropPhotoUrl(latest.photo_url); setCropPosition(localCrops[latest.id] || latest.photo_crop || "50% 50%"); }} style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.45)", border: "none", borderRadius: 8, padding: "5px 8px", cursor: "pointer", color: "#fff", fontSize: 14, lineHeight: 1 }}>✂️</button>
-              <div style={{ position: "absolute", bottom: 12, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>{latestSpot}</div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>{dateLabelFn(latest.session_date)}</div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {latest.forecast_wind && (
-                    <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", borderRadius: 9, padding: "5px 9px", textAlign: "center" }}>
-                      <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{latest.forecast_wind}</div>
-                      <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>{latest.forecast_dir ? `${latest.forecast_dir} · KN` : "KN"}</div>
-                    </div>
-                  )}
-                  {latest.rating && (
-                    <div style={{ fontSize: 13, fontWeight: 800, color: ratingColorsL[latest.rating], background: `${ratingColorsL[latest.rating]}25`, padding: "4px 10px", borderRadius: 16 }}>
-                      {ratingLabelsL[latest.rating]}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          <div style={{ padding: "12px 14px 10px" }}>
-            {!latest.photo_url && (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                <div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{latestSpot}</div>
-                  <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>{dateLabelFn(latest.session_date)}</div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {latest.forecast_wind && <div style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{latest.forecast_wind}<span style={{ fontSize: 10 }}>kn</span>{latest.forecast_dir && <span style={{ fontSize: 10, color: C.sub, fontWeight: 500 }}> {latest.forecast_dir}</span>}</div>}
-                  {latest.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColorsL[latest.rating] }}>{ratingLabelsL[latest.rating]}</div>}
-                </div>
-              </div>
-            )}
-            {(latest.gear_type || latest.gear_size || latest.notes) && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {(latest.gear_type || latest.gear_size) && (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                    {latest.gear_type && <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: C.sky + "12", borderRadius: 7, padding: "3px 9px" }}>{latest.gear_type.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}</span>}
-                    {latest.gear_size && <span style={{ fontSize: 11, color: C.sub }}>{latest.gear_size}</span>}
+        <Link href={`/sessie/${latest.id}`} style={{ display: "block", textDecoration: "none", marginBottom: 12 }}>
+          <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, overflow: "hidden" }}>
+            {latest.photo_url && (
+              <div style={{ position: "relative" }}>
+                <img src={latest.photo_url} alt="" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 30%, rgba(31,53,76,0.85) 100%)" }} />
+                <div style={{ position: "absolute", bottom: 12, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>{latestSpot}</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>{dateLabelFn(latest.session_date)}</div>
                   </div>
-                )}
-                {latest.notes && <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>{latest.notes}</div>}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {latest.forecast_wind && (
+                      <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", borderRadius: 9, padding: "5px 9px", textAlign: "center" }}>
+                        <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{latest.forecast_wind}</div>
+                        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>KN</div>
+                      </div>
+                    )}
+                    {latest.rating && (
+                      <div style={{ fontSize: 13, fontWeight: 800, color: ratingColorsL[latest.rating], background: `${ratingColorsL[latest.rating]}25`, padding: "4px 10px", borderRadius: 16 }}>
+                        {ratingLabelsL[latest.rating]}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
+            <div style={{ padding: "12px 14px" }}>
+              {!latest.photo_url && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{latestSpot}</div>
+                    <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>{dateLabelFn(latest.session_date)}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {latest.forecast_wind && <div style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{latest.forecast_wind}<span style={{ fontSize: 10 }}>kn</span></div>}
+                    {latest.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColorsL[latest.rating] }}>{ratingLabelsL[latest.rating]}</div>}
+                  </div>
+                </div>
+              )}
+              {(latest.gear_type || latest.gear_size) && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                  {latest.gear_type && <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: C.sky + "12", borderRadius: 7, padding: "3px 9px" }}>{latest.gear_type.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}</span>}
+                  {latest.gear_size && <span style={{ fontSize: 11, color: C.sub, padding: "3px 0" }}>{latest.gear_size}</span>}
+                  {latest.notes && <div style={{ fontSize: 12, color: C.sub, marginTop: 6, lineHeight: 1.5 }}>{latest.notes}</div>}
+                </div>
+              )}
+            </div>
           </div>
-          <div style={{ padding: "0 14px 14px", display: "flex", gap: 8 }}>
-            {latest.id && (<>
-            <a
-              href={`https://wa.me/?text=${encodeURIComponent([
-                latest.rating ? ({1:"Shit 😬",2:"Mwah 😐",3:"Oké 👌",4:"Lekker! 😎",5:"EPIC! 🤙"} as any)[latest.rating] : "Sessie gelogd",
-                `${latestSpot}${latest.forecast_wind ? ` · ${latest.forecast_wind}kn` : ""}${latest.forecast_dir ? ` ${latest.forecast_dir}` : ""}`,
-                `via WindPing\nhttps://www.windping.com/sessie/${latest.id}`
-              ].join("\n"))}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "rgba(37,211,102,0.08)", borderRadius: 10, fontSize: 12, fontWeight: 700, color: "#25D366", textDecoration: "none" }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-              WhatsApp
-            </a>
-            <button
-              onClick={() => {
-                const url = `https://www.windping.com/sessie/${latest.id}`;
-                const text = [
-                  latest.rating ? ({1:"Shit 😬",2:"Mwah 😐",3:"Oké 👌",4:"Lekker! 😎",5:"EPIC! 🤙"} as any)[latest.rating] : "Sessie gelogd",
-                  `${latestSpot}${latest.forecast_wind ? ` · ${latest.forecast_wind}kn` : ""}${latest.forecast_dir ? ` ${latest.forecast_dir}` : ""}`,
-                  "via WindPing"
-                ].join("\n");
-                if ((navigator as any).share) {
-                  (navigator as any).share({ title: "WindPing sessie", text, url }).catch(() => {});
-                } else {
-                  navigator.clipboard.writeText(url).then(() => alert("Link gekopieerd!")).catch(() => {});
-                }
-              }}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", background: "rgba(14,165,233,0.1)", borderRadius: 10, fontSize: 12, fontWeight: 700, color: C.sky, border: "none", cursor: "pointer" }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-              Deel sessie
-            </button>
-            </>)}
-          </div>
-        </div>
+        </Link>
       )}
 
       {stats.total_sessions > 3 && (
         <Link href="/mijn-sessies" style={{ display: "block", textAlign: "center", marginTop: 10, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
           Alle {stats.total_sessions} sessies bekijken →
         </Link>
-      )}
-      {cropSessionId && cropPhotoUrl && (
-        <PhotoCropModal
-          imageUrl={cropPhotoUrl}
-          initialPosition={cropPosition}
-          onConfirm={(pos) => saveCrop(cropSessionId, pos)}
-          onCancel={() => setCropSessionId(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════
-   FEED CARD
-   ═══════════════════════════════════════════════════════════ */
-
-const ratingLabels: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker!", 5: "EPIC!" };
-const ratingColors: Record<number, string> = { 1: C.terra, 2: C.terra, 3: C.gold, 4: C.sky, 5: C.green };
-
-function dateLabelFn(dateStr: string) {
-  const d = new Date(dateStr + "T12:00:00");
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return "Vandaag";
-  if (d.toDateString() === yesterday.toDateString()) return "Gisteren";
-  return d.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" });
-}
-
-function FeedCard({ item, userId, token, onHide }: { item: any; userId: number | null; token: string | null; onHide?: (id: number) => void }) {
-  const hf = { fontFamily: fonts.heading };
-
-  async function hideSession() {
-    if (!token) return;
-    onHide?.(item.id);
-    await fetch(`/api/friends?type=hide_session&session_id=${item.id}`, {
-      headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-    });
-  }
-
-  return (
-    <div style={{ background: C.card, borderRadius: 16, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 12 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px 10px" }}>
-        <div style={{ width: 32, height: 32, borderRadius: "50%", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-          {item.friendName.charAt(0).toUpperCase()}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{item.friendName}</div>
-          <div style={{ fontSize: 11, color: C.muted }}>{dateLabelFn(item.sessionDate)}</div>
-        </div>
-        {item.status === "going" && (
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.green, background: `${C.green}15`, padding: "3px 8px", borderRadius: 8 }}>Gaat!</div>
-        )}
-        {item.rating && item.status === "completed" && (
-          <div style={{ fontSize: 12, fontWeight: 700, color: ratingColors[item.rating], background: `${ratingColors[item.rating]}15`, padding: "3px 8px", borderRadius: 8 }}>
-            {ratingLabels[item.rating]}
-          </div>
-        )}
-        <button onClick={hideSession} style={{ marginLeft: 4, background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 16, lineHeight: 1, padding: "2px 4px", opacity: 0.5 }} title="Verbergen">×</button>
-      </div>
-
-      {/* Photo */}
-      {item.photoUrl && (
-        <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", overflow: "hidden" }}>
-          <img src={item.photoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: item.photoCrop || "50% 50%", display: "block" }} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(31,53,76,0.7) 100%)" }} />
-          <div style={{ position: "absolute", bottom: 10, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", ...hf }}>{item.spotName}</div>
-            {item.forecastWind && (
-              <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", borderRadius: 8, padding: "4px 8px", textAlign: "center" }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{item.forecastWind}</div>
-                <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>{item.forecastDir ? `${item.forecastDir} · KN` : "KN"}</div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Spot — no photo */}
-      {!item.photoUrl && (
-        <div style={{ padding: "0 14px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.navy }}>{item.spotName}</div>
-          {item.forecastWind && (
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.sky }}>
-              {item.forecastWind}kn {item.forecastDir && <span style={{ fontSize: 11, color: C.muted }}>{item.forecastDir}</span>}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Gear + notes */}
-      {(item.gearType || item.notes) && (
-        <div style={{ padding: "8px 14px 0", display: "flex", flexDirection: "column", gap: 4 }}>
-          {item.gearType && (
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: `${C.sky}12`, borderRadius: 7, padding: "3px 9px" }}>
-                {item.gearType.replace(/-/g, " ")}
-              </span>
-              {item.gearSize && <span style={{ fontSize: 11, color: C.sub }}>{item.gearSize}</span>}
-            </div>
-          )}
-          {item.notes && <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>{item.notes}</div>}
-        </div>
-      )}
-
-      {/* Reactions — alleen bij completed sessies */}
-      {item.status === "completed" && (
-        <div style={{ padding: "0 14px 12px" }}>
-          <SessionReactions sessionId={item.id} ownerId={item.friendId} userId={userId} token={token} />
-        </div>
       )}
     </div>
   );
@@ -621,7 +479,6 @@ interface SpotSummary { id: number; name: string; ws: number; wd: number; match:
 
 function Dashboard() {
   const [userName, setUserName] = useState("");
-  const [validToken, setValidToken] = useState<string | null>(null);
   const [userId, setUserId] = useState<number | null>(null);
   const [spots, setSpots] = useState<SpotSummary[]>([]);
 
@@ -636,22 +493,8 @@ function Dashboard() {
   const [spotNames, setSpotNames] = useState<Record<number, string>>({});
   const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
   const [friendActivity, setFriendActivity] = useState<any[]>([]);
-  const [unreadFriendCount, setUnreadFriendCount] = useState(0);
   const [showWelcome, setShowWelcome] = useState(false);
   const [allSpots, setAllSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
-  const [showPwaBanner, setShowPwaBanner] = useState(false);
-  const [isIos, setIsIos] = useState(false);
-
-  // PWA installatie detectie
-  useEffect(() => {
-    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
-    if (isStandalone) return; // Al geïnstalleerd — geen banner
-    const dismissed = localStorage.getItem("pwa_banner_dismissed");
-    if (dismissed && Date.now() - Number(dismissed) < 30 * 24 * 60 * 60 * 1000) return; // 30 dagen niet tonen
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    setIsIos(ios);
-    setShowPwaBanner(true);
-  }, []);
 
   // Handmatige sessie modal
   const [showManualSession, setShowManualSession] = useState(false);
@@ -690,11 +533,8 @@ function Dashboard() {
   const [manualWindFeel, setManualWindFeel] = useState<string | null>(null);
   const [manualNotes, setManualNotes] = useState("");
   const [manualPhotoUrl, setManualPhotoUrl] = useState<string | null>(null);
-  const [manualPhotoCrop, setManualPhotoCrop] = useState<string>("");
-  const [showManualCropModal, setShowManualCropModal] = useState(false);
   const [manualPhotoUploading, setManualPhotoUploading] = useState(false);
   const [manualError, setManualError] = useState("");
-  const [manualDagdelen, setManualDagdelen] = useState<string[]>([]); // "ochtend" | "middag" | "avond"
   const [allPublicSpots, setAllPublicSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
 
   const goSpots = spots.filter(s => s.match === "go");
@@ -786,20 +626,10 @@ function Dashboard() {
       try {
         const token = await getValidToken();
         if (token) {
-          setValidToken(token);
-          // Load cached sessions immediately for instant render
-          try {
-            const cached = sessionStorage.getItem("wp_sessions");
-            if (cached) setRecentSessions(JSON.parse(cached));
-          } catch {}
-          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,photo_url,photo_crop,notes`, {
+          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,photo_url,notes`, {
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
           });
-          if (sessRes.ok) {
-            const sessData = await sessRes.json() || [];
-            setRecentSessions(sessData);
-            try { sessionStorage.setItem("wp_sessions", JSON.stringify(sessData)); } catch {}
-          }
+          if (sessRes.ok) setRecentSessions(await sessRes.json() || []);
           const statsRes = await fetch(`${SUPABASE_URL}/rest/v1/user_stats?user_id=eq.${user.id}&select=*`, {
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
           });
@@ -825,14 +655,6 @@ function Dashboard() {
             const actData = await actRes.json();
             setFriendActivity(actData.activity || []);
           }
-          // Haal unread count op via feed endpoint
-          const feedRes = await fetch("/api/friends?type=feed", {
-            headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-          });
-          if (feedRes.ok) {
-            const feedData = await feedRes.json();
-            setUnreadFriendCount(feedData.unreadCount || 0);
-          }
         }
       } catch (e) { console.error("Friend activity load error:", e); }
     } catch (e) { console.error(e); }
@@ -842,11 +664,16 @@ function Dashboard() {
   useEffect(() => { loadData(); }, [loadData]);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Goedemorgen" : hour < 18 ? "Goedemiddag" : "Goedenavond";
-  const today = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })();
-  const feedItems = bundleAlertsByDate(recentAlerts).filter(item => item.targetDate >= today);
+  const feedItems = bundleAlertsByDate(recentAlerts);
+
+  // Handler: "Ik ga!" — open manual session with spot pre-selected
+  const handleIkGa = (spotName: string) => {
+    setShowManualSession(true);
+    setManualStep("pick");
+  };
 
   // Fetch weer voor handmatige sessie
-  const fetchManualWeather = async (spotId: number, date: string, dagdelen: string[]) => {
+  const fetchManualWeather = async (spotId: number, date: string) => {
     const spot = allSpots.find(s => s.id === spotId);
     if (!spot) return;
     setManualWeatherLoading(true);
@@ -855,19 +682,10 @@ function Dashboard() {
       const url = `${OM_BASE}?latitude=${spot.lat}&longitude=${spot.lng}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Europe/Amsterdam&start_date=${date}&end_date=${date}`;
       const res = await fetch(url);
       const data = await res.json();
-      // Bepaal uren op basis van geselecteerde dagdelen
-      const ranges: number[] = [];
-      if (dagdelen.includes("ochtend")) for (let h = 6; h < 12; h++) ranges.push(h);
-      if (dagdelen.includes("middag"))  for (let h = 12; h < 17; h++) ranges.push(h);
-      if (dagdelen.includes("avond"))   for (let h = 17; h <= 21; h++) ranges.push(h);
-      const hours = ranges.length > 0 ? ranges : [12]; // fallback: middag
-      const winds = hours.map(h => data.hourly.wind_speed_10m[h] || 0);
-      const gusts = hours.map(h => data.hourly.wind_gusts_10m[h] || 0);
-      const dirs  = hours.map(h => data.hourly.wind_direction_10m[h] || 0);
-      const avg = (arr: number[]) => Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
-      const wind = avg(winds);
-      const gust = avg(gusts);
-      const dir  = avg(dirs);
+      const midday = 12; // gebruik middagwaarden
+      const wind = Math.round(data.hourly.wind_speed_10m[midday] || 0);
+      const gust = Math.round(data.hourly.wind_gusts_10m[midday] || 0);
+      const dir = Math.round(data.hourly.wind_direction_10m[midday] || 0);
       const dirStr = degToDir(dir);
       setManualWeather({ wind, gust, dir, dirStr });
     } catch { setManualWeather(null); }
@@ -904,7 +722,6 @@ function Dashboard() {
     setManualNotes("");
     setManualPhotoUrl(null);
     setManualError("");
-    setManualDagdelen([]);
   }
 
   const handleManualSessionSave = async () => {
@@ -923,10 +740,8 @@ function Dashboard() {
         gear_size: manualBuildGearSize(),
       };
       if (manualWindFeel) body.wind_feel = manualWindFeel;
-      if (manualDagdelen.length > 0) body.notes = [manualDagdelen.join("/"), manualNotes].filter(Boolean).join(" · ");
-      else if (manualNotes) body.notes = manualNotes;
+      if (manualNotes) body.notes = manualNotes;
       if (manualPhotoUrl) body.photo_url = manualPhotoUrl;
-      if (manualPhotoCrop !== "50% 50%") body.photo_crop = manualPhotoCrop;
       if (manualWeather) {
         body.forecast_wind = manualWeather.wind;
         body.forecast_gust = manualWeather.gust;
@@ -934,20 +749,10 @@ function Dashboard() {
       }
       const saveRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
         method: "POST",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
         body: JSON.stringify(body),
       });
       if (!saveRes.ok) { setManualError("Opslaan mislukt: " + saveRes.status); setManualSaving(false); return; }
-      const saved = await saveRes.json();
-      const newSessionId = saved?.[0]?.id;
-      // Notify friends (fire and forget)
-      if (newSessionId) {
-        fetch(`/api/sessions`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ session_id: newSessionId, _notify_only: true }),
-        }).catch(() => {});
-      }
       setShowManualSession(false);
       resetManualSession();
       loadData();
@@ -959,117 +764,91 @@ function Dashboard() {
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
       <NavBar />
-      
 
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 16px 100px" }}>
-        {/* Greeting */}
-        <div style={{ marginBottom: 20 }}>
-          <h2 style={{ ...h, fontSize: 24, fontWeight: 800, margin: "0 0 3px", color: C.navy }}>{greeting} {userName ? userName.split(" ")[0] : ""}</h2>
-          <p style={{ fontSize: 13, color: C.sub, margin: 0 }}>
-            {loading ? "Je spots checken..." : goSpots.length > 0 ? <><strong style={{ color: C.green }}>{goSpots.length} spot{goSpots.length > 1 ? "s" : ""}</strong> zijn nu Go!</> : recentAlerts.some(a => a.alert_type === "go") ? "Niet nu, maar er komen Go-dagen aan!" : spots.length > 0 ? "Nu even geen wind op je spots" : "Voeg spots toe om te beginnen"}
-          </p>
-        </div>
+      <div style={{ maxWidth: 480, margin: "0 auto", padding: "0 0 100px" }}>
 
-        {/* Paused */}
-        {paused && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: C.epicBg, border: "1px solid rgba(212,146,46,0.2)", borderRadius: 14, marginBottom: 16 }}>
-            <span style={{ fontSize: 18 }}>⏸️</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.gold }}>Alerts gepauzeerd</div>
-              <div style={{ fontSize: 11, color: C.sub }}>Tot {pauseUntil}</div>
+        {/* ══════════════════════════════════════════
+            HEADER — open, licht, uitnodigend
+            ══════════════════════════════════════════ */}
+        <div style={{ padding: "28px 16px 0" }}>
+
+          {/* Greeting + Go-badge */}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10, gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 12, color: C.muted, fontWeight: 500, marginBottom: 3, letterSpacing: "0.3px" }}>{greeting}</div>
+              <h2 style={{ ...h, fontSize: 34, fontWeight: 800, margin: 0, color: C.navy, letterSpacing: "-0.5px", lineHeight: 1.05 }}>
+                {userName ? userName.split(" ")[0] : ""}
+              </h2>
             </div>
-            <button onClick={() => setPaused(false)} style={{ padding: "6px 12px", background: C.gold, border: "none", borderRadius: 8, color: "#FFF", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Hervatten</button>
-          </div>
-        )}
-
-        {/* PWA installatie banner */}
-        {showPwaBanner && (
-          <div style={{ background: C.card, border: `1.5px solid ${C.sky}30`, borderRadius: 16, padding: "14px 16px", marginBottom: 16, boxShadow: C.cardShadow }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 10, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>Voeg WindPing toe aan je beginscherm</div>
-                  <div style={{ fontSize: 11, color: C.muted }}>Zo mis je geen enkele wind-alert</div>
-                </div>
-              </div>
-              <button onClick={() => { setShowPwaBanner(false); localStorage.setItem("pwa_banner_dismissed", String(Date.now())); }} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 18, lineHeight: 1, padding: "0 0 0 8px", flexShrink: 0 }}>×</button>
-            </div>
-            {isIos ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>1</div>
-                  <span>Tik op het <strong style={{ color: C.navy }}>deel-icoontje</strong> onderaan je browser</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>2</div>
-                  <span>Kies <strong style={{ color: C.navy }}>"Zet op beginscherm"</strong></span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>3</div>
-                  <span>Tik op <strong style={{ color: C.navy }}>"Voeg toe"</strong></span>
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>1</div>
-                  <span>Tik op het <strong style={{ color: C.navy }}>menu (⋮)</strong> rechtsboven in Chrome</span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>2</div>
-                  <span>Kies <strong style={{ color: C.navy }}>"Toevoegen aan beginscherm"</strong></span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>3</div>
-                  <span>Tik op <strong style={{ color: C.navy }}>"Toevoegen"</strong></span>
-                </div>
+            {/* Alleen tonen als er Go-spots zijn — groen badge */}
+            {!loading && goSpots.length > 0 && (
+              <div style={{ flexShrink: 0, background: "linear-gradient(135deg, #1B6B4E 0%, #27A070 100%)", borderRadius: 16, padding: "9px 14px", textAlign: "center", boxShadow: "0 4px 14px rgba(39,160,112,0.30)" }}>
+                <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-1px" }}>{goSpots[0].ws}</div>
+                <div style={{ fontSize: 8, fontWeight: 800, color: "rgba(255,255,255,0.65)", letterSpacing: "1.2px", marginTop: 1 }}>KN · GO</div>
               </div>
             )}
           </div>
-        )}
 
-        {/* Wind Check strip */}
-        {!loading && spots.length > 0 && (
-          <Link href="/check" style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: C.card, boxShadow: C.cardShadow, borderRadius: 14, marginBottom: 20, textDecoration: "none", color: C.navy }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, background: goSpots.length > 0 ? C.goBg : C.oceanTint, border: `1.5px solid ${goSpots.length > 0 ? "rgba(45,143,111,0.2)" : C.cardBorder}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontSize: 20, fontWeight: 900, color: goSpots.length > 0 ? C.green : C.muted, lineHeight: 1 }}>{goSpots.length}</span>
-              <span style={{ fontSize: 8, fontWeight: 700, color: C.sub }}>GO</span>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>Wind Check</div>
-              <div style={{ fontSize: 12, color: C.sub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {spots.slice(0, 3).map((s, i) => (<span key={s.id}>{i > 0 ? " · " : ""}<span style={{ color: matchColors[s.match], fontWeight: 700 }}>{s.ws}kn</span> {s.name}</span>))}
+          {/* Status tekst */}
+          <p style={{ fontSize: 13, color: C.sub, margin: "0 0 16px", lineHeight: 1.5 }}>
+            {loading ? "Even kijken…" :
+              goSpots.length > 0
+                ? <><span style={{ fontWeight: 700, color: C.green }}>{goSpots.length > 1 ? `${goSpots.length} spots` : goSpots[0].name}</span> {goSpots.length > 1 ? "zijn" : "is"} nu Go — <a href="/alert" style={{ color: C.sky, textDecoration: "none", fontWeight: 600 }}>bekijk je alert →</a></>
+                : recentAlerts.some(a => a.alert_type === "go")
+                  ? <><span style={{ fontWeight: 600, color: C.navy }}>Er komen Go-dagen aan</span> — check je alerts</>
+                  : spots.length > 0 ? "Vandaag even geen wind op je spots"
+                  : "Voeg spots toe om te beginnen"}
+          </p>
+
+          {/* Wind Check kaart — grote duidelijke windgetallen */}
+          {!loading && spots.length > 0 && (
+            <Link href="/check" style={{ display: "block", padding: "14px 16px", background: C.card, borderRadius: 16, textDecoration: "none", boxShadow: "0 2px 12px rgba(31,53,76,0.07)", border: `1.5px solid ${C.cardBorder}`, marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "1px" }}>WIND CHECK</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: C.sky, fontWeight: 600 }}>
+                  Bekijk alles <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                </div>
               </div>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.5"><path d="M9 18l6-6-6-6" /></svg>
-          </Link>
-        )}
-
-        {/* Quick actions */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 8, marginBottom: 24 }}>
-          <button onClick={() => setShowPause(!showPause)} style={{ padding: "12px 4px", background: C.card, boxShadow: "0 1px 3px rgba(31,53,76,0.05)", border: `1px solid ${showPause ? "rgba(212,146,46,0.15)" : "rgba(31,53,76,0.03)"}`, borderRadius: 14, fontSize: 10, fontWeight: 600, color: showPause ? C.gold : C.sub, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, cursor: "pointer", textAlign: "center" }}>
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: showPause ? C.epicBg : C.terraTint, display: "flex", alignItems: "center", justifyContent: "center" }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={showPause ? C.gold : C.amber} strokeWidth="2.2" strokeLinecap="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></div>
-            Pauzeer
-          </button>
-          {[
-            { href: "/add-spot", label: "Spot +", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>, bg: C.terraTint },
-            { href: "/spots", label: "Spots", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.purple} strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>, bg: "#EDE6F0" },
-            { href: "/mijn-spots", label: "Mijn Spots", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.2" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>, bg: C.oceanTint },
-            { href: "/vrienden", label: "Buddies", icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, bg: C.goBg },
-          ].map((a) => (
-            <Link key={a.href} href={a.href} style={{ padding: "12px 4px", background: C.card, boxShadow: "0 1px 3px rgba(31,53,76,0.05)", border: "1px solid rgba(31,53,76,0.03)", borderRadius: 14, fontSize: 10, fontWeight: 600, color: C.sub, display: "flex", flexDirection: "column", alignItems: "center", gap: 5, textDecoration: "none", textAlign: "center" }}>
-              <div style={{ width: 34, height: 34, borderRadius: 10, background: a.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>{a.icon}</div>
-              {a.label}
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(spots.length, 4)}, 1fr)`, gap: 4 }}>
+                {[...spots].sort((a, b) => b.ws - a.ws).slice(0, 4).map((s) => {
+                  const col = s.match === "go" ? C.green : s.match === "maybe" ? C.gold : C.muted;
+                  const bg = s.match === "go" ? C.goBg : s.match === "maybe" ? C.epicBg : C.cream;
+                  return (
+                    <div key={s.id} style={{ background: bg, borderRadius: 12, padding: "10px 6px 8px", textAlign: "center", border: `1.5px solid ${s.match === "go" ? "rgba(62,170,140,0.2)" : s.match === "maybe" ? "rgba(232,168,62,0.2)" : C.cardBorder}` }}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 1, marginBottom: 4 }}>
+                        <span style={{ fontSize: 24, fontWeight: 900, color: col, lineHeight: 1, letterSpacing: "-0.5px" }}>{s.ws}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: col, opacity: 0.75 }}>kn</span>
+                      </div>
+                      <div style={{ fontSize: 9, color: C.sub, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingBottom: 2 }}>{s.name.split(" ")[0]}</div>
+                      {s.match === "go" && <div style={{ fontSize: 7, fontWeight: 800, color: C.green, letterSpacing: "0.8px", marginTop: 2 }}>GO</div>}
+                    </div>
+                  );
+                })}
+              </div>
             </Link>
-          ))}
+          )}
         </div>
 
-        {/* Pause options (expands under quick action) */}
+        <div style={{ padding: "0 16px" }}>
+
+        {/* Quick actions — horizontale pill-rij */}
+        <div style={{ display: "flex", gap: 7, marginBottom: 24, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any, msOverflowStyle: "none", scrollbarWidth: "none" as any }}>
+          {[
+            { label: "Sessie +", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>, bg: C.goBg, border: `1.5px solid rgba(62,170,140,0.25)`, color: C.green, onClick: () => { setShowManualSession(true); setManualStep("pick"); } },
+            { label: "Mijn Spots", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.5" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>, bg: C.oceanTint, border: `1.5px solid rgba(46,143,174,0.2)`, color: C.sky, href: "/mijn-spots" },
+            { label: "Vrienden", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.purple} strokeWidth="2.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, bg: "#EDE6F0", border: `1.5px solid rgba(139,126,200,0.2)`, color: C.purple, href: "/vrienden" },
+            { label: "Spot toevoegen", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2.5" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><path d="M12 7v6M9 10h6"/></svg>, bg: C.terraTint, border: `1.5px solid rgba(201,122,99,0.2)`, color: C.amber, href: "/add-spot" },
+            { label: "Pauzeer alerts", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={showPause ? C.gold : C.muted} strokeWidth="2.2" strokeLinecap="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>, bg: showPause ? C.epicBg : C.cream, border: `1.5px solid ${showPause ? "rgba(232,168,62,0.3)" : C.cardBorder}`, color: showPause ? C.gold : C.muted, onClick: () => setShowPause(!showPause) },
+          ].map((a: any) => {
+            const style = { display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px", background: a.bg, border: a.border, borderRadius: 22, fontSize: 12, fontWeight: 600, color: a.color, whiteSpace: "nowrap" as const, cursor: "pointer", textDecoration: "none", flexShrink: 0 };
+            if (a.href) return <Link key={a.label} href={a.href} style={style}>{a.icon}{a.label}</Link>;
+            return <button key={a.label} onClick={a.onClick} style={{ ...style, background: a.bg, fontFamily: "inherit" }}>{a.icon}{a.label}</button>;
+          })}
+        </div>
+
+        {/* Pause options */}
         {showPause && !paused && (
-          <div style={{ marginBottom: 24, padding: "16px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 14, boxShadow: C.cardShadow }}>
+          <div style={{ marginBottom: 20, padding: "16px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 14, boxShadow: C.cardShadow }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
               {([["24h", "24 uur"], ["48h", "48 uur"], ["1w", "1 week"], ["2w", "2 weken"], ["custom", "Kies datum"]] as const).map(([val, label]) => (
                 <button key={val} onClick={() => setPauseOption(val)} style={{ padding: "8px 14px", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", background: pauseOption === val ? C.gold : C.cream, color: pauseOption === val ? "#FFF" : C.sub, border: `1px solid ${pauseOption === val ? C.gold : C.cardBorder}` }}>{label}</button>
@@ -1080,211 +859,319 @@ function Dashboard() {
           </div>
         )}
 
-        {/* ── BUNDLED FEED ── */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
-            <span style={{ ...h, fontSize: 17, fontWeight: 700, color: C.navy }}>Feed</span>
-            {feedItems.length > 0 && <a href="/alert" style={{ fontSize: 12, color: C.sky, textDecoration: "none", fontWeight: 600 }}>Alle alerts →</a>}
+        {/* Paused banner */}
+        {paused && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: C.epicBg, border: "1px solid rgba(212,146,46,0.2)", borderRadius: 14, marginBottom: 20 }}>
+            <span style={{ fontSize: 18 }}>⏸️</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.gold }}>Alerts gepauzeerd</div>
+              <div style={{ fontSize: 11, color: C.sub }}>Tot {pauseUntil}</div>
+            </div>
+            <button onClick={() => setPaused(false)} style={{ padding: "6px 12px", background: C.gold, border: "none", borderRadius: 8, color: "#FFF", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Hervatten</button>
           </div>
-          {feedItems.map((item) => {
-            const timeAgo = (() => { const mins = Math.round((Date.now() - new Date(item.latestCreatedAt).getTime()) / 60000); if (mins < 60) return `${mins}m geleden`; const hrs = Math.round(mins / 60); if (hrs < 24) return `${hrs}u geleden`; return `${Math.round(hrs / 24)}d geleden`; })();
-            const hasGo = item.goSpots.length > 0;
-            const hasDowngrade = item.downgradeSpots.length > 0;
-            const accentColor = hasGo ? C.green : C.amber;
-            return (
-              <a href="/alert" key={item.targetDate} style={{ textDecoration: "none", color: "inherit", display: "block", marginBottom: 10 }}>
-                <div style={{ padding: "14px 16px", background: C.card, borderLeft: `3px solid ${accentColor}`, borderRadius: 13, boxShadow: C.cardShadow }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: accentColor, display: "flex", alignItems: "center", gap: 5 }}>
-                      {hasGo ? (
-                        <span style={{ width: 18, height: 18, borderRadius: 4, background: C.green, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        </span>
-                      ) : (
-                        <span style={{ width: 18, height: 18, borderRadius: "50%", background: C.amber, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>
-                        </span>
-                      )}
-                      {hasGo ? `Go voor ${item.dateLabel}!` : `Verslechterd (${item.dateLabel})`}
-                    </div>
-                    <div style={{ fontSize: 10, color: C.muted }}>{timeAgo}</div>
-                  </div>
-                  {hasGo && (
-                    <div>
-                      <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.5 }}>
-                        {item.goSpots.slice(0, 3).map((s: any, i: number) => (
-                          <span key={i}>{i > 0 ? " · " : ""}<span style={{ fontWeight: 600, color: C.navy }}>{s.spotName}</span> <span style={{ color: C.green, fontWeight: 700 }}>{s.wind}kn</span> {s.dir}</span>
-                        ))}
-                        {item.goSpots.length > 3 && <span style={{ color: C.muted }}> (+{item.goSpots.length - 3} meer)</span>}
-                      </div>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-                        {item.goSpots.slice(0, 3).map((s: any, i: number) => (
-                          <button key={i} id={`go_${s.spotId}_${item.targetDate}`} onClick={async (e) => {
-                            e.preventDefault(); e.stopPropagation();
-                            if (!userId) return;
-                            const btn = e.currentTarget;
-                            if (btn.dataset.going === "true") return;
-                            try {
-                              const token = await getValidToken();
-                              await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
-                                method: "POST",
-                                headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
-                                body: JSON.stringify({ created_by: userId, spot_id: s.spotId, session_date: item.targetDate, status: "going", forecast_wind: s.wind, forecast_dir: s.dir }),
-                              });
-                              btn.dataset.going = "true"; btn.textContent = "Je gaat! \u2713"; btn.style.background = C.green; btn.style.color = "#fff"; btn.style.borderColor = C.green;
-                            } catch (err) { console.error("Ik ga error:", err); }
-                          }} style={{ padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", border: `1px solid ${C.cardBorder}`, background: C.goBg, color: C.green }}>
-                            Ik ga &rarr; {s.spotName}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {hasDowngrade && hasGo && (
-                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.cardBorder}` }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: C.amber, marginBottom: 2 }}>⬇️ Verslechterd</div>
-                      <div style={{ fontSize: 12, color: C.sub }}>
-                        {item.downgradeSpots.map((s: any, i: number) => (<span key={i}>{i > 0 ? " · " : ""}{s.spotName} {s.wind}kn</span>))}
-                      </div>
-                    </div>
-                  )}
-                  {hasDowngrade && !hasGo && (
-                    <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.5 }}>
-                      {item.downgradeSpots.map((s: any, i: number) => (<span key={i}>{i > 0 ? " · " : ""}{s.spotName} {s.wind}kn {s.dir}</span>))}
-                    </div>
-                  )}
-                </div>
-              </a>
-            );
-          })}
-          {/* Friend feed */}
-          {friendActivity.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "0.08em", textTransform: "uppercase", paddingLeft: 2 }}>
-                  Vrienden
-                </div>
-                <Link href="/vrienden/feed" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
-                  Bekijk alle
-                  {unreadFriendCount > 0 && (
-                    <span style={{ background: C.sky, color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: "50%", width: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      {unreadFriendCount > 9 ? "9+" : unreadFriendCount}
-                    </span>
-                  )}
-                </Link>
-              </div>
-              {friendActivity.slice(0, 2).map((a: any) => (
-                <FeedCard key={a.id} item={a} userId={userId} token={validToken} onHide={(id) => setFriendActivity(prev => prev.filter(x => x.id !== id))} />
-              ))}
-              {friendActivity.length > 2 && (
-                <Link href="/vrienden/feed" style={{ display: "block", textAlign: "center", padding: "10px", background: C.card, borderRadius: 12, fontSize: 12, fontWeight: 600, color: C.sky, textDecoration: "none", boxShadow: C.cardShadow }}>
-                  +{friendActivity.length - 2} meer sessies van vrienden →
-                </Link>
-              )}
-            </div>
-          )}
+        )}
 
-          {/* W. Ping message */}
-          <div style={{ padding: "13px 16px", background: C.oceanTint, borderRadius: 13, border: "1px solid rgba(46,111,126,0.06)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <div style={{ flexShrink: 0, width: 26, height: 26, borderRadius: "50%", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}><WPing mood={showWelcome || goSpots.length > 0 ? "happy" : "sleep"} size={22} /></div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.sky }}>W. Ping</div>
-              <div style={{ fontSize: 10, color: C.muted, marginLeft: "auto" }}>nu</div>
+        {/* ══════════════════════════════════════════
+            ZONE 1 — JOUW ALERTS
+            ══════════════════════════════════════════ */}
+        <div style={{ marginBottom: 32 }}>
+          {/* Sectie header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <span style={{ ...h, fontSize: 22, fontWeight: 800, color: C.navy, letterSpacing: "-0.3px" }}>Jouw alerts</span>
             </div>
-            <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.5 }}>
+            <Link href="/alert" style={{ fontSize: 13, color: C.sky, textDecoration: "none", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              Alle alerts <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            </Link>
+          </div>
+
+          {feedItems.length === 0 ? (
+            <div style={{ padding: "28px 20px", background: C.card, borderRadius: 18, boxShadow: C.cardShadow, display: "flex", alignItems: "center", gap: 16, border: `1.5px solid ${C.cardBorder}` }}>
+              <div style={{ width: 52, height: 52, borderRadius: 14, background: C.oceanTint, border: `1.5px solid ${C.sky}20`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 3 }}>Geen actieve alerts</div>
+                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Voeg spots toe en stel je windvoorkeuren in. WindPing waarschuwt je als het Go is.</div>
+              </div>
+            </div>
+          ) : (
+            feedItems.map((item) => {
+              const isGo = item.alertType === "go" || item.alertType === "mixed";
+              const isEpic = item.goSpots.some((s: any) => s.wind >= 25);
+              return (
+                <div key={item.targetDate} style={{ background: C.card, borderRadius: 18, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 12, border: `1.5px solid ${C.cardBorder}` }}>
+                  {/* Groene gradient header */}
+                  <div style={{ background: "linear-gradient(135deg, #1B6B4E 0%, #259068 60%, #2EAA7A 100%)", padding: "14px 16px 12px", position: "relative", overflow: "hidden" }}>
+                    <svg style={{ position: "absolute", right: -10, top: -5, opacity: 0.08, pointerEvents: "none" }} width="120" height="80" viewBox="0 0 120 80">
+                      <path d="M5 40 Q30 10 65 35 Q100 60 120 25" stroke="white" strokeWidth="12" fill="none" strokeLinecap="round"/>
+                      <path d="M0 65 Q25 40 55 58 Q85 76 120 50" stroke="white" strokeWidth="8" fill="none" strokeLinecap="round"/>
+                    </svg>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ flex: 1, position: "relative" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.7)", letterSpacing: "1.2px" }}>GO ALERT · {item.dateLabel.toUpperCase()}</span>
+                          {isEpic && <span style={{ fontSize: 8, fontWeight: 900, color: C.gold, background: "rgba(232,168,62,0.2)", padding: "1px 6px", borderRadius: 4, letterSpacing: "0.5px" }}>EPIC</span>}
+                        </div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px", lineHeight: 1.1 }}>
+                          {item.goSpots.length === 1 ? item.goSpots[0].spotName : `${item.goSpots.length} spots`}
+                        </div>
+                      </div>
+                      <div style={{ flexShrink: 0, textAlign: "center" }}>
+                        <div style={{ fontSize: 44, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-2px" }}>
+                          {Math.max(...item.goSpots.map((s: any) => s.wind))}
+                        </div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.55)", letterSpacing: "1px", marginTop: 1 }}>KNOPEN</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ padding: "14px 16px 10px" }}>
+                    {/* Enkelvoudige spot: wind info balk */}
+                    {item.goSpots.length === 1 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, padding: "10px 14px", background: C.goBg, borderRadius: 12, border: "1px solid rgba(62,170,140,0.15)" }}>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+                          <span style={{ fontSize: 28, fontWeight: 900, color: C.green, lineHeight: 1, letterSpacing: "-0.5px" }}>{item.goSpots[0].wind}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: C.green, opacity: 0.75 }}>kn</span>
+                        </div>
+                        <div style={{ width: 1, height: 28, background: "rgba(62,170,140,0.2)" }} />
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{item.goSpots[0].dir}</div>
+                          {item.goSpots[0].gust > 0 && <div style={{ fontSize: 11, color: C.muted }}>gusts {item.goSpots[0].gust}kn</div>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Meerdere spots: lijst */}
+                    {item.goSpots.length > 1 && (
+                      <div style={{ marginBottom: 12 }}>
+                        {item.goSpots.map((s: any) => (
+                          <div key={s.spotName} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${C.cardBorder}` }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{s.spotName}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 14, fontWeight: 900, color: C.green }}>{s.wind}<span style={{ fontSize: 9, fontWeight: 600 }}>kn</span></span>
+                              <span style={{ fontSize: 11, color: C.muted }}>{s.dir}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Ik ga buttons */}
+                    {item.goSpots.length === 1 ? (
+                      <a href="#" onClick={(e) => { e.preventDefault(); handleIkGa(item.goSpots[0].spotName); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 18px", background: "transparent", border: `2px solid ${C.green}`, borderRadius: 12, fontSize: 13, fontWeight: 700, color: C.green, textDecoration: "none", cursor: "pointer" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Ik ga!
+                      </a>
+                    ) : (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                        {item.goSpots.map((s: any) => (
+                          <a key={s.spotName} href="#" onClick={(e) => { e.preventDefault(); handleIkGa(s.spotName); }} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "8px 14px", background: "transparent", border: `2px solid ${C.green}`, borderRadius: 10, fontSize: 12, fontWeight: 700, color: C.green, textDecoration: "none", cursor: "pointer" }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                            → {s.spotName}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Downgrade sectie */}
+                    {item.downgradeSpots.length > 0 && (
+                      <div style={{ marginTop: 10, padding: "10px 12px", background: "#FEF2F2", borderRadius: 10, border: "1px solid rgba(220,38,38,0.12)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#DC2626" }}>Alert ingetrokken</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#EF4444" }}>
+                          {item.downgradeSpots.map((s: any) => `${s.spotName} ${s.wind}kn`).join(" · ")}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px 12px", borderTop: `1px solid ${C.cardBorder}` }}>
+                    <div style={{ fontSize: 11, color: C.muted }}>
+                      {(() => { const diff = Math.floor((Date.now() - new Date(item.latestCreatedAt).getTime()) / 3600000); return diff < 1 ? "Zojuist" : diff < 24 ? `${diff}u geleden` : `${Math.floor(diff/24)}d geleden`; })()}
+                    </div>
+                    <Link href="/alert" style={{ fontSize: 12, fontWeight: 600, color: C.sky, textDecoration: "none" }}>
+                      Details →
+                    </Link>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* ══════════════════════════════════════════
+            ZONE 2 — CREW
+            ══════════════════════════════════════════ */}
+        {/* ── Sectie scheiding: Op het water ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "8px 0 20px" }}>
+          <div style={{ flex: 1, height: 1, background: `linear-gradient(to right, ${C.cardBorder}, transparent)` }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 14 }}>🤙</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "1.2px" }}>FEED</span>
+          </div>
+          <div style={{ flex: 1, height: 1, background: `linear-gradient(to left, ${C.cardBorder}, transparent)` }} />
+        </div>
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <span style={{ ...h, fontSize: 22, fontWeight: 800, color: C.navy, letterSpacing: "-0.3px" }}>Feed</span>
+            <Link href="/vrienden/feed" style={{ fontSize: 13, color: C.sky, textDecoration: "none", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              Bekijk alles <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            </Link>
+          </div>
+
+          {friendActivity.length === 0 ? (
+            <div style={{ padding: "28px 20px", background: C.card, borderRadius: 18, boxShadow: C.cardShadow, display: "flex", alignItems: "center", gap: 16, border: `1.5px solid ${C.cardBorder}` }}>
+              <div style={{ width: 52, height: 52, borderRadius: 14, background: C.goBg, border: `1.5px solid ${C.green}20`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="1.8" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 3 }}>Nog geen vrienden</div>
+                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Nodig je maten uit via Surfers —<br />zie wie er gaan en stook hun sessies.</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {friendActivity.slice(0, 2).map((a: any) => {
+                const ratingLabels: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker!", 5: "EPIC!" };
+                const ratingColors: Record<number, string> = { 1: C.terra, 2: C.terra, 3: C.gold, 4: C.sky, 5: C.green };
+                return (
+                  <div key={a.id} style={{ background: C.card, borderRadius: 16, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 10, border: `1.5px solid ${C.cardBorder}` }}>
+                    {/* Header */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px 10px" }}>
+                      <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                        {a.friendName.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{a.friendName}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>{a.status === "completed" ? "Gisteren" : "Gaat"} · {a.spotName}</div>
+                      </div>
+                      {a.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColors[a.rating], background: `${ratingColors[a.rating]}15`, padding: "3px 9px", borderRadius: 8, flexShrink: 0 }}>{ratingLabels[a.rating]}</div>}
+                      {a.status === "going" && <div style={{ fontSize: 11, fontWeight: 700, color: C.green, background: `${C.green}15`, padding: "3px 9px", borderRadius: 8, flexShrink: 0 }}>Gaat!</div>}
+                    </div>
+                    {/* Photo */}
+                    {a.photoUrl && (
+                      <div style={{ width: "100%", aspectRatio: "16/9", overflow: "hidden", position: "relative" }}>
+                        <img src={a.photoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: a.photoCrop || "50% 50%", display: "block" }} />
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(31,53,76,0.5) 100%)" }} />
+                        {a.forecastWind && (
+                          <div style={{ position: "absolute", bottom: 10, right: 12, background: "rgba(31,53,76,0.7)", backdropFilter: "blur(8px)", borderRadius: 8, padding: "4px 9px", textAlign: "center" }}>
+                            <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{a.forecastWind}</div>
+                            <div style={{ fontSize: 8, color: "rgba(255,255,255,0.6)", fontWeight: 600 }}>{a.forecastDir || "KN"}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Gear / notes */}
+                    {(a.gearType || a.notes) && (
+                      <div style={{ padding: "9px 14px 12px", borderTop: `1px solid ${C.cardBorder}`, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                        {a.gearType && (
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.sky, flexShrink: 0 }} />
+                            <span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>{a.gearType.replace(/-/g, " ")}{a.gearSize ? ` ${a.gearSize}m²` : ""}</span>
+                          </div>
+                        )}
+                        {(a.gearType || a.gearSize) && a.notes && <span style={{ color: C.muted, fontSize: 12 }}>·</span>}
+                        {a.notes && <span style={{ fontSize: 12, color: C.muted }}>{a.notes}</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+            </>
+          )}
+        </div>
+
+        {/* ── W. Ping scheiding */}
+        <div style={{ height: 1, background: C.cardBorder, margin: "4px 0 24px" }} />
+
+        {/* W. Ping message — prominent karakter */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ padding: "20px 18px 18px", background: `linear-gradient(135deg, ${C.oceanTint} 0%, #E8F6FA 100%)`, borderRadius: 20, border: "1.5px solid rgba(46,143,174,0.18)", boxShadow: "0 4px 20px rgba(46,143,174,0.10)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
+              <div style={{ flexShrink: 0, width: 52, height: 52, borderRadius: "50%", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(46,143,174,0.14)", border: "2px solid rgba(46,143,174,0.22)", boxShadow: "0 3px 10px rgba(46,143,174,0.12)" }}><WPing mood={showWelcome || goSpots.length > 0 ? "happy" : "sleep"} size={38} /></div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: C.sky, lineHeight: 1 }}>W. Ping</div>
+                <div style={{ fontSize: 11, color: C.sub, marginTop: 3 }}>Jouw persoonlijke windwatcher</div>
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 500 }}>nu</div>
+            </div>
+            <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.6 }}>
               {showWelcome ? (
                 <div>
                   <div style={{ fontWeight: 700, color: C.navy, marginBottom: 6 }}>Welkom bij WindPing, {userName}! 🤙</div>
                   <div style={{ marginBottom: 10 }}>Fijn dat je er bent. Dit kun je allemaal doen:</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                      <span style={{ flexShrink: 0 }}>{Icons.wind({ color: C.sky, size: 15 })}</span>
-                      <span><strong>Check</strong> — zie de huidige wind op al je spots in één oogopslag</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                      <span style={{ flexShrink: 0 }}>{Icons.mapPin({ color: C.sky, size: 15 })}</span>
-                      <span><strong>Spots</strong> — voeg je favoriete spots toe en stel windcondities in</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                      <span style={{ flexShrink: 0 }}>{Icons.calendar({ color: C.sky, size: 15 })}</span>
-                      <span><strong>Sessies</strong> — log je sessies en bekijk je statistieken en badges</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                      <span style={{ flexShrink: 0 }}>{Icons.users({ color: C.sky, size: 15 })}</span>
-                      <span><strong>Vrienden</strong> — nodig je maten uit, zie wie er gaan en deel je sessies</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                      <span style={{ flexShrink: 0 }}>{Icons.bell({ color: C.sky, size: 15 })}</span>
-                      <span><strong>Alerts</strong> — ik ping je automatisch als het waait op jouw spots</span>
-                    </div>
+                    {[
+                      [Icons.wind, "Check", "zie de huidige wind op al je spots"],
+                      [Icons.mapPin, "Spots", "voeg je favoriete spots toe"],
+                      [Icons.calendar, "Sessies", "log je sessies en bekijk je stats"],
+                      [Icons.users, "Vrienden", "nodig je maten uit en deel sessies"],
+                      [Icons.bell, "Alerts", "ik ping je automatisch als het waait"],
+                    ].map(([icon, title, desc]: any) => (
+                      <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                        <span style={{ flexShrink: 0 }}>{icon({ color: C.sky, size: 14 })}</span>
+                        <span><strong>{title}</strong> — {desc}</span>
+                      </div>
+                    ))}
                   </div>
-                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(46,111,126,0.1)", fontSize: 12, color: C.sub }}>
-                    Zet je gear maar alvast klaar. 🤙
-                  </div>
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(46,111,126,0.1)", fontSize: 12, color: C.sub }}>Zet je gear maar alvast klaar. 🤙</div>
                 </div>
-              ) : spots.length === 0 ? "Voeg je favoriete spots toe en ik houd de wind voor je in de gaten." : goSpots.length > 0 ? `Yes! ${goSpots.length > 1 ? `${goSpots.length} spots zijn` : `${goSpots[0].name} is`} Go vandaag. Tas al ingepakt?` : "Vandaag even geen wind op je spots. Ik houd het in de gaten!"}
+              ) : spots.length === 0 ? "Voeg je favoriete spots toe en ik houd de wind voor je in de gaten."
+                : goSpots.length > 0 ? `Yes! ${goSpots.length > 1 ? `${goSpots.length} spots zijn` : `${goSpots[0].name} is`} Go vandaag. Tas al ingepakt?`
+                : "Vandaag even geen wind op je spots. Ik houd het in de gaten!"}
               {!showWelcome && friendActivity.length === 0 && spots.length > 0 && (
                 <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(46,111,126,0.1)" }}>
-                  <a href="/vrienden" style={{ fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
-                    🤙 Nodig je kitemaatjes uit en zie wanneer zij het water opgaan →
-                  </a>
+                  <a href="/vrienden" style={{ fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>🤙 Nodig je kitesurfers uit →</a>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* ── Sessies ── */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
-            <span style={{ ...h, fontSize: 17, fontWeight: 700, color: C.navy }}>Sessies</span>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button onClick={() => { setShowManualSession(true); setManualStep("pick"); }} style={{ fontSize: 12, color: C.sky, fontWeight: 600, background: "none", border: `1px solid ${C.sky}`, borderRadius: 8, padding: "4px 10px", cursor: "pointer" }}>+ Sessie</button>
-              {sessionStats.total_sessions > 0 && <span style={{ fontSize: 11, color: C.sub }}>Seizoen: {sessionStats.season_sessions}</span>}
-            </div>
+        {/* ── SESSIES sectie scheiding ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
+          <div style={{ flex: 1, height: 1, background: `linear-gradient(to right, ${C.cardBorder}, transparent)` }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2.5" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "1.2px" }}>SESSIES</span>
           </div>
-          <SessionStatsSection stats={sessionStats} sessions={recentSessions} spotNames={spotNames} userId={userId} />
+          <div style={{ flex: 1, height: 1, background: `linear-gradient(to left, ${C.cardBorder}, transparent)` }} />
         </div>
 
-        {/* ── Badges (SVG) ── */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
-            <span style={{ ...h, fontSize: 17, fontWeight: 700, color: C.navy }}>Badges</span>
-            <span style={{ fontSize: 11, color: C.muted }}>{earnedBadges.length} / {ALL_BADGES.length}</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-            {ALL_BADGES.map((b) => {
-              const earned = earnedBadges.includes(b.id);
-              const badgeColor = getBadgeColor(b.id);
-              return (
-                <div key={b.id} style={{
-                  display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "16px 8px 14px",
-                  borderRadius: 14,
-                  background: earned ? `${badgeColor}08` : C.card,
-                  border: `1.5px solid ${earned ? `${badgeColor}30` : C.cardBorder}`,
-                  boxShadow: earned ? `0 2px 10px ${badgeColor}15` : "0 1px 3px rgba(31,53,76,0.04)",
-                  opacity: earned ? 1 : 0.45,
-                  transition: "all 0.3s ease",
-                }}>
-                  <BadgeIcon id={b.id} earned={earned} size={34} />
-                  <div style={{ fontSize: 11, fontWeight: 700, color: earned ? badgeColor : C.sub, textAlign: "center", lineHeight: 1.2 }}>{b.name}</div>
-                  <div style={{ fontSize: 9, color: earned ? C.navy : C.muted, textAlign: "center", lineHeight: 1.3, padding: "0 2px" }}>{b.desc}</div>
-                  {earned && (
-                    <div style={{ fontSize: 8, fontWeight: 800, letterSpacing: "0.5px", color: badgeColor, textTransform: "uppercase" }}>✓ Unlocked</div>
-                  )}
+        {/* ── Sessie snelkoppeling ── */}
+        <div style={{ marginBottom: 16 }}>
+          <Link href="/mijn-sessies" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", background: C.card, borderRadius: 16, textDecoration: "none", boxShadow: C.cardShadow, border: `1.5px solid ${C.cardBorder}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 13, background: "linear-gradient(135deg, #1B6B4E, #27A070)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {/* Golf/surf icoon */}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
+                  <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
+                  <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, lineHeight: 1.2 }}>Mijn sessies</div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                  {sessionStats.total_sessions > 0
+                    ? <>{sessionStats.season_sessions} dit seizoen · gem. rating <span style={{ color: C.gold, fontWeight: 700 }}>{sessionStats.avg_rating ? sessionStats.avg_rating.toFixed(1) : "—"}</span></>
+                    : "Log je eerste sessie →"}
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+          </Link>
         </div>
 
-        {/* Spot Records */}
-        <div style={{ padding: "22px 20px", background: C.card, boxShadow: C.cardShadow, borderRadius: 14, textAlign: "center", marginBottom: 24 }}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 8 }}><rect x="4" y="12" width="4" height="8" rx="1"/><rect x="10" y="4" width="4" height="16" rx="1"/><rect x="16" y="8" width="4" height="12" rx="1"/></svg>
-          <div style={{ ...h, fontSize: 15, fontWeight: 700, color: C.navy, marginBottom: 3 }}>Spot Records</div>
-          <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>Binnenkort — koppel je tracker<br />en vergelijk scores op je spots!</div>
-        </div>
-
+                </div>{/* end inner padding div */}
 
         {/* ── HANDMATIGE SESSIE MODAL ── */}
         {showManualSession && (() => {
@@ -1361,31 +1248,7 @@ function Dashboard() {
                         onChange={e => setManualDate(e.target.value)}
                         style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy, boxSizing: "border-box", outline: "none" }} />
                     </div>
-                    <div style={{ marginBottom: 24 }}>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>DAGDEEL</label>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                        {([
-                          { id: "ochtend", label: "Ochtend", sub: "6–12u" },
-                          { id: "middag",  label: "Middag",  sub: "12–17u" },
-                          { id: "avond",   label: "Avond",   sub: "17–22u" },
-                        ] as const).map(d => {
-                          const active = manualDagdelen.includes(d.id);
-                          return (
-                            <button key={d.id} onClick={() => setManualDagdelen(prev =>
-                              prev.includes(d.id) ? prev.filter(x => x !== d.id) : [...prev, d.id]
-                            )} style={{
-                              padding: "12px 6px", borderRadius: 12, border: `2px solid ${active ? C.sky : C.cardBorder}`,
-                              background: active ? `${C.sky}12` : C.card, cursor: "pointer", transition: "all 0.2s",
-                              display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-                            }}>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: active ? C.sky : C.navy }}>{d.label}</span>
-                              <span style={{ fontSize: 10, color: C.muted }}>{d.sub}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <button onClick={async () => { if (!manualSpotId) return; await fetchManualWeather(Number(manualSpotId), manualDate, manualDagdelen); setManualStep(1); }}
+                    <button onClick={async () => { if (!manualSpotId) return; await fetchManualWeather(Number(manualSpotId), manualDate); setManualStep(1); }}
                       disabled={!manualSpotId}
                       style={{ width: "100%", padding: "14px", background: manualSpotId ? C.sky : C.cardBorder, border: "none", borderRadius: 12, color: "#FFF", fontSize: 15, fontWeight: 700, cursor: manualSpotId ? "pointer" : "not-allowed", opacity: manualSpotId ? 1 : 0.6 }}>
                       Volgende →
@@ -1584,11 +1447,8 @@ function Dashboard() {
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6, letterSpacing: 0.5 }}>FOTO (optioneel)</label>
                       {manualPhotoUrl ? (
                         <div style={{ position: "relative", borderRadius: 12, overflow: "hidden" }}>
-                          <div style={{ width: "100%", aspectRatio: "4/3", overflow: "hidden", borderRadius: 12 }}>
-                            <img src={manualPhotoUrl} alt="Sessie foto" style={cropStyle(manualPhotoCrop)} />
-                          </div>
-                          <button onClick={() => setShowManualCropModal(true)} style={{ position: "absolute", bottom: 8, right: 44, padding: "4px 10px", borderRadius: 20, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>✂️ Bijsnijden</button>
-                          <button onClick={() => { setManualPhotoUrl(null); setManualPhotoCrop("50% 50%"); }} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                          <img src={manualPhotoUrl} alt="Sessie foto" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+                          <button onClick={() => setManualPhotoUrl(null)} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
                         </div>
                       ) : (
                         <div onClick={() => { if (!manualPhotoUploading) document.getElementById("manual-photo-input")?.click(); }}
@@ -1612,7 +1472,7 @@ function Dashboard() {
                             formData.append("session_id", "temp_" + Date.now());
                             const res = await fetch("/api/upload", { method: "POST", body: formData });
                             const data = await res.json();
-                            if (res.ok && data.url) { setManualPhotoUrl(data.url); setShowManualCropModal(true); }
+                            if (res.ok && data.url) { setManualPhotoUrl(data.url); }
                             else { setManualError(`Foto upload mislukt: ${data.error || "onbekend"}`); }
                           } catch { setManualError("Foto upload mislukt."); }
                           setManualPhotoUploading(false);
@@ -1659,21 +1519,13 @@ function Dashboard() {
         })()}
 
         {/* Logout */}
-        <button onClick={async () => { await clearAuth(); window.location.href = "/login"; }} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "13px", background: "none", border: `1px solid ${C.cardBorder}`, borderRadius: 12, color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-          Uitloggen
-        </button>
+        <div style={{ padding: "0 16px" }}>
+          <button onClick={async () => { await clearAuth(); window.location.href = "/login"; }} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "13px", background: "none", border: `1px solid ${C.cardBorder}`, borderRadius: 12, color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Uitloggen
+          </button>
+        </div>
       </div>
-
-      {/* Manual crop modal */}
-      {showManualCropModal && manualPhotoUrl && (
-        <PhotoCropModal
-          imageUrl={manualPhotoUrl}
-          initialPosition={manualPhotoCrop}
-          onConfirm={(pos) => { setManualPhotoCrop(pos); setShowManualCropModal(false); }}
-          onCancel={() => setShowManualCropModal(false)}
-        />
-      )}
     </div>
   );
 }
@@ -1820,7 +1672,7 @@ function LandingPage() {
           </nav>
         </div>
       </footer>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}@keyframes scrollPulse{0%,100%{opacity:0.3;transform:scaleY(1)}50%{opacity:0.8;transform:scaleY(1.3)}}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}@keyframes scrollPulse{0%,100%{opacity:0.3;transform:scaleY(1)}50%{opacity:0.8;transform:scaleY(1.3)}}`}</style>
     </main>
   );
 }

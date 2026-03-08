@@ -3,8 +3,6 @@
 import { useEffect, useState, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import PhotoCropModal from "@/app/components/PhotoCropModal"
-import { cropStyle } from "@/lib/cropStyle";
 import { colors as C, fonts } from "@/lib/design";
 import { getValidToken, isTokenExpired, getAuthId, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 
@@ -226,9 +224,6 @@ function SessionLogInner() {
   const [notes, setNotes] = useState("");
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const photoUrlRef = useRef<string | null>(null);
-  const [photoCrop, setPhotoCrop] = useState<string>("50% 50%");
-  const photoCropRef = useRef<string>("50% 50%");
-  const [showCropModal, setShowCropModal] = useState(false);
   const lastSavedSessionRef = useRef<{ id: number; spotName: string; rating: number | null; imageUrl: string | null } | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -336,7 +331,6 @@ function SessionLogInner() {
         wind_feel: windFeel,
         notes: notes || null,
         photo_url: photoUrlRef.current || photoUrl || null,
-        photo_crop: photoCropRef.current !== "50% 50%" ? photoCropRef.current : null,
       });
       if (result.error) { setError(result.error); setSaving(false); return; }
       // Store last saved session for sharing
@@ -558,25 +552,30 @@ function SessionLogInner() {
 
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <button onClick={goBack} style={{ fontSize: 12, color: C.sky, background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>
-            ← Terug
+          <button onClick={goBack} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: C.navy, background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 10, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+            Terug
           </button>
           {sessions.length > 1 && (
             <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{currentIndex + 1} / {sessions.length}</span>
           )}
-          <button onClick={skipSession} style={{ fontSize: 12, color: C.muted, background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>
-            Overslaan →
+          <button onClick={skipSession} style={{ fontSize: 12, color: C.muted, background: "none", border: "none", cursor: "pointer", fontWeight: 500 }}>
+            Overslaan
           </button>
         </div>
 
-        {/* Session info */}
-        <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ fontSize: 13, color: C.sub, fontWeight: 600, marginBottom: 2 }}>{dateLabel}</div>
-          <h1 style={{ ...h, fontSize: 26, color: C.navy, margin: "0 0 6px", letterSpacing: -0.5 }}>{spotName}</h1>
+        {/* Session info — mini hero */}
+        <div style={{ background: "linear-gradient(135deg, #1B6B4E, #259068)", borderRadius: 18, padding: "18px 20px", marginBottom: 24, position: "relative", overflow: "hidden" }}>
+          <svg style={{ position: "absolute", right: -10, top: -8, opacity: 0.08, pointerEvents: "none" }} width="110" height="70" viewBox="0 0 110 70">
+            <path d="M5 35 Q28 8 60 30 Q92 52 110 22" stroke="white" strokeWidth="11" fill="none" strokeLinecap="round"/>
+            <path d="M0 58 Q22 38 50 52 Q78 66 110 44" stroke="white" strokeWidth="7" fill="none" strokeLinecap="round"/>
+          </svg>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", fontWeight: 600, marginBottom: 3 }}>{dateLabel}</div>
+          <h1 style={{ ...h, fontSize: 24, color: "#fff", margin: "0 0 8px", letterSpacing: -0.5 }}>{spotName}</h1>
           {session?.forecast_wind && (
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 14px", background: C.goBg, borderRadius: 20, fontSize: 13 }}>
-              <span style={{ fontWeight: 800, color: C.green }}>{session.forecast_wind}kn</span>
-              <span style={{ color: C.sub }}>{session.forecast_dir}</span>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 12px", background: "rgba(255,255,255,0.15)", borderRadius: 20, fontSize: 13, border: "1px solid rgba(255,255,255,0.2)" }}>
+              <span style={{ fontWeight: 900, color: "#fff", fontSize: 16 }}>{session.forecast_wind}kn</span>
+              <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>{session.forecast_dir}</span>
             </div>
           )}
         </div>
@@ -805,11 +804,8 @@ function SessionLogInner() {
               <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6, letterSpacing: 0.5 }}>FOTO (optioneel)</label>
               {photoUrl ? (
                 <div style={{ position: "relative", borderRadius: 12, overflow: "hidden" }}>
-                  <div style={{ width: "100%", aspectRatio: "4/3", overflow: "hidden", borderRadius: 12 }}>
-                    <img src={photoUrl} alt="Sessie foto" style={cropStyle(photoCrop)} />
-                  </div>
-                  <button onClick={() => setShowCropModal(true)} style={{ position: "absolute", bottom: 8, right: 44, padding: "4px 10px", borderRadius: 20, background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>✂️ Bijsnijden</button>
-                  <button onClick={() => { setPhotoUrl(null); photoUrlRef.current = null; setPhotoCrop("50% 50%"); photoCropRef.current = "50% 50%"; }} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                  <img src={photoUrl} alt="Sessie foto" style={{ width: "100%", height: 200, objectFit: "cover", display: "block" }} />
+                  <button onClick={() => { setPhotoUrl(null); photoUrlRef.current = null; }} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
                 </div>
               ) : (
                 <div
@@ -858,7 +854,6 @@ function SessionLogInner() {
                     if (uploadRes.ok && uploadData.url) {
                       setPhotoUrl(uploadData.url);
                       photoUrlRef.current = uploadData.url;
-                      setShowCropModal(true); // open crop modal
                     } else {
                       setError(`Foto upload mislukt: ${uploadData.error || `HTTP ${uploadRes.status}`}`);
                     }
@@ -914,20 +909,6 @@ function SessionLogInner() {
         @keyframes spin{to{transform:rotate(360deg)}}
         @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
       `}</style>
-
-      {/* Crop modal */}
-      {showCropModal && photoUrl && (
-        <PhotoCropModal
-          imageUrl={photoUrl}
-          initialPosition={photoCrop}
-          onConfirm={(pos) => {
-            setPhotoCrop(pos);
-            photoCropRef.current = pos;
-            setShowCropModal(false);
-          }}
-          onCancel={() => setShowCropModal(false)}
-        />
-      )}
     </div>
   );
 }

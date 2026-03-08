@@ -25,18 +25,18 @@ function timeAgo(dateStr: string) {
 function SessionCard({ item, isNew, onHide }: { item: any; isNew: boolean; onHide: (id: number) => void }) {
   return (
     <div style={{
-      background: C.card, borderRadius: 16, overflow: "hidden",
+      background: C.card, borderRadius: 18, overflow: "hidden",
       boxShadow: C.cardShadow, marginBottom: 12,
-      border: isNew ? `1.5px solid ${C.sky}30` : `1.5px solid transparent`,
+      border: `1.5px solid ${C.cardBorder}`,
     }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px 10px" }}>
-        <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark || C.sky})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+        <div style={{ width: 38, height: 38, borderRadius: "50%", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark || C.sky})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 700, color: "#fff", flexShrink: 0, border: `2px solid ${C.sky}30` }}>
           {item.friendName.charAt(0).toUpperCase()}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{item.friendName}</div>
-          <div style={{ fontSize: 11, color: C.muted }}>{timeAgo(item.createdAt)}</div>
+          <div style={{ fontSize: 11, color: C.muted }}>{timeAgo(item.createdAt)} · {item.spotName}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {isNew && <div style={{ width: 7, height: 7, borderRadius: "50%", background: C.sky, flexShrink: 0 }} />}
@@ -48,24 +48,22 @@ function SessionCard({ item, isNew, onHide }: { item: any; isNew: boolean; onHid
               {ratingLabels[item.rating]}
             </div>
           )}
-          <button onClick={() => onHide(item.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 18, lineHeight: 1, padding: "2px 4px", opacity: 0.5 }} title="Verbergen">×</button>
+          <button onClick={() => onHide(item.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 18, lineHeight: 1, padding: "2px 4px", opacity: 0.4 }} title="Verbergen">×</button>
         </div>
       </div>
 
-      {/* Photo */}
+      {/* Photo — 16:9 */}
       {item.photoUrl && (
-        <div style={{ position: "relative", width: "100%", aspectRatio: "4/3", overflow: "hidden" }}>
+        <div style={{ position: "relative", width: "100%", aspectRatio: "16/9", overflow: "hidden" }}>
           <img src={item.photoUrl} alt="" style={cropStyle(item.photoCrop)} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(31,53,76,0.7) 100%)" }} />
-          <div style={{ position: "absolute", bottom: 10, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", ...h }}>{item.spotName}</div>
-            {item.forecastWind && (
-              <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", borderRadius: 8, padding: "4px 8px", textAlign: "center" }}>
-                <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{item.forecastWind}</div>
-                <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>{item.forecastDir ? `${item.forecastDir} · KN` : "KN"}</div>
-              </div>
-            )}
-          </div>
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(31,53,76,0.65) 100%)" }} />
+          {/* Wind badge rechtsonder */}
+          {item.forecastWind && (
+            <div style={{ position: "absolute", bottom: 10, right: 12, background: "rgba(15,25,40,0.75)", backdropFilter: "blur(8px)", borderRadius: 9, padding: "5px 9px", textAlign: "center" }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{item.forecastWind}</div>
+              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.65)", fontWeight: 600 }}>{item.forecastDir ? `${item.forecastDir} · KN` : "KN"}</div>
+            </div>
+          )}
         </div>
       )}
 
@@ -74,25 +72,27 @@ function SessionCard({ item, isNew, onHide }: { item: any; isNew: boolean; onHid
         <div style={{ padding: "0 14px 8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: C.navy }}>{item.spotName}</div>
           {item.forecastWind && (
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.sky }}>
-              {item.forecastWind}kn {item.forecastDir && <span style={{ fontSize: 11, color: C.muted }}>{item.forecastDir}</span>}
+            <div style={{ fontSize: 14, fontWeight: 800, color: C.sky }}>
+              {item.forecastWind}<span style={{ fontSize: 10, fontWeight: 600 }}>kn</span>
+              {item.forecastDir && <span style={{ fontSize: 11, color: C.muted, fontWeight: 400, marginLeft: 4 }}>{item.forecastDir}</span>}
             </div>
           )}
         </div>
       )}
 
-      {/* Gear + notes */}
+      {/* Gear + notes — stip stijl */}
       {(item.gearType || item.notes) && (
-        <div style={{ padding: "8px 14px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ padding: "8px 14px 12px", borderTop: `1px solid ${C.cardBorder}`, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const }}>
           {item.gearType && (
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: `${C.sky}12`, borderRadius: 7, padding: "3px 9px" }}>
-                {item.gearType.replace(/-/g, " ")}
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.sky, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>
+                {item.gearType.replace(/-/g, " ")}{item.gearSize ? ` ${parseFloat(item.gearSize)}m²` : ""}
               </span>
-              {item.gearSize && <span style={{ fontSize: 11, color: C.sub }}>{item.gearSize}</span>}
             </div>
           )}
-          {item.notes && <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>{item.notes}</div>}
+          {item.gearType && item.notes && <span style={{ color: C.muted, fontSize: 11 }}>·</span>}
+          {item.notes && <span style={{ fontSize: 12, color: C.muted }}>{item.notes}</span>}
         </div>
       )}
     </div>
@@ -119,7 +119,6 @@ export default function VriendenFeedPage() {
     } catch (e) { console.error(e); }
     setLoading(false);
 
-    // Mark als gezien
     try {
       const token = await getValidToken();
       await fetch("/api/friends?type=mark_seen", {
@@ -149,11 +148,16 @@ export default function VriendenFeedPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
           </Link>
           <div style={{ flex: 1 }}>
-            <div style={{ ...h, fontSize: 22, fontWeight: 800, color: C.navy }}>Vrienden feed</div>
+            <div style={{ ...h, fontSize: 22, fontWeight: 800, color: C.navy }}>Feed</div>
             {!loading && unreadCount > 0 && (
               <div style={{ fontSize: 12, color: C.sky, fontWeight: 600 }}>{unreadCount} nieuw</div>
             )}
           </div>
+          {!loading && sessions.length > 0 && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, padding: "3px 9px" }}>
+              {sessions.length}
+            </span>
+          )}
         </div>
 
         {loading ? (
@@ -162,10 +166,10 @@ export default function VriendenFeedPage() {
             <div style={{ fontSize: 13, color: C.muted }}>Laden...</div>
           </div>
         ) : sessions.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px 20px", background: C.card, borderRadius: 16 }}>
+          <div style={{ textAlign: "center", padding: "40px 20px", background: C.card, borderRadius: 18, border: `1.5px solid ${C.cardBorder}` }}>
             <div style={{ fontSize: 32, marginBottom: 10 }}>🤙</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 6 }}>Nog geen sessies van vrienden</div>
-            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>Nodig je maten uit en zie wanneer zij het water opgaan.</div>
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>Nodig je vrienden uit en zie wanneer zij het water opgaan.</div>
             <Link href="/vrienden" style={{ display: "inline-block", marginTop: 14, fontSize: 13, fontWeight: 700, color: "#fff", background: C.sky, padding: "9px 18px", borderRadius: 10, textDecoration: "none" }}>
               Vrienden uitnodigen
             </Link>
