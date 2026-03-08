@@ -137,6 +137,7 @@ function SpotDetailContent() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [prikbordPosts, setPrikbordPosts] = useState<PrikbordPost[]>([]);
+  const [activeTab, setActiveTab] = useState<"info" | "prikbord" | "voorkeuren">("info");
 
   // Refs
   const mapRef = useRef<any>(null);
@@ -210,7 +211,7 @@ function SpotDetailContent() {
 
       if (existing) setIsSaved(true);
       setLoading(false);
-}).catch((e) => { setError(e.message); setLoading(false); });
+    }).catch((e) => { setError(e.message); setLoading(false); });
 
     // Laad prikbord posts (los van de main fetch)
     sbGet(`spot_posts?spot_id=eq.${spotId}&order=created_at.desc&limit=20&select=id,type,content,author_name,created_at,wind_speed,wind_dir`)
@@ -553,6 +554,12 @@ function SpotDetailContent() {
 
   const tc = typeColors[spot.spot_type] || C.sky;
 
+  const TABS: { key: "info" | "prikbord" | "voorkeuren"; label: string; emoji: string }[] = [
+    { key: "info", label: "Spot info", emoji: "📍" },
+    { key: "prikbord", label: "Prikbord", emoji: "📌" },
+    { key: "voorkeuren", label: "Voorkeuren", emoji: "⚙️" },
+  ];
+
   return (
     <>
       {/* Back + Header */}
@@ -568,242 +575,224 @@ function SpotDetailContent() {
         </div>
       </div>
 
-      {/* Tips */}
-      {(spot.tips || spot.good_directions?.length > 0) && (
-        <div style={{ background: C.card, borderRadius: 12, padding: "14px 18px", marginBottom: 20, fontSize: 13, color: C.sub, lineHeight: 1.5, boxShadow: C.cardShadow }}>
-          {spot.tips && <div style={{ marginBottom: 8 }}>{spot.tips}</div>}
-          {spot.good_directions?.length > 0 && <div style={{ fontWeight: 600, color: C.navy }}>Recommended: {spot.good_directions.join(", ")}</div>}
-        </div>
-      )}
-
-      {/* Map + Compass */}
-        <div style={{ position: "relative", width: "100%", height: "min(500px, 70vh)", borderRadius: 16, overflow: "hidden", marginBottom: 16, border: `1px solid ${C.cardBorder}` }}>
-          <div ref={mapElRef} style={{ width: "100%", height: "100%", zIndex: 1 }} />
-
-        {/* Map layer toggle */}
-        <button onClick={toggleMapLayer} style={{
-          position: "absolute", top: 12, right: 12, zIndex: 1001, background: "rgba(255,255,255,0.9)", border: "none",
-          borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer",
-          boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
-        }}>
-          {isSat ? "Map" : "Satellite"}
-        </button>
-
-        {/* Mode bar */}
-        <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 1001, display: "flex", background: "rgba(0,0,0,0.6)", borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,0.3)", overflow: "hidden", border: `1px solid rgba(255,255,255,0.15)`, gap: 2, padding: 2 }}>
-          {(["map", "select"] as const).map((m) => (
-            <button key={m} onClick={() => setMode(m)} style={{
-              padding: "8px 14px", border: "none", borderRadius: 8,
-              background: mode === m ? (m === "select" ? C.sky : "rgba(255,255,255,0.2)") : "transparent",
-              cursor: "pointer", fontSize: 11, fontWeight: 600, color: mode === m ? "#fff" : "rgba(255,255,255,0.5)", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap",
-            }}>
-              {m === "map" ? "📌 Position compass" : "🌊 Select wind"}
-            </button>
-          ))}
-        </div>
-
-        {/* Compass overlay */}
-        <div style={{ position: "absolute", zIndex: 1000, width: SIZE, height: SIZE, left: "50%", top: "50%", transform: "translate(-50%,-50%)", pointerEvents: mode === "select" ? "auto" : "none" }}>
-          {/* Ring */}
-          <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "radial-gradient(circle at 35% 35%, rgba(46,111,126,0.1), rgba(46,111,126,0.04))", border: `2px solid ${compassLayer === "epic" ? "rgba(212,146,46,0.6)" : "rgba(46,111,126,0.25)"}`, boxShadow: compassLayer === "epic" ? "0 0 0 3px rgba(212,146,46,0.12)" : "0 0 0 3px rgba(46,111,126,0.06)", pointerEvents: "none" }} />
-
-          {/* Canvas */}
-          <canvas ref={canvasRef} width={SIZE} height={SIZE}
-            onMouseDown={onCanvasDown} onTouchStart={onCanvasDown}
-            style={{ position: "absolute", inset: 0, borderRadius: "50%", zIndex: 2, cursor: mode === "select" ? "crosshair" : "default", touchAction: "none" }}
-          />
-
-          {/* SVG overlay (compass lines) */}
-          <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 3 }} viewBox="0 0 280 280">
-            <circle cx="140" cy="140" r="126" fill="none" stroke="rgba(46,111,126,0.2)" strokeWidth="1" />
-            <circle cx="140" cy="140" r="42" fill="none" stroke="rgba(46,111,126,0.12)" strokeWidth="1" />
-            <line x1="140" y1="18" x2="140" y2="262" stroke="rgba(46,111,126,0.15)" strokeWidth="1" />
-            <line x1="18" y1="140" x2="262" y2="140" stroke="rgba(46,111,126,0.15)" strokeWidth="1" />
-            <polygon points="140,30 134,140 140,128 146,140" fill="#C97A63" opacity="0.75" />
-            <polygon points="140,250 134,140 140,152 146,140" fill="#94A3B8" opacity="0.45" />
-          </svg>
-
-          {/* Center dot */}
-          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 14, height: 14, borderRadius: "50%", background: "#fff", border: `3px solid ${compassLayer === "epic" ? C.gold : C.sky}`, boxShadow: `0 0 0 5px ${compassLayer === "epic" ? "rgba(212,146,46,0.12)" : "rgba(46,111,126,0.12)"}`, zIndex: 20, pointerEvents: "none" }} />
-
-          {/* Labels */}
-          {labels.map((l) => (
-            <div key={l.d} style={{ position: "absolute", left: l.x, top: l.y, transform: "translate(-50%,-50%)", fontSize: l.isCard ? 12 : 9, fontWeight: 700, color: l.isCard ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)", pointerEvents: "none", zIndex: 5, letterSpacing: 0.3 }}>{l.d}</div>
-          ))}
-
-          {/* Hint */}
-          <div style={{ position: "absolute", bottom: -36, left: "50%", transform: "translateX(-50%)", fontSize: 12, whiteSpace: "nowrap", fontWeight: 700, padding: "8px 16px", borderRadius: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.2)", background: mode === "select" ? C.sky : C.card, color: mode === "select" ? "#fff" : C.navy, border: `1px solid ${C.cardBorder}` }}>
-            {mode === "map" ? "Drag the map to position the compass" : "Sweep over water to select directions"}
-          </div>
-        </div>
-      </div>
-
-      {/* Compass controls — directly under compass */}
-      <div style={{ marginBottom: 8 }}>
-        {/* Layer tabs (only when epic enabled) */}
-        {epicEnabled && (
-          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-            {(["good", "epic"] as const).map((l) => (
-              <button key={l} onClick={() => setCompassLayer(l)} style={{
-                flex: 1, padding: "12px 14px", borderRadius: 10, border: `2px solid ${compassLayer === l ? (l === "good" ? C.sky : C.gold) : C.cardBorder}`,
-                background: compassLayer === l ? (l === "good" ? C.sky : C.gold) : C.card,
-                fontSize: 13, fontWeight: 700, color: compassLayer === l ? "#fff" : C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: compassLayer === l ? "#fff" : (l === "good" ? C.sky : C.gold) }} />
-                {l === "good" ? "Good" : "Epic"}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Actions */}
-        {hasEdits && (
-          <div style={{ display: "flex", gap: 8 }}>
-            <button onClick={() => { setUserSegs(new Array(16).fill(false)); setUserArc(null); setHasEdits(false); setIsSaved(false); }} style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Reset to default</button>
-            <button onClick={() => { setUserSegs(new Array(16).fill(false)); setUserArc(null); setHasEdits(false); }} style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: `1px solid ${C.amber}40`, color: C.amber, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Clear selection</button>
-          </div>
-        )}
-      </div>
-
-      {/* Direction section */}
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Your Wind Directions</h2>
-        <p style={{ fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 12 }}>You'll only get pinged when wind comes from these directions</p>
-
-        {/* Tags */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 30 }}>
-          {userDirNames.map((d) => <span key={d} style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, background: `${C.sky}20`, color: C.sky, border: `1px solid ${C.sky}40` }}>{d}</span>)}
-          {defaultDirNames.map((d) => <span key={d} style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, background: C.creamDark, color: C.muted, border: `1px solid ${C.cardBorder}` }}>{d}</span>)}
-          {!userDirNames.length && !defaultDirNames.length && <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>Sweep over water on the compass above</span>}
-        </div>
-      </div>
-
-      {/* Wind range */}
-      <div style={{ marginBottom: 24 }}>
-        <h2 style={{ fontSize: 17, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Your Wind Speed Range</h2>
-        <p style={{ fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 12 }}>You'll only get pinged when wind speed falls within this range</p>
-        <WindSlider min={wMin} max={wMax} onChange={(mn, mx) => { setWMin(mn); setWMax(mx); }} />
-      </div>
-
-      {/* Epic toggle */}
-      <div onClick={() => { const next = !epicEnabled; setEpicEnabled(next); if (next) setCompassLayer("epic"); else setCompassLayer("good"); }} style={{
-        background: epicEnabled ? C.epicBg : C.card, border: `2px solid ${epicEnabled ? "#E8A83E" : C.cardBorder}`,
-        borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer",
-      }}>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: epicEnabled ? "#E8A83E" : C.navy, display: "flex", alignItems: "center", gap: 6 }}>🤙 Set Epic conditions</div>
-          <div style={{ fontSize: 11, color: epicEnabled ? "#9A6830" : C.sub, fontStyle: "italic" }}>Get a special ping when conditions are perfect</div>
-        </div>
-        <div style={{ width: 48, height: 26, borderRadius: 13, background: epicEnabled ? "#E8A83E" : C.creamDark, position: "relative", flexShrink: 0 }}>
-          <div style={{ position: "absolute", top: 3, left: epicEnabled ? 25 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.3s" }} />
-        </div>
-      </div>
-
-      {/* Epic content */}
-      {epicEnabled && (
-        <div style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 17, fontWeight: 700, color: "#E8A83E", marginBottom: 4 }}>Epic Wind Speed</h2>
-          <p style={{ fontSize: 12, color: "#9A6830", fontStyle: "italic", marginBottom: 12 }}>The perfect wind range for your session</p>
-          <WindSlider min={eMin} max={eMax} onChange={(mn, mx) => { setEMin(mn); setEMax(mx); }} color="#E8A83E" />
-
-          <h2 style={{ fontSize: 17, fontWeight: 700, color: "#E8A83E", marginTop: 20, marginBottom: 4 }}>Epic Wind Directions</h2>
-          <p style={{ fontSize: 12, color: "#9A6830", fontStyle: "italic", marginBottom: 12 }}>Switch to "Epic" tab above and sweep on the compass</p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 30 }}>
-            {epicDirNames.length > 0 ? epicDirNames.map((d) => <span key={d} style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, background: "rgba(245,158,11,0.15)", color: "#E8A83E", border: "1px solid rgba(245,158,11,0.4)" }}>{d}</span>)
-              : <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>No epic directions selected yet</span>}
-          </div>
-          {epicDirNames.length > 0 && (
-            <button onClick={() => { setEpicSegs(new Array(16).fill(false)); setEpicArc(null); }} style={{ marginTop: 10, padding: "6px 14px", borderRadius: 8, background: "transparent", border: "1px solid rgba(245,158,11,0.4)", color: "#E8A83E", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Clear epic selection</button>
-          )}
-        </div>
-      )}
-
-      {/* Tide preferences (sea spots only) */}
-      {spot.spot_type?.toLowerCase() === "zee" && (
-        <>
-          <div onClick={() => setTideEnabled(!tideEnabled)} style={{
-            background: tideEnabled ? C.oceanTint : C.card, border: `2px solid ${tideEnabled ? C.sky : C.cardBorder}`,
-            borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer",
+      {/* Tab bar */}
+      <div style={{ display: "flex", background: "#E2D8CC", borderRadius: 12, padding: 4, marginBottom: 20, gap: 4 }}>
+        {TABS.map(tab => (
+          <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
+            flex: 1, padding: "9px 8px", borderRadius: 9, border: "none",
+            background: activeTab === tab.key ? "#FFFFFF" : "transparent",
+            color: activeTab === tab.key ? C.navy : "#8A7A6A",
+            fontSize: 12, fontWeight: activeTab === tab.key ? 700 : 500,
+            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+            boxShadow: activeTab === tab.key ? "0 1px 6px rgba(0,0,0,0.10)" : "none",
+            transition: "all 0.15s ease",
           }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: tideEnabled ? C.sky : C.navy, display: "flex", alignItems: "center", gap: 6 }}>🌊 Tide preferences</div>
-              <div style={{ fontSize: 11, color: tideEnabled ? "rgba(46,143,174,0.7)" : C.sub, fontStyle: "italic" }}>Only get pinged during your preferred tide window</div>
+            <span style={{ fontSize: 13 }}>{tab.emoji}</span>
+            {tab.label}
+            {tab.key === "prikbord" && prikbordPosts.length > 0 && (
+              <span style={{ background: C.sky, color: "#fff", borderRadius: 10, fontSize: 9, fontWeight: 800, padding: "1px 5px", minWidth: 16, textAlign: "center" }}>
+                {prikbordPosts.length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── TAB: Info ── */}
+      {activeTab === "info" && (
+        <>
+          {/* Tips */}
+          {(spot.tips || spot.good_directions?.length > 0) && (
+            <div style={{ background: C.card, borderRadius: 12, padding: "14px 18px", marginBottom: 20, fontSize: 13, color: C.sub, lineHeight: 1.5, boxShadow: C.cardShadow }}>
+              {spot.tips && <div style={{ marginBottom: 8 }}>{spot.tips}</div>}
+              {spot.good_directions?.length > 0 && <div style={{ fontWeight: 600, color: C.navy }}>Recommended: {spot.good_directions.join(", ")}</div>}
             </div>
-            <div style={{ width: 48, height: 26, borderRadius: 13, background: tideEnabled ? C.sky : C.creamDark, position: "relative", flexShrink: 0 }}>
-              <div style={{ position: "absolute", top: 3, left: tideEnabled ? 25 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.3s" }} />
+          )}
+
+          {/* Map + Compass */}
+          <div style={{ position: "relative", width: "100%", height: "min(500px, 70vh)", borderRadius: 16, overflow: "hidden", marginBottom: 16, border: `1px solid ${C.cardBorder}` }}>
+            <div ref={mapElRef} style={{ width: "100%", height: "100%", zIndex: 1 }} />
+            <button onClick={toggleMapLayer} style={{ position: "absolute", top: 12, right: 12, zIndex: 1001, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.15)" }}>
+              {isSat ? "Map" : "Satellite"}
+            </button>
+            <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 1001, display: "flex", background: "rgba(0,0,0,0.6)", borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,0.3)", overflow: "hidden", border: `1px solid rgba(255,255,255,0.15)`, gap: 2, padding: 2 }}>
+              {(["map", "select"] as const).map((m) => (
+                <button key={m} onClick={() => setMode(m)} style={{ padding: "8px 14px", border: "none", borderRadius: 8, background: mode === m ? (m === "select" ? C.sky : "rgba(255,255,255,0.2)") : "transparent", cursor: "pointer", fontSize: 11, fontWeight: 600, color: mode === m ? "#fff" : "rgba(255,255,255,0.5)", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
+                  {m === "map" ? "📌 Position compass" : "🌊 Select wind"}
+                </button>
+              ))}
+            </div>
+            <div style={{ position: "absolute", zIndex: 1000, width: SIZE, height: SIZE, left: "50%", top: "50%", transform: "translate(-50%,-50%)", pointerEvents: mode === "select" ? "auto" : "none" }}>
+              <div style={{ position: "absolute", inset: 0, borderRadius: "50%", background: "radial-gradient(circle at 35% 35%, rgba(46,111,126,0.1), rgba(46,111,126,0.04))", border: `2px solid ${compassLayer === "epic" ? "rgba(212,146,46,0.6)" : "rgba(46,111,126,0.25)"}`, boxShadow: compassLayer === "epic" ? "0 0 0 3px rgba(212,146,46,0.12)" : "0 0 0 3px rgba(46,111,126,0.06)", pointerEvents: "none" }} />
+              <canvas ref={canvasRef} width={SIZE} height={SIZE} onMouseDown={onCanvasDown} onTouchStart={onCanvasDown} style={{ position: "absolute", inset: 0, borderRadius: "50%", zIndex: 2, cursor: mode === "select" ? "crosshair" : "default", touchAction: "none" }} />
+              <svg style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 3 }} viewBox="0 0 280 280">
+                <circle cx="140" cy="140" r="126" fill="none" stroke="rgba(46,111,126,0.2)" strokeWidth="1" />
+                <circle cx="140" cy="140" r="42" fill="none" stroke="rgba(46,111,126,0.12)" strokeWidth="1" />
+                <line x1="140" y1="18" x2="140" y2="262" stroke="rgba(46,111,126,0.15)" strokeWidth="1" />
+                <line x1="18" y1="140" x2="262" y2="140" stroke="rgba(46,111,126,0.15)" strokeWidth="1" />
+                <polygon points="140,30 134,140 140,128 146,140" fill="#C97A63" opacity="0.75" />
+                <polygon points="140,250 134,140 140,152 146,140" fill="#94A3B8" opacity="0.45" />
+              </svg>
+              <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 14, height: 14, borderRadius: "50%", background: "#fff", border: `3px solid ${compassLayer === "epic" ? C.gold : C.sky}`, boxShadow: `0 0 0 5px ${compassLayer === "epic" ? "rgba(212,146,46,0.12)" : "rgba(46,111,126,0.12)"}`, zIndex: 20, pointerEvents: "none" }} />
+              {labels.map((l) => (
+                <div key={l.d} style={{ position: "absolute", left: l.x, top: l.y, transform: "translate(-50%,-50%)", fontSize: l.isCard ? 12 : 9, fontWeight: 700, color: l.isCard ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.4)", pointerEvents: "none", zIndex: 5, letterSpacing: 0.3 }}>{l.d}</div>
+              ))}
+              <div style={{ position: "absolute", bottom: -36, left: "50%", transform: "translateX(-50%)", fontSize: 12, whiteSpace: "nowrap", fontWeight: 700, padding: "8px 16px", borderRadius: 10, boxShadow: "0 2px 8px rgba(0,0,0,0.2)", background: mode === "select" ? C.sky : C.card, color: mode === "select" ? "#fff" : C.navy, border: `1px solid ${C.cardBorder}` }}>
+                {mode === "map" ? "Drag the map to position the compass" : "Sweep over water to select directions"}
+              </div>
             </div>
           </div>
 
-          {tideEnabled && (
-            <div style={{ marginBottom: 24, padding: "18px", background: C.oceanTint, borderRadius: 14 }}>
-              <h2 style={{ fontSize: 15, fontWeight: 700, color: C.sky, marginBottom: 12 }}>Tide Window</h2>
-
-              {/* HW / LW selector */}
-              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                {(["HW", "LW"] as const).map((ref) => (
-                  <button key={ref} onClick={() => setTideRef(ref)} style={{
-                    flex: 1, padding: "12px 16px", borderRadius: 10,
-                    border: `2px solid ${tideRef === ref ? C.sky : C.cardBorder}`,
-                    background: tideRef === ref ? C.sky : C.card,
-                    fontSize: 14, fontWeight: 700, color: tideRef === ref ? "#fff" : C.muted, cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  }}>
-                    {ref === "HW" ? "▲" : "▼"} {ref === "HW" ? "High Water" : "Low Water"}
-                  </button>
-                ))}
-              </div>
-
-              {/* Hours before */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>Hours before {tideRef}</span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{tideBefore}h</span>
-                </div>
-                <input type="range" min={0} max={5} step={0.5} value={tideBefore} onChange={(e) => setTideBefore(parseFloat(e.target.value))}
-                  style={{ width: "100%", accentColor: C.sky }} />
-              </div>
-
-              {/* Hours after */}
-              <div style={{ marginBottom: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>Hours after {tideRef}</span>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{tideAfter}h</span>
-                </div>
-                <input type="range" min={0} max={5} step={0.5} value={tideAfter} onChange={(e) => setTideAfter(parseFloat(e.target.value))}
-                  style={{ width: "100%", accentColor: C.sky }} />
-              </div>
-
-              {/* Visual explanation */}
-              <div style={{ textAlign: "center", padding: "10px 0 4px", fontSize: 12, color: C.muted }}>
-                Alert window: <strong style={{ color: C.navy }}>{tideBefore}h before</strong> to <strong style={{ color: C.navy }}>{tideAfter}h after</strong> {tideRef}
-              </div>
+          {/* Quick compass layer tabs under map (only when epic enabled) */}
+          {epicEnabled && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              {(["good", "epic"] as const).map((l) => (
+                <button key={l} onClick={() => setCompassLayer(l)} style={{ flex: 1, padding: "12px 14px", borderRadius: 10, border: `2px solid ${compassLayer === l ? (l === "good" ? C.sky : C.gold) : C.cardBorder}`, background: compassLayer === l ? (l === "good" ? C.sky : C.gold) : C.card, fontSize: 13, fontWeight: 700, color: compassLayer === l ? "#fff" : C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: compassLayer === l ? "#fff" : (l === "good" ? C.sky : C.gold) }} />
+                  {l === "good" ? "Good" : "Epic"}
+                </button>
+              ))}
             </div>
           )}
+
+          {/* Go to voorkeuren CTA */}
+          <button onClick={() => setActiveTab("voorkeuren")} style={{ width: "100%", marginTop: 8, padding: "12px 16px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 13, fontWeight: 600, color: C.sky, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: C.cardShadow }}>
+            ⚙️ Stel jouw windvoorkeuren in →
+          </button>
         </>
       )}
 
-      {/* Prikbord */}
-      {spot && (
-        <div style={{ marginBottom: 24 }}>
-          <Prikbord
-            spotId={Number(spotId)}
-            spotName={spot.display_name}
-            userId={userId}
-            userName={userName}
-            posts={prikbordPosts}
-            onPostAdded={(post) => setPrikbordPosts(prev => [post, ...prev])}
-            showAll={true}
-          />
-        </div>
+      {/* ── TAB: Prikbord ── */}
+      {activeTab === "prikbord" && spot && (
+        <Prikbord
+          spotId={Number(spotId)}
+          spotName={spot.display_name}
+          userId={userId}
+          userName={userName}
+          posts={prikbordPosts}
+          onPostAdded={(post) => setPrikbordPosts(prev => [post, ...prev])}
+          showAll={true}
+        />
       )}
 
-      {/* Save button */}
-      <button onClick={handleSave} disabled={saving} style={{
-        width: "100%", padding: 14, background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`, color: "#fff", border: "none", borderRadius: 12,
-        fontSize: 15, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1,
-      }}>
-        {saving ? "Saving..." : isSaved ? "Update preferences" : "Add to my spots"}
-      </button>
+      {/* ── TAB: Voorkeuren ── */}
+      {activeTab === "voorkeuren" && (
+        <>
+          {/* Compass layer switcher (if epic) */}
+          {epicEnabled && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {(["good", "epic"] as const).map((l) => (
+                <button key={l} onClick={() => setCompassLayer(l)} style={{ flex: 1, padding: "12px 14px", borderRadius: 10, border: `2px solid ${compassLayer === l ? (l === "good" ? C.sky : C.gold) : C.cardBorder}`, background: compassLayer === l ? (l === "good" ? C.sky : C.gold) : C.card, fontSize: 13, fontWeight: 700, color: compassLayer === l ? "#fff" : C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: compassLayer === l ? "#fff" : (l === "good" ? C.sky : C.gold) }} />
+                  {l === "good" ? "Good" : "Epic"}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Direction section */}
+          <div style={{ marginBottom: 24 }}>
+            <h2 style={{ fontSize: 17, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Your Wind Directions</h2>
+            <p style={{ fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 12 }}>You'll only get pinged when wind comes from these directions</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 30 }}>
+              {userDirNames.map((d) => <span key={d} style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, background: `${C.sky}20`, color: C.sky, border: `1px solid ${C.sky}40` }}>{d}</span>)}
+              {defaultDirNames.map((d) => <span key={d} style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, background: C.creamDark, color: C.muted, border: `1px solid ${C.cardBorder}` }}>{d}</span>)}
+              {!userDirNames.length && !defaultDirNames.length && <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>Sweep over water on the compass on the Info tab</span>}
+            </div>
+            {hasEdits && (
+              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button onClick={() => { setUserSegs(new Array(16).fill(false)); setUserArc(null); setHasEdits(false); setIsSaved(false); }} style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Reset to default</button>
+                <button onClick={() => { setUserSegs(new Array(16).fill(false)); setUserArc(null); setHasEdits(false); }} style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: `1px solid ${C.amber}40`, color: C.amber, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Clear selection</button>
+              </div>
+            )}
+          </div>
+
+          {/* Wind range */}
+          <div style={{ marginBottom: 24 }}>
+            <h2 style={{ fontSize: 17, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Your Wind Speed Range</h2>
+            <p style={{ fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 12 }}>You'll only get pinged when wind speed falls within this range</p>
+            <WindSlider min={wMin} max={wMax} onChange={(mn, mx) => { setWMin(mn); setWMax(mx); }} />
+          </div>
+
+          {/* Epic toggle */}
+          <div onClick={() => { const next = !epicEnabled; setEpicEnabled(next); if (next) setCompassLayer("epic"); else setCompassLayer("good"); }} style={{ background: epicEnabled ? C.epicBg : C.card, border: `2px solid ${epicEnabled ? "#E8A83E" : C.cardBorder}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: epicEnabled ? "#E8A83E" : C.navy, display: "flex", alignItems: "center", gap: 6 }}>🤙 Set Epic conditions</div>
+              <div style={{ fontSize: 11, color: epicEnabled ? "#9A6830" : C.sub, fontStyle: "italic" }}>Get a special ping when conditions are perfect</div>
+            </div>
+            <div style={{ width: 48, height: 26, borderRadius: 13, background: epicEnabled ? "#E8A83E" : C.creamDark, position: "relative", flexShrink: 0 }}>
+              <div style={{ position: "absolute", top: 3, left: epicEnabled ? 25 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.3s" }} />
+            </div>
+          </div>
+
+          {/* Epic content */}
+          {epicEnabled && (
+            <div style={{ marginBottom: 24 }}>
+              <h2 style={{ fontSize: 17, fontWeight: 700, color: "#E8A83E", marginBottom: 4 }}>Epic Wind Speed</h2>
+              <p style={{ fontSize: 12, color: "#9A6830", fontStyle: "italic", marginBottom: 12 }}>The perfect wind range for your session</p>
+              <WindSlider min={eMin} max={eMax} onChange={(mn, mx) => { setEMin(mn); setEMax(mx); }} color="#E8A83E" />
+              <h2 style={{ fontSize: 17, fontWeight: 700, color: "#E8A83E", marginTop: 20, marginBottom: 4 }}>Epic Wind Directions</h2>
+              <p style={{ fontSize: 12, color: "#9A6830", fontStyle: "italic", marginBottom: 12 }}>Switch to "Epic" tab above and sweep on the compass</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 30 }}>
+                {epicDirNames.length > 0 ? epicDirNames.map((d) => <span key={d} style={{ fontSize: 12, fontWeight: 600, padding: "4px 10px", borderRadius: 20, background: "rgba(245,158,11,0.15)", color: "#E8A83E", border: "1px solid rgba(245,158,11,0.4)" }}>{d}</span>)
+                  : <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>No epic directions selected yet</span>}
+              </div>
+              {epicDirNames.length > 0 && (
+                <button onClick={() => { setEpicSegs(new Array(16).fill(false)); setEpicArc(null); }} style={{ marginTop: 10, padding: "6px 14px", borderRadius: 8, background: "transparent", border: "1px solid rgba(245,158,11,0.4)", color: "#E8A83E", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Clear epic selection</button>
+              )}
+            </div>
+          )}
+
+          {/* Tide preferences (sea spots only) */}
+          {spot.spot_type?.toLowerCase() === "zee" && (
+            <>
+              <div onClick={() => setTideEnabled(!tideEnabled)} style={{ background: tideEnabled ? C.oceanTint : C.card, border: `2px solid ${tideEnabled ? C.sky : C.cardBorder}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: tideEnabled ? C.sky : C.navy, display: "flex", alignItems: "center", gap: 6 }}>🌊 Tide preferences</div>
+                  <div style={{ fontSize: 11, color: tideEnabled ? "rgba(46,143,174,0.7)" : C.sub, fontStyle: "italic" }}>Only get pinged during your preferred tide window</div>
+                </div>
+                <div style={{ width: 48, height: 26, borderRadius: 13, background: tideEnabled ? C.sky : C.creamDark, position: "relative", flexShrink: 0 }}>
+                  <div style={{ position: "absolute", top: 3, left: tideEnabled ? 25 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.3s" }} />
+                </div>
+              </div>
+              {tideEnabled && (
+                <div style={{ marginBottom: 24, padding: "18px", background: C.oceanTint, borderRadius: 14 }}>
+                  <h2 style={{ fontSize: 15, fontWeight: 700, color: C.sky, marginBottom: 12 }}>Tide Window</h2>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                    {(["HW", "LW"] as const).map((ref) => (
+                      <button key={ref} onClick={() => setTideRef(ref)} style={{ flex: 1, padding: "12px 16px", borderRadius: 10, border: `2px solid ${tideRef === ref ? C.sky : C.cardBorder}`, background: tideRef === ref ? C.sky : C.card, fontSize: 14, fontWeight: 700, color: tideRef === ref ? "#fff" : C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        {ref === "HW" ? "▲" : "▼"} {ref === "HW" ? "High Water" : "Low Water"}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>Hours before {tideRef}</span>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{tideBefore}h</span>
+                    </div>
+                    <input type="range" min={0} max={5} step={0.5} value={tideBefore} onChange={(e) => setTideBefore(parseFloat(e.target.value))} style={{ width: "100%", accentColor: C.sky }} />
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>Hours after {tideRef}</span>
+                      <span style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{tideAfter}h</span>
+                    </div>
+                    <input type="range" min={0} max={5} step={0.5} value={tideAfter} onChange={(e) => setTideAfter(parseFloat(e.target.value))} style={{ width: "100%", accentColor: C.sky }} />
+                  </div>
+                  <div style={{ textAlign: "center", padding: "10px 0 4px", fontSize: 12, color: C.muted }}>
+                    Alert window: <strong style={{ color: C.navy }}>{tideBefore}h before</strong> to <strong style={{ color: C.navy }}>{tideAfter}h after</strong> {tideRef}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Save button */}
+          <button onClick={handleSave} disabled={saving} style={{ width: "100%", padding: 14, background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1 }}>
+            {saving ? "Saving..." : isSaved ? "Update preferences" : "Add to my spots"}
+          </button>
+        </>
+      )}
 
       {/* Toast */}
       {toast && (
