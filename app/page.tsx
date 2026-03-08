@@ -523,6 +523,7 @@ function Dashboard() {
   const [manualWeather, setManualWeather] = useState<{wind: number; gust: number; dir: number; dirStr: string} | null>(null);
   const [manualWeatherLoading, setManualWeatherLoading] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
+  const [savedSessionId, setSavedSessionId] = useState<number | null>(null);
   const [manualStep, setManualStep] = useState<"pick" | 1 | 2 | 3 | 4 | 5 | 6>("pick");
   const [manualRating, setManualRating] = useState<number | null>(null);
   const [manualPropulsion, setManualPropulsion] = useState<"kite" | "wing" | "zeil" | null>(null);
@@ -709,6 +710,7 @@ function Dashboard() {
 
   function resetManualSession() {
     setManualStep("pick");
+    setSavedSessionId(null);
     setManualSpotId("");
     setManualDate(new Date().toISOString().split("T")[0]);
     setManualWeather(null);
@@ -749,12 +751,14 @@ function Dashboard() {
       }
       const saveRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
         method: "POST",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
         body: JSON.stringify(body),
       });
       if (!saveRes.ok) { setManualError("Opslaan mislukt: " + saveRes.status); setManualSaving(false); return; }
-      setShowManualSession(false);
-      resetManualSession();
+      const savedData = await saveRes.json();
+      const sessionId = savedData?.[0]?.id || null;
+      setSavedSessionId(sessionId);
+      setManualStep("saved" as any);
       loadData();
     } catch { setManualError("Opslaan mislukt, probeer opnieuw."); }
     setManualSaving(false);
@@ -1208,6 +1212,51 @@ function Dashboard() {
                   <div style={{ padding: "10px 14px", background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 10, fontSize: 12, color: "#DC2626", marginBottom: 16 }}>{manualError}</div>
                 )}
 
+                {/* ── SAVED: Sessie opgeslagen + deel ── */}
+                {(manualStep as any) === "saved" && (
+                  <div style={{ textAlign: "center", padding: "8px 0 16px" }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>🤙</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.navy, marginBottom: 6 }}>Sessie gelogd!</div>
+                    <div style={{ fontSize: 14, color: C.sub, marginBottom: 28 }}>
+                      {manualWeather ? `${manualWeather.wind}kn ${manualWeather.dirStr} · ` : ""}
+                      {allSpots.find(s => s.id === manualSpotId)?.name || ""}
+                    </div>
+
+                    {savedSessionId && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                        <button
+                          onClick={() => {
+                            const spotName = allSpots.find(s => s.id === manualSpotId)?.name || "een spot";
+                            const wind = manualWeather ? `${manualWeather.wind}kn ${manualWeather.dirStr}` : "";
+                            const text = `🤙 Net een sessie gelogd op ${spotName}${wind ? ` · ${wind}` : ""} — bekijk hem op WindPing!`;
+                            const url = `https://www.windping.com/sessie/${savedSessionId}`;
+                            if ((navigator as any).share) {
+                              (navigator as any).share({ title: "WindPing sessie", text, url }).catch(() => {});
+                            } else {
+                              navigator.clipboard.writeText(`${text} ${url}`);
+                            }
+                          }}
+                          style={{ width: "100%", padding: "14px", background: `linear-gradient(135deg, ${C.green}, ${C.skyDark})`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                          Deel sessie 🤙
+                        </button>
+                        <a
+                          href={`https://wa.me/?text=${encodeURIComponent(`🤙 Net een sessie gelogd op ${allSpots.find(s => s.id === manualSpotId)?.name || "een spot"}${manualWeather ? ` · ${manualWeather.wind}kn ${manualWeather.dirStr}` : ""} — https://www.windping.com/sessie/${savedSessionId}`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: "block", width: "100%", padding: "14px", background: "#25D366", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer", textDecoration: "none", boxSizing: "border-box" }}>
+                          Stuur via WhatsApp
+                        </a>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => { setShowManualSession(false); resetManualSession(); }}
+                      style={{ width: "100%", padding: "12px", background: "rgba(31,53,76,0.06)", color: C.navy, border: "none", borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                      Klaar
+                    </button>
+                  </div>
+                )}
+
                 {/* ── PICK: Spot + datum ── */}
                 {manualStep === "pick" && (
                   <>
@@ -1591,19 +1640,19 @@ function LandingPage() {
             <Link href="/login" style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.85)", textDecoration: "none", padding: "8px 18px", border: "1.5px solid rgba(255,255,255,0.25)", borderRadius: 10, backdropFilter: "blur(4px)", background: "rgba(255,255,255,0.05)" }}>Log in</Link>
           </div>
           <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 600, width: "100%", margin: "0 auto", padding: "0 24px" }}>
-            <div style={{ maxWidth: 440, opacity: loaded ? 1 : 0, transform: loaded ? "translateY(0)" : "translateY(30px)", transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+            <div style={{ maxWidth: 440, margin: "0 auto", opacity: loaded ? 1 : 0, transform: loaded ? "translateY(0)" : "translateY(30px)", transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1)" }}>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 16px", borderRadius: 20, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)", marginBottom: 24, backdropFilter: "blur(8px)" }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, boxShadow: `0 0 8px ${C.green}` }} />
                 <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1.5px", color: "rgba(255,255,255,0.7)", textTransform: "uppercase" }}>Kitesurf &amp; Windsurf Alerts</span>
               </div>
               <h1 style={{ ...h, fontSize: "clamp(3rem, 12vw, 4.2rem)", lineHeight: 0.95, color: "white", margin: "0 0 16px", letterSpacing: -1 }}>
-                Stop Checking,<br />
+                Stop Checkin&apos;<br />
                 <span style={{ color: C.terra, position: "relative" }}>
-                  Start Riding
+                  The Weather
                   <svg viewBox="0 0 200 12" style={{ position: "absolute", bottom: -4, left: 0, width: "100%", height: 12, overflow: "visible" }}><path d="M5 8 Q50 2 100 7 Q150 12 195 5" stroke={C.terra} strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.5" /></svg>
                 </span>
               </h1>
-              <p style={{ fontSize: 18, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, maxWidth: 360, marginBottom: 32, fontWeight: 400 }}>We&apos;ll let you know when you should go!</p>
+              <p style={{ fontSize: 18, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, maxWidth: 360, marginBottom: 32, fontWeight: 400 }}>Start riding together — we&apos;ll ping you when it&apos;s Go!</p>
               <div style={{ display: "flex", gap: 12, marginBottom: 40, maxWidth: 380 }}>
                 <Link href="/signup" style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 0", background: C.terra, color: "#FFF", fontWeight: 700, fontSize: 15, borderRadius: 12, textDecoration: "none", boxShadow: "0 4px 20px rgba(201,122,99,0.4)" }}>Gratis aanmelden <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></Link>
                 <Link href="#how" style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 0", background: "white", color: C.navy, fontWeight: 600, fontSize: 14, borderRadius: 12, textDecoration: "none", boxShadow: "0 2px 12px rgba(0,0,0,0.12)" }}>Hoe werkt het?</Link>
