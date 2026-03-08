@@ -154,7 +154,7 @@ export default function PhotoCropModal({ imageUrl, initialPosition, onConfirm, o
       {/* Buttons */}
       <div style={{ display: "flex", gap: 12, marginTop: 20, width: "100%", maxWidth: 420 }}>
         <button onClick={onCancel} style={{ flex: 1, padding: "13px", borderRadius: 12, fontSize: 14, fontWeight: 600, background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.7)", border: "1px solid rgba(255,255,255,0.12)", cursor: "pointer" }}>Annuleer</button>
-        <button onClick={() => onConfirm(cropString)} style={{ flex: 2, padding: "13px", borderRadius: 12, fontSize: 14, fontWeight: 700, background: "linear-gradient(135deg, #2E8FAE, #1a6b8a)", color: "#fff", border: "none", cursor: "pointer", boxShadow: "0 4px 16px rgba(46,143,174,0.4)" }}>✓ Opslaan</button>
+        <button onClick={() => { console.log("crop clicked", JSON.stringify(crop)); onConfirm(JSON.stringify(crop)); }} style={{ flex: 2, padding: "13px", borderRadius: 12, fontSize: 14, fontWeight: 700, background: "linear-gradient(135deg, #2E8FAE, #1a6b8a)", color: "#fff", border: "none", cursor: "pointer", boxShadow: "0 4px 16px rgba(46,143,174,0.4)" }}>✓ Opslaan</button>
       </div>
     </div>
   );

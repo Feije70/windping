@@ -57,7 +57,7 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
     }}>
       {(s.photo_url || s.image_url) && (
         <div style={{ position: "relative" }}>
-          <img src={s.photo_url || s.image_url || ""} alt="" style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }} />
+          <img src={s.photo_url || s.image_url || ""} alt="" style={{ width: "100%", height: 160, display: "block", ...cropStyle(s.photo_crop) }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.5) 100%)" }} />
           <div style={{ position: "absolute", bottom: 10, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
             <div>
@@ -135,14 +135,15 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
     setCropSaving(true);
     try {
       const token = await getValidToken();
-      await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}`, {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}`, {
         method: "PATCH",
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
         body: JSON.stringify({ photo_crop: cropString }),
       });
+      console.log("saveCrop status:", r.status, await r.text());
       setShowCrop(false);
       window.location.reload();
-    } catch { setCropSaving(false); }
+    } catch (e) { console.error("saveCrop error:", e); setCropSaving(false); }
   };
 
   async function handleDelete() {
