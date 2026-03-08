@@ -6,6 +6,7 @@ import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { Icons } from "@/components/Icons";
 import { getValidToken, getEmail, getAuthId, isTokenExpired, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import Prikbord, { PrikbordPost } from "@/components/Prikbord";
 
 const h = { fontFamily: fonts.heading };
 const SMIN = 5, SMAX = 50, SIZE = 280, CTR = 140, SEG = 16, SEG_A = 22.5, IR = 22, OR = CTR - 16;
@@ -100,6 +101,7 @@ function SpotDetailContent() {
   const [error, setError] = useState("");
   const [spot, setSpot] = useState<any>(null);
   const [userId, setUserId] = useState<number | null>(null);
+  const [userName, setUserName] = useState<string>("");
 
   // Conditions
   const [wMin, setWMin] = useState(15);
@@ -134,6 +136,7 @@ function SpotDetailContent() {
   // Save state
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const [prikbordPosts, setPrikbordPosts] = useState<PrikbordPost[]>([]);
 
   // Refs
   const mapRef = useRef<any>(null);
@@ -156,13 +159,14 @@ function SpotDetailContent() {
 
     Promise.all([
       sbGet(`spots?id=eq.${spotId}&select=*`),
-      sbGet(`users?auth_id=eq.${encodeURIComponent(getAuthId() || "")}&select=id,min_wind_speed,max_wind_speed`),
+      sbGet(`users?auth_id=eq.${encodeURIComponent(getAuthId() || "")}&select=id,name,min_wind_speed,max_wind_speed`),
       sbGet(`ideal_conditions?spot_id=eq.${spotId}&select=*`),
     ]).then(([spots, users, conds]) => {
       if (!spots?.length) { setError("Spot not found"); setLoading(false); return; }
       if (!users?.length) { setError("User not found"); setLoading(false); return; }
       const sp = spots[0]; const user = users[0];
       setSpot(sp); setUserId(user.id);
+      if (user.name) setUserName(user.name);
 
       const existing = conds?.find((c: any) => c.user_id === user.id) || null;
 
@@ -206,6 +210,12 @@ function SpotDetailContent() {
 
       if (existing) setIsSaved(true);
       setLoading(false);
+
+      // Laad prikbord posts
+      try {
+        const posts = await sbGet(`spot_posts?spot_id=eq.${spotId}&order=created_at.desc&limit=20&select=id,type,content,author_name,created_at,wind_speed,wind_dir`);
+        setPrikbordPosts(posts || []);
+      } catch {}
     }).catch((e) => { setError(e.message); setLoading(false); });
   }, [spotId]);
 
@@ -771,6 +781,21 @@ function SpotDetailContent() {
             </div>
           )}
         </>
+      )}
+
+      {/* Prikbord */}
+      {spot && (
+        <div style={{ marginBottom: 24 }}>
+          <Prikbord
+            spotId={Number(spotId)}
+            spotName={spot.display_name}
+            userId={userId}
+            userName={userName}
+            posts={prikbordPosts}
+            onPostAdded={(post) => setPrikbordPosts(prev => [post, ...prev])}
+            showAll={true}
+          />
+        </div>
       )}
 
       {/* Save button */}
