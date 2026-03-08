@@ -1111,6 +1111,13 @@ export default function AdminPage() {
                         🔄 Reset alles naar default
                       </button>
                       <button onClick={async () => {
+                        await sbPatch(`users?id=eq.${userDetail.id}`, { name: null });
+                        setUserMsg("✓ Naam gewist — ga naar de homepage om onboarding te testen");
+                        setTimeout(() => { window.location.href = "/"; }, 1200);
+                      }} style={{ padding: "7px 14px", background: "#EFF6FF", border: "1px solid #93C5FD", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#2563EB", cursor: "pointer" }}>
+                        🧪 Test onboarding (behoudt data)
+                      </button>
+                      <button onClick={async () => {
                         if (!confirm(`Weet je zeker dat je ALLES van ${userDetail.name || userDetail.email} wilt verwijderen? Dit reset de volledige onboarding.`)) return;
                         setUserSaving(true);
                         try {
