@@ -85,6 +85,8 @@ async function uploadSessionPhoto(file: File, userId: number, sessionId: number)
 export default function AlertPage() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [hourlyData, setHourlyData] = useState<Record<string, HourlyData[]>>({});
+  const [tideData, setTideData] = useState<Record<string, { extremes: any[]; station?: string }>>({});
+  const [expandedPast, setExpandedPast] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<number | null>(null);
   const [goingSessions, setGoingSessions] = useState<Record<string, any>>({});
@@ -126,25 +128,40 @@ export default function AlertPage() {
       setAlerts(alertData || []);
 
       const goAlerts = (alertData || []).filter((a: any) => a.alert_type === "go" || a.alert_type === "heads_up");
+      const downgradeAlerts = (alertData || []).filter((a: any) => a.alert_type === "downgrade");
+      const alertsNeedingHourly = [...goAlerts, ...downgradeAlerts];
       const hourlyMap: Record<string, HourlyData[]> = {};
+      const tideMap: Record<string, { extremes: any[]; station?: string }> = {};
 
-      for (const alert of goAlerts) {
+      for (const alert of alertsNeedingHourly) {
         const spots = alert.conditions?.spots || [];
         for (const spot of spots) {
           const key = `${spot.spotId}_${alert.target_date}`;
           if (hourlyMap[key]) continue;
 
           const spotRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/spots?id=eq.${spot.spotId}&select=latitude,longitude`,
+            `${SUPABASE_URL}/rest/v1/spots?id=eq.${spot.spotId}&select=latitude,longitude,spot_type`,
             { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
           );
           const spotData = await spotRes.json();
           if (!spotData?.[0]?.latitude) continue;
+          const { latitude, longitude, spot_type } = spotData[0];
+
+          const isPastDate = alert.target_date < todayStr;
 
           try {
-            const omRes = await fetch(
-              `https://api.open-meteo.com/v1/forecast?latitude=${spotData[0].latitude}&longitude=${spotData[0].longitude}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Europe/Amsterdam&forecast_days=7`
-            );
+            let omRes;
+            if (isPastDate) {
+              // Historische data via archive API
+              omRes = await fetch(
+                `https://archive-api.open-meteo.com/v1/archive?latitude=${latitude}&longitude=${longitude}&start_date=${alert.target_date}&end_date=${alert.target_date}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Europe/Amsterdam`
+              );
+            } else {
+              // Toekomstige data via forecast API
+              omRes = await fetch(
+                `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Europe/Amsterdam&forecast_days=7`
+              );
+            }
             const omData = await omRes.json();
             if (omData?.hourly?.time) {
               const hours = [7, 9, 11, 13, 15, 17, 19, 21];
@@ -164,9 +181,38 @@ export default function AlertPage() {
               hourlyMap[key] = result;
             }
           } catch {}
+
+          // Getijden voor zeespots
+          if (spot_type?.toLowerCase() === "zee" && !tideMap[key]) {
+            if (isPastDate) {
+              // Historisch: gebruik opgeslagen getijden uit alert conditions
+              const storedTides = alert.conditions?.tides?.[spot.spotId];
+              if (storedTides?.length) {
+                tideMap[key] = {
+                  extremes: storedTides.map((t: any) => ({ time: t.time, type: t.type, height: t.height })),
+                };
+              }
+            } else {
+              // Toekomst: live API aanroepen
+              try {
+                const exRes = await fetch(
+                  `/api/tide?spot_id=${spot.spotId}&lat=${latitude}&lng=${longitude}&type=extremes`,
+                  { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+                );
+                if (exRes.ok) {
+                  const ex = await exRes.json();
+                  tideMap[key] = {
+                    extremes: (ex?.data || []).map((p: any) => ({ time: p.time, height: p.height, type: p.type })),
+                    station: ex?.station?.name,
+                  };
+                }
+              } catch {}
+            }
+          }
         }
       }
       setHourlyData(hourlyMap);
+      setTideData(tideMap);
     } catch (e) {
       console.error("Load alerts error:", e);
     }
@@ -184,7 +230,8 @@ export default function AlertPage() {
         });
         const data = await res.json();
         const map: Record<string, any> = {};
-        (data || []).forEach((s: any) => { map[`${s.spot_id}_${s.session_date}`] = s; });
+        // Alleen "going" sessies laden — skipped tonen we niet
+        (data || []).filter((s: any) => s.status !== "skipped").forEach((s: any) => { map[`${s.spot_id}_${s.session_date}`] = s; });
         setGoingSessions(map);
       } catch {}
     })();
@@ -214,11 +261,15 @@ export default function AlertPage() {
     if (!token) return;
     try {
       await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${session.id}`, {
-        method: "PATCH",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "skipped" }),
+        method: "DELETE",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
       });
-      setGoingSessions(prev => ({ ...prev, [key]: { ...session, status: "skipped" } }));
+      // Verwijder uit state zodat "Ik ga!" knop terugkomt
+      setGoingSessions(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
     } catch {}
   };
 
@@ -309,7 +360,7 @@ export default function AlertPage() {
 
         {!loading && alerts.length === 0 && (
           <div style={{ textAlign: "center", padding: "60px 20px", color: C.sub }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🌊</div>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 12 }}><path d="M2 12c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/><path d="M2 18c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/><path d="M2 6c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/></svg>
             <div style={{ fontSize: 15, fontWeight: 600 }}>Geen recente alerts</div>
             <div style={{ fontSize: 12, marginTop: 6 }}>W. Ping houdt de forecast in de gaten voor je</div>
           </div>
@@ -343,61 +394,39 @@ export default function AlertPage() {
                   <div key={`${spot.spotId}-${i}`} style={{
                     background: C.card,
                     boxShadow: C.cardShadow,
-                    borderRadius: 18,
+                    borderRadius: 16,
                     overflow: "hidden",
                     marginBottom: 10,
                     border: `1.5px solid ${C.cardBorder}`,
                   }}>
-                    {/* Spot card header — groene balk */}
-                    <div style={{ background: "linear-gradient(135deg, #1B6B4E 0%, #259068 60%, #2EAA7A 100%)", padding: "12px 16px 10px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    {/* Compacte groene header */}
+                    <div style={{ background: "linear-gradient(135deg, #1B6B4E 0%, #259068 60%, #2EAA7A 100%)", padding: "10px 14px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
-                          <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", letterSpacing: "-0.2px" }}>{spot.spotName}</div>
-                          {daypart && <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontWeight: 600, marginTop: 2 }}>{daypart}</div>}
-                        </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ display: "flex", alignItems: "baseline", gap: 1, justifyContent: "flex-end" }}>
-                            <span style={{ fontSize: 32, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-1px" }}>{spot.wind}</span>
-                            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", fontWeight: 700 }}>kn</span>
+                          <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>{spot.spotName}</div>
+                          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", marginTop: 1 }}>
+                            {spot.dir} · gusts {spot.gust}kn{daypart ? ` · ${daypart}` : ""}
                           </div>
-                          <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>{spot.dir} · gusts {spot.gust}kn</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+                          <span style={{ fontSize: 26, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-1px" }}>{spot.wind}</span>
+                          <span style={{ fontSize: 10, color: "rgba(255,255,255,0.65)", fontWeight: 700 }}>kn</span>
                         </div>
                       </div>
                     </div>
-                    <div style={{ padding: "12px 16px 10px" }}>
 
+                    <div style={{ padding: "10px 14px 12px" }}>
                     {hours.length > 0 && (
-                      <div style={{ overflowX: "auto", marginBottom: 4 }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 2 }}>
+                      <div style={{ overflowX: "auto", marginBottom: 8 }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
                           <tbody>
-                            <tr>
-                              {hours.map(hr => (
-                                <td key={hr.hour} style={{ padding: "3px 0", textAlign: "center", fontSize: 10, color: C.sub }}>{hr.hour}:00</td>
-                              ))}
-                            </tr>
-                            <tr>
-                              {hours.map(hr => (
-                                <td key={hr.hour} style={{
-                                  padding: "4px 0", textAlign: "center", fontSize: 14, fontWeight: 700,
-                                  color: hr.wind >= wMin ? C.green : C.muted,
-                                }}>
-                                  {hr.wind}
-                                </td>
-                              ))}
-                            </tr>
-                            <tr>
-                              {hours.map(hr => (
-                                <td key={hr.hour} style={{ padding: "2px 0", textAlign: "center", fontSize: 10, color: "#475569" }}>{hr.gust}</td>
-                              ))}
-                            </tr>
-                            <tr>
-                              {hours.map(hr => (
-                                <td key={hr.hour} style={{ padding: "2px 0", textAlign: "center", fontSize: 10, color: C.sub }}>{hr.dir}</td>
-                              ))}
-                            </tr>
+                            <tr>{hours.map(hr => (<td key={hr.hour} style={{ padding: "2px 0", textAlign: "center", fontSize: 10, color: C.muted }}>{hr.hour}u</td>))}</tr>
+                            <tr>{hours.map(hr => (<td key={hr.hour} style={{ padding: "3px 0", textAlign: "center", fontSize: 13, fontWeight: 700, color: hr.wind >= wMin ? C.green : C.muted }}>{hr.wind}</td>))}</tr>
+                            <tr>{hours.map(hr => (<td key={hr.hour} style={{ padding: "2px 0", textAlign: "center", fontSize: 10, color: C.sub }}>{hr.gust}</td>))}</tr>
+                            <tr>{hours.map(hr => (<td key={hr.hour} style={{ padding: "2px 0", textAlign: "center", fontSize: 10, color: C.muted }}>{hr.dir}</td>))}</tr>
                           </tbody>
                         </table>
-                        <div style={{ fontSize: 9, color: C.muted, marginTop: 4, letterSpacing: "0.3px" }}>kn · gust · richting</div>
+                        <div style={{ fontSize: 9, color: C.muted, marginTop: 3, letterSpacing: "0.3px" }}>kn · gust · richting</div>
                       </div>
                     )}
 
@@ -409,18 +438,10 @@ export default function AlertPage() {
 
                       if (session?.status === "completed") {
                         return (
-                          <div style={{ marginTop: 10 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: C.goBg, borderRadius: 10 }}>
-                              <span style={{ fontSize: 14 }}>✅</span>
-                              <span style={{ fontSize: 12, fontWeight: 600, color: C.green }}>Sessie gelogd</span>
-                              {session.rating && <span style={{ fontSize: 12, marginLeft: "auto" }}>{"⭐".repeat(session.rating)}</span>}
-                            </div>
-                            {/* Show photo thumbnail if uploaded */}
-                            {session.photo_url && (
-                              <div style={{ marginTop: 8, borderRadius: 10, overflow: "hidden", maxHeight: 120 }}>
-                                <img src={session.photo_url} alt="Sessie foto" style={{ width: "100%", height: 120, objectFit: "cover", borderRadius: 10 }} />
-                              </div>
-                            )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: C.goBg, borderRadius: 10 }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: C.green }}>Sessie gelogd</span>
+                            {session.rating && <span style={{ fontSize: 11, marginLeft: "auto", color: C.gold }}>{"★".repeat(session.rating)}</span>}
                           </div>
                         );
                       }
@@ -428,46 +449,70 @@ export default function AlertPage() {
                       if (session?.status === "going") {
                         const isPast = new Date(date + "T23:59:59") < new Date();
                         return (
-                          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                          <div style={{ display: "flex", gap: 8 }}>
                             {isPast ? (
                               <button onClick={() => { setLogSession({ ...session, spotName: spot.spotName }); setLogForm({ rating: 0, wind_feel: "", gear_type: "", gear_size: "", duration_minutes: 0, notes: "" }); setPhotoFile(null); setPhotoPreview(null); }}
-                                style={{ flex: 1, padding: "10px", background: C.sky, border: "none", borderRadius: 10, color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                                🏄 Log je sessie
+                                style={{ flex: 1, padding: "9px", background: C.sky, border: "none", borderRadius: 10, color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                                Log je sessie
                               </button>
                             ) : (
-                              <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: C.goBg, borderRadius: 10 }}>
-                                <span style={{ fontSize: 14 }}>✓</span>
+                              <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", background: C.goBg, borderRadius: 10 }}>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                                 <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>Je gaat!</span>
                               </div>
                             )}
                             <button onClick={() => handleSkip(spot.spotId, date)}
-                              style={{ padding: "10px 14px", background: C.cream, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.sub, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                              style={{ padding: "9px 12px", background: C.cream, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.sub, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                               Toch niet
                             </button>
                           </div>
                         );
                       }
 
-                      if (session?.status === "skipped") {
-                        return (
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "8px 12px", background: C.cream, borderRadius: 10 }}>
-                            <span style={{ fontSize: 12, color: C.muted }}>Overgeslagen</span>
-                          </div>
-                        );
-                      }
-
                       return (
-                        <div style={{ marginTop: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <button onClick={() => handleIkGa(spot.spotId, date, alertId, spot.wind, spot.gust, spot.dir)}
-                            style={{ width: "100%", padding: "13px", background: "linear-gradient(135deg, #1B6B4E, #27A070)", border: "none", borderRadius: 12, color: "#FFF", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 14px rgba(39,160,112,0.3)" }}>
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                            style={{ flex: 1, padding: "10px", background: "linear-gradient(135deg, #1B6B4E, #27A070)", border: "none", borderRadius: 10, color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                             Ik ga!
                           </button>
-                          <div style={{ textAlign: "center", marginTop: 8, fontSize: 10, color: C.muted, lineHeight: 1.5 }}>Log je sessie achteraf en laat je vrienden zien dat je gaat</div>
                         </div>
                       );
                     })()}
-                  </div>{/* end card body padding */}
+
+                    {/* Getijden voor zeespots */}
+                    {(() => {
+                      const tide = tideData[`${spot.spotId}_${date}`];
+                      if (!tide || tide.extremes.length === 0) return null;
+                      return (
+                        <div style={{ marginTop: 10, padding: "10px 12px", background: C.oceanTint, borderRadius: 12 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2" strokeLinecap="round"><path d="M2 12c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/><path d="M2 18c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/><path d="M2 6c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/></svg>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: C.navy }}>Getijden</span>
+                            {tide.station && <span style={{ fontSize: 9, color: C.muted, marginLeft: "auto" }}>{tide.station}</span>}
+                          </div>
+                          <div style={{ display: "flex", gap: 5, overflowX: "auto" }}>
+                            {tide.extremes.slice(0, 8).map((ex: any, i: number) => {
+                              const t = new Date(ex.time);
+                              const isHW = ex.type === "high";
+                              const timeStr = t.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+                              const dayStr = t.toLocaleDateString("nl-NL", { weekday: "short" });
+                              const isToday = t.toDateString() === new Date().toDateString();
+                              const isPast = t < new Date();
+                              return (
+                                <div key={i} style={{ flex: "0 0 auto", padding: "6px 9px", borderRadius: 9, minWidth: 56, textAlign: "center", background: isHW ? "rgba(46,143,174,0.1)" : C.card, border: `1px solid ${isHW ? "rgba(46,143,174,0.15)" : C.cardBorder}`, opacity: isPast ? 0.5 : 1 }}>
+                                  <div style={{ fontSize: 9, color: C.muted, marginBottom: 1 }}>{isToday ? "vandaag" : dayStr}</div>
+                                  <div style={{ fontSize: 12, fontWeight: 800, color: isHW ? C.sky : C.sub }}>{timeStr}</div>
+                                  <div style={{ fontSize: 9, fontWeight: 700, color: isHW ? C.sky : C.muted, marginTop: 1 }}>{isHW ? "▲ HW" : "▼ LW"}</div>
+                                  {ex.height != null && <div style={{ fontSize: 9, color: C.muted }}>{Number(ex.height).toFixed(1)}m</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>{/* end card body */}
                 </div>
                 );
               })}
@@ -503,6 +548,29 @@ export default function AlertPage() {
                             <span>{r}</span>
                           </div>
                         ))}
+
+                        {/* Uurstabel als bevestiging */}
+                        {(() => {
+                          const hours = hourlyData[`${s.spotId}_${date}`] || [];
+                          if (hours.length === 0) return null;
+                          const wMin = 12;
+                          return (
+                            <div style={{ marginTop: 10, overflowX: "auto" }}>
+                              <div style={{ display: "grid", gridTemplateColumns: `repeat(${hours.length}, 1fr)`, gap: 2, minWidth: 320 }}>
+                                {hours.map((hr: any) => (
+                                  <div key={hr.hour} style={{ textAlign: "center" }}>
+                                    <div style={{ fontSize: 9, color: "#EF4444", opacity: 0.6, marginBottom: 3 }}>{hr.hour}u</div>
+                                    <div style={{ fontSize: 14, fontWeight: 900, color: hr.wind >= wMin ? "#DC2626" : "#9CA3AF" }}>{hr.wind}</div>
+                                    <div style={{ fontSize: 9, color: "#9CA3AF", marginTop: 1 }}>{hr.gust}</div>
+                                    <div style={{ fontSize: 8, color: "#9CA3AF" }}>{hr.dir}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{ fontSize: 9, color: "#9CA3AF", marginTop: 6 }}>kn · gust · richting</div>
+                            </div>
+                          );
+                        })()}
+
                         <button onClick={() => handleIkGa(s.spotId, date, a.id, s.wind, s.gust || 0, s.dir)}
                           style={{ marginTop: 12, width: "100%", padding: "10px", background: "white", border: "1.5px solid #DC2626", borderRadius: 10, color: "#DC2626", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                           Ik ga toch
@@ -534,25 +602,108 @@ export default function AlertPage() {
                 }, {} as Record<number, any>)
               ) as any[];
               return (
-                <div key={date} style={{ marginBottom: 20, opacity: 0.7 }}>
+                <div key={date} style={{ marginBottom: 20, opacity: 0.85 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                     <span style={{ ...h, fontSize: 15, fontWeight: 700, color: C.sub }}>{formatDateLabel(date)}</span>
                   </div>
                   {allSpots.map((spot: any, i: number) => {
-                    const hours = hourlyData[`${spot.spotId}_${date}`] || [];
+                    const key = `${spot.spotId}_${date}`;
+                    const hours = hourlyData[key] || [];
                     const wMin = spot.userWindMin || 12;
                     const daypart = getDaypartLabel(hours, wMin);
+                    const isExpanded = expandedPast[key];
                     return (
                       <div key={i} style={{ background: C.card, borderRadius: 14, border: `1.5px solid ${C.cardBorder}`, marginBottom: 8, overflow: "hidden" }}>
-                        <div style={{ background: "linear-gradient(135deg, #4A7A65, #5A9A7A)", padding: "10px 14px" }}>
+                        {/* Klikbare header */}
+                        <div onClick={() => setExpandedPast(prev => ({ ...prev, [key]: !prev[key] }))}
+                          style={{ background: "linear-gradient(135deg, #4A7A65, #5A9A7A)", padding: "11px 14px", cursor: "pointer" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <div>
                               <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{spot.spotName}</div>
-                              {daypart && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>{daypart}</div>}
+                              {daypart && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>{spot.dir} · gusts {spot.gust}kn · {daypart}</div>}
                             </div>
-                            <div style={{ fontSize: 22, fontWeight: 900, color: "rgba(255,255,255,0.8)", lineHeight: 1 }}>{spot.wind}<span style={{ fontSize: 10 }}>kn</span></div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ textAlign: "right" }}>
+                                <span style={{ fontSize: 22, fontWeight: 900, color: "rgba(255,255,255,0.9)", lineHeight: 1 }}>{spot.wind}</span>
+                                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.6)" }}>kn</span>
+                              </div>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2.5" strokeLinecap="round" style={{ transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>
+                                <path d="M6 9l6 6 6-6"/>
+                              </svg>
+                            </div>
                           </div>
                         </div>
+                        {/* Uurdata uitklap */}
+                        {isExpanded && hours.length > 0 && (
+                          <div style={{ padding: "12px 14px" }}>
+                            <div style={{ overflowX: "auto" }}>
+                              <div style={{ display: "grid", gridTemplateColumns: `repeat(${hours.length}, 1fr)`, gap: 2, minWidth: 320 }}>
+                                {hours.map((hr: any) => (
+                                  <div key={hr.hour} style={{ textAlign: "center" }}>
+                                    <div style={{ fontSize: 9, color: C.muted, marginBottom: 3 }}>{hr.hour}u</div>
+                                    <div style={{ fontSize: 16, fontWeight: 900, color: hr.wind >= wMin ? C.green : C.sub }}>{hr.wind}</div>
+                                    <div style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>{hr.gust}</div>
+                                    <div style={{ fontSize: 8, color: C.muted }}>{hr.dir}</div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div style={{ fontSize: 9, color: C.muted, marginTop: 8 }}>kn · gust · richting</div>
+                            </div>
+
+                            {/* Getijden indien beschikbaar */}
+                            {(() => {
+                              const tide = tideData[key];
+                              if (!tide || tide.extremes.length === 0) return null;
+                              const dayExtremes = tide.extremes.filter((ex: any) => {
+                                const t = new Date(ex.time);
+                                const localDate = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`;
+                                return localDate === date;
+                              });
+                              if (dayExtremes.length === 0) return null;
+                              return (
+                                <div style={{ marginTop: 10, padding: "10px 12px", background: C.oceanTint, borderRadius: 10 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2" strokeLinecap="round"><path d="M2 12c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/><path d="M2 18c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/></svg>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: C.navy }}>Getijden</span>
+                                    {tide.station && <span style={{ fontSize: 9, color: C.muted, marginLeft: "auto" }}>{tide.station}</span>}
+                                  </div>
+                                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                    {dayExtremes.map((ex: any, i: number) => {
+                                      const t = new Date(ex.time);
+                                      const isHW = ex.type === "high";
+                                      const timeStr = t.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
+                                      return (
+                                        <div key={i} style={{ padding: "5px 9px", borderRadius: 8, background: isHW ? "rgba(46,143,174,0.1)" : C.card, border: `1px solid ${isHW ? "rgba(46,143,174,0.2)" : C.cardBorder}`, textAlign: "center", minWidth: 52 }}>
+                                          <div style={{ fontSize: 11, fontWeight: 800, color: isHW ? C.sky : C.sub }}>{timeStr}</div>
+                                          <div style={{ fontSize: 9, fontWeight: 700, color: isHW ? C.sky : C.muted }}>{isHW ? "▲ HW" : "▼ LW"}</div>
+                                          {ex.height != null && <div style={{ fontSize: 9, color: C.muted }}>{Number(ex.height).toFixed(1)}m</div>}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+
+                            {/* Session status */}
+                            {(() => {
+                              const session = Object.values(goingSessions).find((s: any) => s.spot_id === spot.spotId && s.session_date === date);
+                              if (!session) return null;
+                              return (
+                                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", background: C.goBg, borderRadius: 8 }}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                  <span style={{ fontSize: 11, fontWeight: 600, color: C.green }}>
+                                    {(session as any).status === "completed" ? "Sessie gelogd" : "Je was gegaan"}
+                                    {(session as any).rating ? ` · ${"★".repeat((session as any).rating)}` : ""}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
+                        {isExpanded && hours.length === 0 && (
+                          <div style={{ padding: "12px 14px", fontSize: 12, color: C.muted, fontStyle: "italic" }}>Winddata wordt geladen…</div>
+                        )}
                       </div>
                     );
                   })}
@@ -617,7 +768,7 @@ export default function AlertPage() {
             <div style={{ marginBottom: 20 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Gear</div>
               <div style={{ display: "flex", gap: 8 }}>
-                {([["kite", "🪁 Kite"], ["windsurf", "🏄 Windsurf"], ["wing", "🦅 Wing"], ["sup", "🛶 SUP"]] as const).map(([val, label]) => (
+                {([["kite", "Kite"], ["windsurf", "Windsurf"], ["wing", "Wing"], ["sup", "SUP"]] as const).map(([val, label]) => (
                   <button key={val} onClick={() => setLogForm(f => ({ ...f, gear_type: val }))}
                     style={{ flex: 1, padding: "10px 6px", borderRadius: 10, border: `2px solid ${logForm.gear_type === val ? C.sky : C.cardBorder}`, background: logForm.gear_type === val ? C.oceanTint : C.cream, color: logForm.gear_type === val ? C.sky : C.sub, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     {label}

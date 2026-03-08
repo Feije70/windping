@@ -267,6 +267,9 @@ export async function POST(req: Request) {
     if (usersErr) throw usersErr;
     if (!users?.length) return NextResponse.json({ message: "No users with alert prefs", results: [] });
     
+    // Globale tide cache — gedeeld over alle gebruikers zodat Kijkduin maar 1x wordt opgehaald
+    const globalTideCache: Record<string, { time: string; type: string; height?: number }[]> = {};
+
     for (const user of users) {
       const prefs = Array.isArray(user.alert_preferences) ? user.alert_preferences[0] : user.alert_preferences;
       if (!prefs) continue;
@@ -508,12 +511,48 @@ export async function POST(req: Request) {
         
         const goAlerts = userResults.filter(r => r.alertType === "go" || r.alertType === "heads_up");
         const downgradeAlerts = userResults.filter(r => r.alertType === "downgrade");
-        
+
+        // Haal getijden op voor alle go-alerts en sla op in conditions (ongeacht email)
+        // Gebruikt globalTideCache zodat dezelfde spot niet meerdere keren wordt opgevraagd
+        if (goAlerts.length > 0) {
+          const spotsRef = first._spotsRef || [];
+          for (const alert of goAlerts) {
+            for (const s of alert.spots || []) {
+              const spot = spotsRef.find((sp: any) => sp.id === s.spotId);
+              if (spot?.latitude && spot?.longitude && spot?.spot_type?.toLowerCase() === "zee") {
+                const key = `${s.spotId}_${alert.targetDate}`;
+                if (!globalTideCache[key]) {
+                  try {
+                    globalTideCache[key] = await getTideExtremes(spot.latitude, spot.longitude, alert.targetDate);
+                  } catch {}
+                }
+              }
+            }
+          }
+          const tideBySpotDate = globalTideCache;
+          // Sla getijden op in alert_history.conditions
+          for (const alert of goAlerts) {
+            const tidesForAlert: Record<string, any[]> = {};
+            for (const s of alert.spots || []) {
+              const key = `${s.spotId}_${alert.targetDate}`;
+              if (tideBySpotDate[key]?.length) tidesForAlert[s.spotId] = tideBySpotDate[key];
+            }
+            if (Object.keys(tidesForAlert).length > 0) {
+              await sb.from("alert_history")
+                .update({ conditions: { ...alert.conditions, tides: tidesForAlert } })
+                .eq("user_id", Number(uid))
+                .eq("target_date", alert.targetDate)
+                .eq("alert_type", alert.alertType)
+                .order("created_at", { ascending: false })
+                .limit(1);
+            }
+          }
+        }
+
         // Send ONE bundled Go/heads_up email with hourly forecasts + tides
         if (goAlerts.length > 0 && first.notifyEmail && first.email) {
           try {
             const hourlyBySpotDate: Record<string, any[]> = {};
-            const tideBySpotDate: Record<string, { time: string; type: string }[]> = {};
             const spotsRef = first._spotsRef || [];
             const userPrefs = first._prefs || {};
             
@@ -522,17 +561,10 @@ export async function POST(req: Request) {
                 const spot = spotsRef.find((sp: any) => sp.id === s.spotId);
                 if (spot?.latitude && spot?.longitude) {
                   const key = `${s.spotId}_${alert.targetDate}`;
-                  // Hourly wind
                   if (!hourlyBySpotDate[key]) {
                     try {
                       const hourly = await getHourlyForecast(spot.latitude, spot.longitude, (userPrefs.lookahead_days || 3) + 1);
                       hourlyBySpotDate[key] = getHourlyForDay(hourly, alert.targetDate);
-                    } catch {}
-                  }
-                  // Tides
-                  if (!tideBySpotDate[key]) {
-                    try {
-                      tideBySpotDate[key] = await getTideExtremes(spot.latitude, spot.longitude, alert.targetDate);
                     } catch {}
                   }
                 }
@@ -543,9 +575,10 @@ export async function POST(req: Request) {
               first.email, first.name, Number(uid),
               goAlerts.map(a => ({ targetDate: a.targetDate, spots: a.spots, alertType: a.alertType })),
               hourlyBySpotDate,
-              tideBySpotDate
+              globalTideCache
+
             );
-            
+
             for (const alert of goAlerts) {
               await sb.from("alert_history")
                 .update({ delivered_email: true })
