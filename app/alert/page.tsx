@@ -400,7 +400,7 @@ export default function AlertPage() {
                     border: `1.5px solid ${C.cardBorder}`,
                   }}>
                     {/* Compacte groene header */}
-                    <div style={{ background: "linear-gradient(135deg, #1B6B4E 0%, #259068 60%, #2EAA7A 100%)", padding: "10px 14px" }}>
+                    <div style={{ background: "linear-gradient(135deg, #08303F 0%, #0E5470 45%, #1A7A9E 100%)", padding: "10px 14px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div>
                           <div style={{ fontSize: 15, fontWeight: 800, color: "#fff" }}>{spot.spotName}</div>
@@ -472,7 +472,7 @@ export default function AlertPage() {
                       return (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <button onClick={() => handleIkGa(spot.spotId, date, alertId, spot.wind, spot.gust, spot.dir)}
-                            style={{ flex: 1, padding: "10px", background: "linear-gradient(135deg, #1B6B4E, #27A070)", border: "none", borderRadius: 10, color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                            style={{ flex: 1, padding: "10px", background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", border: "none", borderRadius: 10, color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                             Ik ga!
                           </button>
@@ -840,7 +840,7 @@ export default function AlertPage() {
 
             {/* Submit */}
             <button onClick={handleCompleteSession} disabled={saving || logForm.rating === 0}
-              style={{ width: "100%", padding: "14px", background: logForm.rating > 0 ? C.green : C.muted, border: "none", borderRadius: 12, color: "#FFF", fontSize: 15, fontWeight: 700, cursor: logForm.rating > 0 ? "pointer" : "default", opacity: logForm.rating > 0 ? 1 : 0.5 }}>
+              style={{ width: "100%", padding: "14px", background: logForm.rating > 0 ? C.sky : C.muted, border: "none", borderRadius: 12, color: "#FFF", fontSize: 15, fontWeight: 700, cursor: logForm.rating > 0 ? "pointer" : "default", opacity: logForm.rating > 0 ? 1 : 0.5 }}>
               {photoUploading ? "Foto uploaden..." : saving ? "Opslaan..." : "Sessie opslaan ✓"}
             </button>
           </div>

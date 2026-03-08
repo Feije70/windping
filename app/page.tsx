@@ -855,21 +855,19 @@ function Dashboard() {
                   const isGo = s.match === "go";
                   const isMaybe = s.match === "maybe";
                   const col = isGo ? "#2A9B76" : isMaybe ? "#D4860B" : C.muted;
-                  const bg = isGo ? "linear-gradient(160deg, #D6F5EA 0%, #B8EED8 100%)"
-                    : isMaybe ? "linear-gradient(160deg, #FEF3D6 0%, #FDEAB8 100%)"
-                    : C.cream;
-                  const border = isGo ? "1.5px solid rgba(42,155,118,0.35)"
-                    : isMaybe ? "1.5px solid rgba(212,134,11,0.30)"
+                  const bg = isGo ? "#C8F0E0" : isMaybe ? "#FDEFC8" : C.cream;
+                  const border = isGo ? "1.5px solid rgba(42,155,118,0.30)"
+                    : isMaybe ? "1.5px solid rgba(212,134,11,0.25)"
                     : `1.5px solid ${C.cardBorder}`;
                   return (
-                    <div key={s.id} style={{ background: bg, borderRadius: 12, padding: "10px 6px 8px", textAlign: "center", border, boxShadow: isGo ? "0 2px 8px rgba(42,155,118,0.15)" : isMaybe ? "0 2px 8px rgba(212,134,11,0.12)" : "none" }}>
-                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 1, marginBottom: 4 }}>
-                        <span style={{ fontSize: 24, fontWeight: 900, color: col, lineHeight: 1, letterSpacing: "-0.5px" }}>{s.ws}</span>
-                        <span style={{ fontSize: 9, fontWeight: 700, color: col, opacity: 0.75 }}>kn</span>
+                    <div key={s.id} style={{ background: bg, borderRadius: 12, padding: "8px 4px 6px", textAlign: "center", border }}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 1, marginBottom: 2 }}>
+                        <span style={{ fontSize: 22, fontWeight: 900, color: col, lineHeight: 1, letterSpacing: "-0.5px" }}>{s.ws}</span>
+                        <span style={{ fontSize: 8, fontWeight: 700, color: col, opacity: 0.75 }}>kn</span>
                       </div>
-                      <div style={{ fontSize: 9, color: isGo ? "#1A7A58" : isMaybe ? "#A06208" : C.sub, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingBottom: 2 }}>{s.name.split(" ")[0]}</div>
-                      {isGo && <div style={{ fontSize: 7, fontWeight: 900, color: "#2A9B76", letterSpacing: "1px", marginTop: 2 }}>GO</div>}
-                      {isMaybe && <div style={{ fontSize: 7, fontWeight: 800, color: "#D4860B", letterSpacing: "1px", marginTop: 2 }}>BIJNA</div>}
+                      <div style={{ fontSize: 9, color: isGo ? "#1A7A58" : isMaybe ? "#A06208" : C.sub, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", padding: "0 4px" }}>{s.name.split(" ")[0]}</div>
+                      {isGo && <div style={{ fontSize: 7, fontWeight: 900, color: "#2A9B76", letterSpacing: "1px", marginTop: 1 }}>GO</div>}
+                      {isMaybe && <div style={{ fontSize: 7, fontWeight: 800, color: "#D4860B", letterSpacing: "1px", marginTop: 1 }}>BIJNA</div>}
                     </div>
                   );
                 })}
@@ -880,19 +878,66 @@ function Dashboard() {
 
         <div style={{ padding: "0 16px" }}>
 
-        {/* Quick actions — horizontale pill-rij */}
-        <div style={{ display: "flex", gap: 7, marginBottom: 24, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any, msOverflowStyle: "none", scrollbarWidth: "none" as any }}>
-          {[
-            { label: "Sessie +", icon: null, bg: C.skyGlow, border: `1.5px solid rgba(46,143,174,0.25)`, color: C.sky, onClick: () => { setShowManualSession(true); setManualStep("pick"); } },
-            { label: "Mijn Spots", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.5" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>, bg: C.oceanTint, border: `1.5px solid rgba(46,143,174,0.2)`, color: C.sky, href: "/mijn-spots" },
-            { label: "Vrienden", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.purple} strokeWidth="2.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, bg: "#EDE6F0", border: `1.5px solid rgba(139,126,200,0.2)`, color: C.purple, href: "/vrienden" },
-            { label: "Spot toevoegen", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2.5" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><path d="M12 7v6M9 10h6"/></svg>, bg: C.terraTint, border: `1.5px solid rgba(201,122,99,0.2)`, color: C.amber, href: "/add-spot" },
-            { label: "Pauzeer alerts", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={showPause ? C.gold : C.muted} strokeWidth="2.2" strokeLinecap="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>, bg: showPause ? C.epicBg : C.cream, border: `1.5px solid ${showPause ? "rgba(232,168,62,0.3)" : C.cardBorder}`, color: showPause ? C.gold : C.muted, onClick: () => setShowPause(!showPause) },
-          ].map((a: any) => {
-            const style = { display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px", background: a.bg, border: a.border, borderRadius: 22, fontSize: 12, fontWeight: 600, color: a.color, whiteSpace: "nowrap" as const, cursor: "pointer", textDecoration: "none", flexShrink: 0 };
-            if (a.href) return <Link key={a.label} href={a.href} style={style}>{a.icon}{a.label}</Link>;
-            return <button key={a.label} onClick={a.onClick} style={{ ...style, background: a.bg, fontFamily: "inherit" }}>{a.icon}{a.label}</button>;
-          })}
+        {/* Quick actions — 2 groot + 4 klein */}
+        <div style={{ marginBottom: 24 }}>
+          {/* Groot: Sessie+ en Mijn Spots */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+            <button onClick={() => { setShowManualSession(true); setManualStep("pick"); }} style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: "14px 12px", background: `linear-gradient(135deg, #0D4A63, #2E8FAE)`,
+              border: "none", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+              boxShadow: "0 4px 12px rgba(46,143,174,0.28)",
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14"/>
+              </svg>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Sessie +</span>
+            </button>
+            <Link href="/mijn-spots" style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              padding: "14px 12px", background: C.card,
+              border: `1.5px solid #2E8FAE`, borderRadius: 14, textDecoration: "none",
+              boxShadow: "0 2px 8px rgba(46,143,174,0.10)",
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.sky }}>Mijn Spots</span>
+            </Link>
+          </div>
+
+          {/* Klein: Vrienden, Spot toevoegen, Pauzeer, Instellingen */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+            {[
+              {
+                label: "Vrienden", href: "/vrienden", color: C.purple,
+                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.purple} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              },
+              {
+                label: "Spot +", href: "/add-spot", color: C.amber,
+                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><path d="M12 7v6M9 10h6"/></svg>
+              },
+              {
+                label: paused ? "Gepauzeerd" : "Pauzeer", onClick: () => setShowPause(!showPause),
+                color: showPause || paused ? C.gold : C.muted,
+                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={showPause || paused ? C.gold : C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+              },
+              {
+                label: "Instellingen", href: "/voorkeuren", color: C.sub,
+                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              },
+            ].map((a: any) => {
+              const style: any = {
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                gap: 5, padding: "10px 4px", background: C.card, border: `1px solid ${C.cardBorder}`,
+                borderRadius: 12, cursor: "pointer", textDecoration: "none", boxShadow: C.cardShadow,
+              };
+              const label = <span style={{ fontSize: 10, fontWeight: 600, color: a.color, textAlign: "center" as const, lineHeight: 1.2 }}>{a.label}</span>;
+              if (a.href) return <Link key={a.label} href={a.href} style={style}>{a.icon}{label}</Link>;
+              return <button key={a.label} onClick={a.onClick} style={{ ...style, fontFamily: "inherit" }}>{a.icon}{label}</button>;
+            })}
+          </div>
         </div>
 
         {/* Pause options */}
@@ -952,7 +997,7 @@ function Dashboard() {
               return (
                 <div key={item.targetDate} style={{ background: C.card, borderRadius: 18, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 12, border: `1.5px solid ${C.cardBorder}` }}>
                   {/* Groene gradient header — visuele impact behouden, iets compacter */}
-                  <div style={{ background: "linear-gradient(135deg, #0D4A63 0%, #1A7A9E 55%, #2E8FAE 100%)", padding: "13px 16px 11px", position: "relative", overflow: "hidden" }}>
+                  <div style={{ background: "linear-gradient(135deg, #08303F 0%, #0E5470 45%, #1A7A9E 100%)", padding: "13px 16px 11px", position: "relative", overflow: "hidden" }}>
                     {/* Wave SVG achtergrond */}
                     <svg style={{ position: "absolute", right: -10, top: -5, opacity: 0.08, pointerEvents: "none" }} width="120" height="80" viewBox="0 0 120 80">
                       <path d="M5 40 Q30 10 65 35 Q100 60 120 25" stroke="white" strokeWidth="12" fill="none" strokeLinecap="round"/>
