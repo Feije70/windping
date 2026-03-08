@@ -96,7 +96,7 @@ function PostCard({ post, compact = false }: { post: PrikbordPost; compact?: boo
 
       {/* Type label */}
       <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
-        <span style={{ fontSize: 11 }}>{t.emoji}</span>
+        <span style={{ fontSize: 11 }}>{post.emoji || t.emoji}</span>
         <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: isPlaceholder ? "#BDBDBD" : t.color, fontFamily: "system-ui" }}>
           {t.label}
         </span>
