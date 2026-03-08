@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { Icons } from "@/components/Icons";
@@ -23,12 +24,13 @@ interface Spot {
 
 const typeColors: Record<string, string> = { Zee: "#2E8FAE", Meer: "#3EAA8C", Rivier: "#E8A83E" };
 
-function SpotCard({ spot }: { spot: Spot }) {
+function SpotCard({ spot, fromOnboarding }: { spot: Spot; fromOnboarding?: boolean }) {
   const dirs = spot.good_directions?.join(", ") || "—";
   const typeColor = typeColors[spot.spot_type || ""] || C.sky;
+  const href = fromOnboarding ? `/spot?id=${spot.id}&tab=voorkeuren` : `/spot?id=${spot.id}`;
 
   return (
-    <a href={`/spot?id=${spot.id}`} style={{
+    <a href={href} style={{
       display: "block", background: C.card, borderRadius: 14, boxShadow: C.cardShadow,
       padding: "14px 16px", cursor: "pointer", transition: "all 0.2s", textDecoration: "none", color: "inherit",
     }}>
@@ -49,7 +51,9 @@ function SpotCard({ spot }: { spot: Spot }) {
   );
 }
 
-export default function SpotsPage() {
+function SpotsContent() {
+  const searchParams = useSearchParams();
+  const fromOnboarding = searchParams.get("from") === "onboarding";
   const [spots, setSpots] = useState<Spot[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -252,7 +256,7 @@ export default function SpotsPage() {
         {!loading && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
             {filtered.map((spot) => (
-              <SpotCard key={spot.id} spot={spot} />
+              <SpotCard key={spot.id} spot={spot} fromOnboarding={fromOnboarding} />
             ))}
           </div>
         )}
@@ -275,5 +279,13 @@ export default function SpotsPage() {
         .leaflet-control-attribution a { color: inherit !important; }
       `}</style>
     </div>
+  );
+}
+
+export default function SpotsPage() {
+  return (
+    <Suspense fallback={<div />}>
+      <SpotsContent />
+    </Suspense>
   );
 }
