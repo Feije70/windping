@@ -5,6 +5,7 @@ import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
 import { Icons } from "@/components/Icons";
 import NavBar from "@/components/NavBar";
+import HomeSpotIcon from "@/components/HomeSpotIcon";
 import { Logo } from "@/components/Logo";
 import { WPing } from "@/components/WPing";
 import { getEmail, isTokenExpired, getAuthId, getValidToken, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
@@ -542,6 +543,9 @@ function Dashboard() {
   const [manualPhotoUploading, setManualPhotoUploading] = useState(false);
   const [manualError, setManualError] = useState("");
   const [allPublicSpots, setAllPublicSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
+  const [homeSpotId, setHomeSpotId] = useState<number | null>(null);
+  const [homeSpotName, setHomeSpotName] = useState<string>("");
+  const [homeSpotPosts, setHomeSpotPosts] = useState<any[]>([]);
 
   const goSpots = spots.filter(s => s.match === "go");
   const matchColors: Record<string, string> = { go: C.green, maybe: C.gold, no: C.amber };
@@ -551,7 +555,7 @@ function Dashboard() {
       const email = getEmail();
       if (!email) return;
       const authId = getAuthId();
-      const users = await sbGet(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,name,min_wind_speed,max_wind_speed,welcome_shown`);
+      const users = await sbGet(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,name,min_wind_speed,max_wind_speed,welcome_shown,home_spot_id`);
       if (!users?.length) return;
       const user = users[0];
       setUserName(user.name || email.split("@")[0]);
@@ -579,6 +583,36 @@ function Dashboard() {
       
       if (!userSpots?.length) { setLoading(false); return; }
       const ids = userSpots.map((x: any) => x.spot_id);
+
+      // Auto-set homespot: als 1 spot en nog geen homespot → stil instellen
+      let currentHomeSpotId = user.home_spot_id || null;
+      console.log("[homespot] user.home_spot_id:", user.home_spot_id, "ids:", ids);
+      if (!currentHomeSpotId && ids.length >= 1) {
+        currentHomeSpotId = ids[0];
+        console.log("[homespot] auto-setting to:", currentHomeSpotId);
+        try { 
+          await sbPatch(`users?id=eq.${user.id}`, { home_spot_id: currentHomeSpotId });
+          console.log("[homespot] patch ok");
+        } catch (e) { 
+          console.error("[homespot] patch failed:", e);
+        }
+      }
+      if (currentHomeSpotId) {
+        setHomeSpotId(currentHomeSpotId);
+        console.log("[homespot] loading posts for spot:", currentHomeSpotId);
+        // Laad prikbord posts voor homespot
+        try {
+          const posts = await sbGet(`spot_posts?spot_id=eq.${currentHomeSpotId}&order=created_at.desc&limit=3&select=id,type,content,author_name,created_at,wind_speed,wind_dir`);
+          console.log("[homespot] posts:", posts);
+          setHomeSpotPosts(posts || []);
+          const spotInfo = await sbGet(`spots?id=eq.${currentHomeSpotId}&select=display_name`);
+          if (spotInfo?.[0]) setHomeSpotName(spotInfo[0].display_name);
+        } catch (e) { 
+          console.error("[homespot] posts load failed:", e);
+        }
+      } else {
+        console.log("[homespot] no homespot set, skipping preview");
+      }
       const [spotsData, condsData] = await Promise.all([
         sbGet(`spots?id=in.(${ids.join(",")})&select=id,display_name,latitude,longitude,good_directions`),
         sbGet(`ideal_conditions?user_id=eq.${user.id}&spot_id=in.(${ids.join(",")})&select=spot_id,wind_min,wind_max,directions`),
@@ -1186,6 +1220,64 @@ function Dashboard() {
             </>
           )}
         </div>
+
+        {/* ── Prikbord homespot preview ── */}
+        {homeSpotId && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ height: 1, background: C.cardBorder, margin: "4px 0 20px" }} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <HomeSpotIcon size={18} />
+                <span style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{homeSpotName}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: C.muted, background: C.cream, border: `1px solid ${C.cardBorder}`, borderRadius: 8, padding: "2px 7px" }}>Prikbord</span>
+              </div>
+              <a href={`/spot?id=${homeSpotId}`} style={{ fontSize: 12, fontWeight: 700, color: C.sky, textDecoration: "none" }}>Bekijk alles →</a>
+            </div>
+            {homeSpotPosts.length === 0 ? (
+              <div style={{ padding: "16px", background: C.card, borderRadius: 14, border: `1px solid ${C.cardBorder}`, textAlign: "center" }}>
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 8 }}>Nog niets op het bord van {homeSpotName}</div>
+                <a href={`/spot?id=${homeSpotId}`} style={{ fontSize: 12, fontWeight: 700, color: C.sky, textDecoration: "none" }}>
+                  📌 Wees de eerste om iets te prikken
+                </a>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {homeSpotPosts.map((post: any) => {
+                  const typeMap: Record<string, { emoji: string; color: string; bg: string }> = {
+                    go: { emoji: "🤙", color: "#2A9B76", bg: "#C8F0E0" },
+                    report: { emoji: "🌊", color: C.sky, bg: "#DCF0F8" },
+                    tip: { emoji: "📌", color: C.amber, bg: "#FEF3D6" },
+                    warning: { emoji: "⚠️", color: "#C0392B", bg: "#FDECEA" },
+                    question: { emoji: "❓", color: "#7B5EA7", bg: "#EDE6F4" },
+                  };
+                  const t = typeMap[post.type] || typeMap.report;
+                  const ago = (() => {
+                    const diff = Math.floor((Date.now() - new Date(post.created_at).getTime()) / 60000);
+                    if (diff < 60) return `${diff}m geleden`;
+                    if (diff < 1440) return `${Math.floor(diff/60)}u geleden`;
+                    return `${Math.floor(diff/1440)}d geleden`;
+                  })();
+                  return (
+                    <div key={post.id} style={{ background: t.bg, border: `1px solid ${t.color}25`, borderRadius: 12, padding: "10px 14px", display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{t.emoji}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 13, color: C.navy, margin: "0 0 4px", lineHeight: 1.4 }}>{post.content}</p>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 10, color: C.muted, fontWeight: 600 }}>{post.author_name}</span>
+                          <span style={{ fontSize: 10, color: C.muted }}>· {ago}</span>
+                          {post.wind_speed && <span style={{ fontSize: 10, fontWeight: 700, color: t.color }}>{post.wind_speed}kn {post.wind_dir}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <a href={`/spot?id=${homeSpotId}`} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 12, fontWeight: 700, color: C.sky, textDecoration: "none" }}>
+                  📌 Prik iets op het bord
+                </a>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── W. Ping scheiding */}
         <div style={{ height: 1, background: C.cardBorder, margin: "4px 0 24px" }} />

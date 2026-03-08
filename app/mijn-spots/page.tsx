@@ -6,6 +6,7 @@ import NavBar from "@/components/NavBar";
 import { Icons } from "@/components/Icons";
 import { getValidToken, getEmail, getAuthId, isTokenExpired, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 import Link from "next/link";
+import HomeSpotIcon from "@/components/HomeSpotIcon";
 
 const h = { fontFamily: fonts.heading };
 
@@ -91,7 +92,7 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" as const }}>
-            {isHome && <span style={{ fontSize: 15, lineHeight: 1 }}>⭐</span>}
+            {isHome && <HomeSpotIcon size={18} />}
             <span style={{ fontSize: 16, fontWeight: 700, color: C.navy, lineHeight: 1.2 }}>{spot.name}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, marginLeft: 8 }}>
@@ -108,7 +109,8 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
 
         {/* Homespot label — alleen als actief */}
         {isHome && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 10, padding: "4px 10px", borderRadius: 20, background: "rgba(232,168,62,0.12)", border: "1px solid rgba(232,168,62,0.3)" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "5px 10px", borderRadius: 20, background: "rgba(232,168,62,0.12)", border: "1px solid rgba(232,168,62,0.3)" }}>
+            <HomeSpotIcon size={13} />
             <span style={{ fontSize: 10, fontWeight: 800, color: "#C8860A", letterSpacing: 0.5, textTransform: "uppercase" as const }}>Jouw homespot</span>
           </div>
         )}
@@ -145,9 +147,9 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
               <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSetHome(); }} disabled={settingHome} style={{
                 fontSize: 11, fontWeight: 600, color: C.muted, background: "none",
                 border: `1px dashed ${C.cardBorder}`, borderRadius: 8, padding: "4px 9px",
-                cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+                cursor: "pointer", display: "flex", alignItems: "center", gap: 5,
               }}>
-                <span style={{ fontSize: 12 }}>⭐</span>
+                <HomeSpotIcon size={13} color="#9CA3AF" flagColor="#E5E7EB" />
                 {settingHome ? "Instellen..." : "Maak homespot"}
               </button>
             )}
