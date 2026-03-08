@@ -205,6 +205,7 @@ const ALL_BADGES = [
    ═══════════════════════════════════════════════════════════ */
 
 interface FeedSpot {
+  spotId: number;
   spotName: string;
   wind: number;
   dir: string;
@@ -261,7 +262,7 @@ function bundleAlertsByDate(alerts: any[]): BundledFeedItem[] {
         // Only set as go if there's no newer downgrade for this spot
         const existing = byDate[date].spotStates.get(key);
         if (!existing || existing.type !== "downgrade" || new Date(a.created_at) > new Date(existing.ts)) {
-          byDate[date].spotStates.set(key, { type: "go", spot: { spotName: s.spotName, wind: s.wind, dir: s.dir, gust: s.gust }, ts: a.created_at });
+          byDate[date].spotStates.set(key, { type: "go", spot: { spotId: s.spotId, spotName: s.spotName, wind: s.wind, dir: s.dir, gust: s.gust }, ts: a.created_at });
         }
       }
     } else if (a.alert_type === "downgrade") {
@@ -496,6 +497,10 @@ function Dashboard() {
   const [showWelcome, setShowWelcome] = useState(false);
   const [allSpots, setAllSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
 
+  // Spot picker bottomsheet (bij meerdere go-spots)
+  const [pickerSpots, setPickerSpots] = useState<any[] | null>(null);
+  const [pickerCallback, setPickerCallback] = useState<((spotName: string) => void) | null>(null);
+
   // Handmatige sessie modal
   const [showManualSession, setShowManualSession] = useState(false);
 
@@ -667,10 +672,42 @@ function Dashboard() {
   const greeting = hour < 12 ? "Goedemorgen" : hour < 18 ? "Goedemiddag" : "Goedenavond";
   const feedItems = bundleAlertsByDate(recentAlerts);
 
-  // Handler: "Ik ga!" — open manual session with spot pre-selected
-  const handleIkGa = (spotName: string) => {
-    setShowManualSession(true);
-    setManualStep("pick");
+  // State voor going-sessies op homepage (spotName → session)
+  const [goingSessions, setGoingSessions] = useState<Record<string, any>>({});
+
+  // Handler: "Ik ga!" — sla going op in DB, toon status op kaart
+  const handleIkGa = async (spotName: string, spotId?: number, date?: string, wind?: number, gust?: number, dir?: string) => {
+    if (!spotId || !date || !userId) return;
+    const key = `${spotId}_${date}`;
+    const token = await getValidToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify({ created_by: userId, spot_id: spotId, session_date: date, status: "going", going_at: new Date().toISOString(), forecast_wind: wind || 0, forecast_gust: gust || 0, forecast_dir: dir || "" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGoingSessions(prev => ({ ...prev, [key]: data[0] || data }));
+      }
+    } catch (e) { console.error("Ik ga error:", e); }
+  };
+
+  // Handler: "Toch niet" — verwijder sessie
+  const handleSkipHome = async (spotId: number, date: string) => {
+    const key = `${spotId}_${date}`;
+    const session = goingSessions[key];
+    if (!session) return;
+    const token = await getValidToken();
+    if (!token) return;
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${session.id}`, {
+        method: "DELETE",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+      });
+      setGoingSessions(prev => { const next = { ...prev }; delete next[key]; return next; });
+    } catch {}
   };
 
   // Fetch weer voor handmatige sessie
@@ -838,7 +875,7 @@ function Dashboard() {
         {/* Quick actions — horizontale pill-rij */}
         <div style={{ display: "flex", gap: 7, marginBottom: 24, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any, msOverflowStyle: "none", scrollbarWidth: "none" as any }}>
           {[
-            { label: "Sessie +", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>, bg: C.goBg, border: `1.5px solid rgba(62,170,140,0.25)`, color: C.green, onClick: () => { setShowManualSession(true); setManualStep("pick"); } },
+            { label: "Sessie +", icon: null, bg: C.goBg, border: `1.5px solid rgba(62,170,140,0.25)`, color: C.green, onClick: () => { setShowManualSession(true); setManualStep("pick"); } },
             { label: "Mijn Spots", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.5" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>, bg: C.oceanTint, border: `1.5px solid rgba(46,143,174,0.2)`, color: C.sky, href: "/mijn-spots" },
             { label: "Vrienden", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.purple} strokeWidth="2.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, bg: "#EDE6F0", border: `1.5px solid rgba(139,126,200,0.2)`, color: C.purple, href: "/vrienden" },
             { label: "Spot toevoegen", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2.5" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><path d="M12 7v6M9 10h6"/></svg>, bg: C.terraTint, border: `1.5px solid rgba(201,122,99,0.2)`, color: C.amber, href: "/add-spot" },
@@ -900,31 +937,37 @@ function Dashboard() {
                 <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Voeg spots toe en stel je windvoorkeuren in. WindPing waarschuwt je als het Go is.</div>
               </div>
             </div>
-          ) : (
+          ) : 
             feedItems.map((item) => {
               const isGo = item.alertType === "go" || item.alertType === "mixed";
               const isEpic = item.goSpots.some((s: any) => s.wind >= 25);
               return (
                 <div key={item.targetDate} style={{ background: C.card, borderRadius: 18, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 12, border: `1.5px solid ${C.cardBorder}` }}>
-                  {/* Groene gradient header */}
-                  <div style={{ background: "linear-gradient(135deg, #1B6B4E 0%, #259068 60%, #2EAA7A 100%)", padding: "14px 16px 12px", position: "relative", overflow: "hidden" }}>
+                  {/* Groene gradient header — visuele impact behouden, iets compacter */}
+                  <div style={{ background: "linear-gradient(135deg, #1B6B4E 0%, #259068 60%, #2EAA7A 100%)", padding: "13px 16px 11px", position: "relative", overflow: "hidden" }}>
+                    {/* Wave SVG achtergrond */}
                     <svg style={{ position: "absolute", right: -10, top: -5, opacity: 0.08, pointerEvents: "none" }} width="120" height="80" viewBox="0 0 120 80">
                       <path d="M5 40 Q30 10 65 35 Q100 60 120 25" stroke="white" strokeWidth="12" fill="none" strokeLinecap="round"/>
                       <path d="M0 65 Q25 40 55 58 Q85 76 120 50" stroke="white" strokeWidth="8" fill="none" strokeLinecap="round"/>
                     </svg>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                       <div style={{ flex: 1, position: "relative" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                          <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.7)", letterSpacing: "1.2px" }}>GO ALERT · {item.dateLabel.toUpperCase()}</span>
-                          {isEpic && <span style={{ fontSize: 8, fontWeight: 900, color: C.gold, background: "rgba(232,168,62,0.2)", padding: "1px 6px", borderRadius: 4, letterSpacing: "0.5px" }}>EPIC</span>}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                          <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.7)", letterSpacing: "1.2px" }}>GO ALERT · {item.dateLabel.toUpperCase()}</span>
+                          {isEpic && <span style={{ fontSize: 8, fontWeight: 900, color: C.gold, background: "rgba(232,168,62,0.2)", padding: "1px 5px", borderRadius: 4 }}>EPIC</span>}
                         </div>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px", lineHeight: 1.1 }}>
+                        <div style={{ fontSize: 19, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px", lineHeight: 1.1 }}>
                           {item.goSpots.length === 1 ? item.goSpots[0].spotName : `${item.goSpots.length} spots`}
+                        </div>
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", marginTop: 3 }}>
+                          {item.goSpots.length === 1
+                            ? `${item.goSpots[0].dir}${item.goSpots[0].gust > 0 ? ` · gusts ${item.goSpots[0].gust}kn` : ""}`
+                            : item.goSpots.map((s: any) => s.spotName).join(" · ")}
                         </div>
                       </div>
                       <div style={{ flexShrink: 0, textAlign: "center" }}>
-                        <div style={{ fontSize: 44, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-2px" }}>
+                        <div style={{ fontSize: 38, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-2px" }}>
                           {Math.max(...item.goSpots.map((s: any) => s.wind))}
                         </div>
                         <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.55)", letterSpacing: "1px", marginTop: 1 }}>KNOPEN</div>
@@ -933,30 +976,15 @@ function Dashboard() {
                   </div>
 
                   {/* Body */}
-                  <div style={{ padding: "14px 16px 10px" }}>
-                    {/* Enkelvoudige spot: wind info balk */}
-                    {item.goSpots.length === 1 && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, padding: "10px 14px", background: C.goBg, borderRadius: 12, border: "1px solid rgba(62,170,140,0.15)" }}>
-                        <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
-                          <span style={{ fontSize: 28, fontWeight: 900, color: C.green, lineHeight: 1, letterSpacing: "-0.5px" }}>{item.goSpots[0].wind}</span>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: C.green, opacity: 0.75 }}>kn</span>
-                        </div>
-                        <div style={{ width: 1, height: 28, background: "rgba(62,170,140,0.2)" }} />
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{item.goSpots[0].dir}</div>
-                          {item.goSpots[0].gust > 0 && <div style={{ fontSize: 11, color: C.muted }}>gusts {item.goSpots[0].gust}kn</div>}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Meerdere spots: lijst */}
+                  <div style={{ padding: "11px 14px 12px" }}>
+                    {/* Meerdere spots: compacte lijst */}
                     {item.goSpots.length > 1 && (
-                      <div style={{ marginBottom: 12 }}>
+                      <div style={{ marginBottom: 10 }}>
                         {item.goSpots.map((s: any) => (
-                          <div key={s.spotName} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${C.cardBorder}` }}>
-                            <span style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{s.spotName}</span>
+                          <div key={s.spotName} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${C.cardBorder}` }}>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{s.spotName}</span>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontSize: 14, fontWeight: 900, color: C.green }}>{s.wind}<span style={{ fontSize: 9, fontWeight: 600 }}>kn</span></span>
+                              <span style={{ fontSize: 13, fontWeight: 900, color: C.green }}>{s.wind}<span style={{ fontSize: 9, fontWeight: 600 }}>kn</span></span>
                               <span style={{ fontSize: 11, color: C.muted }}>{s.dir}</span>
                             </div>
                           </div>
@@ -964,28 +992,58 @@ function Dashboard() {
                       </div>
                     )}
 
-                    {/* Ik ga buttons */}
-                    {item.goSpots.length === 1 ? (
-                      <a href="#" onClick={(e) => { e.preventDefault(); handleIkGa(item.goSpots[0].spotName); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 18px", background: "transparent", border: `2px solid ${C.green}`, borderRadius: 12, fontSize: 13, fontWeight: 700, color: C.green, textDecoration: "none", cursor: "pointer" }}>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                        Ik ga!
-                      </a>
-                    ) : (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                        {item.goSpots.map((s: any) => (
-                          <a key={s.spotName} href="#" onClick={(e) => { e.preventDefault(); handleIkGa(s.spotName); }} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "8px 14px", background: "transparent", border: `2px solid ${C.green}`, borderRadius: 10, fontSize: 12, fontWeight: 700, color: C.green, textDecoration: "none", cursor: "pointer" }}>
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                            → {s.spotName}
-                          </a>
-                        ))}
-                      </div>
-                    )}
+                    {/* Ik ga / Je gaat / Details */}
+                    {(() => {
+                      // Check going status voor deze alert (eerste spot of gekozen spot)
+                      const goingSpot = item.goSpots.find((s: any) => goingSessions[`${s.spotId}_${item.targetDate}`]);
+                      const session = goingSpot ? goingSessions[`${goingSpot.spotId}_${item.targetDate}`] : null;
+
+                      if (session?.status === "going") {
+                        return (
+                          <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+                            <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: C.goBg, borderRadius: 10 }}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>Je gaat!</span>
+                              {goingSpot && item.goSpots.length > 1 && <span style={{ fontSize: 11, color: C.muted }}>· {goingSpot.spotName}</span>}
+                            </div>
+                            <button onClick={() => handleSkipHome(goingSpot!.spotId, item.targetDate)}
+                              style={{ padding: "10px 14px", background: C.cream, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.sub, fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
+                              Toch niet
+                            </button>
+                            <Link href="/alert" style={{ padding: "10px 14px", background: C.oceanTint, border: `1px solid rgba(46,143,174,0.15)`, borderRadius: 10, color: C.sky, fontSize: 13, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                              Details
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            </Link>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
+                          {item.goSpots.length === 1 ? (
+                            <a href="#" onClick={(e) => { e.preventDefault(); const s = item.goSpots[0]; handleIkGa(s.spotName, s.spotId, item.targetDate, s.wind, s.gust, s.dir); }} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: "linear-gradient(135deg, #1B6B4E, #27A070)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", cursor: "pointer" }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                              Ik ga!
+                            </a>
+                          ) : (
+                            <a href="#" onClick={(e) => { e.preventDefault(); setPickerSpots(item.goSpots); setPickerCallback(() => (spotName: string) => { const s = item.goSpots.find((x: any) => x.spotName === spotName); if (s) handleIkGa(s.spotName, s.spotId, item.targetDate, s.wind, s.gust, s.dir); }); }} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: "linear-gradient(135deg, #1B6B4E, #27A070)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", cursor: "pointer" }}>
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                              Ik ga!
+                            </a>
+                          )}
+                          <Link href="/alert" style={{ flex: 1, padding: "10px", background: C.oceanTint, border: `1px solid rgba(46,143,174,0.15)`, borderRadius: 10, color: C.sky, fontSize: 13, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                            Details
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                          </Link>
+                        </div>
+                      );
+                    })()}
 
                     {/* Downgrade sectie */}
                     {item.downgradeSpots.length > 0 && (
-                      <div style={{ marginTop: 10, padding: "10px 12px", background: "#FEF2F2", borderRadius: 10, border: "1px solid rgba(220,38,38,0.12)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
+                      <div style={{ marginTop: 10, padding: "8px 12px", background: "#FEF2F2", borderRadius: 10, border: "1px solid rgba(220,38,38,0.12)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
                           <span style={{ fontSize: 11, fontWeight: 700, color: "#DC2626" }}>Alert ingetrokken</span>
                         </div>
                         <div style={{ fontSize: 11, color: "#EF4444" }}>
@@ -994,20 +1052,10 @@ function Dashboard() {
                       </div>
                     )}
                   </div>
-
-                  {/* Footer */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px 12px", borderTop: `1px solid ${C.cardBorder}` }}>
-                    <div style={{ fontSize: 11, color: C.muted }}>
-                      {(() => { const diff = Math.floor((Date.now() - new Date(item.latestCreatedAt).getTime()) / 3600000); return diff < 1 ? "Zojuist" : diff < 24 ? `${diff}u geleden` : `${Math.floor(diff/24)}d geleden`; })()}
-                    </div>
-                    <Link href="/alert" style={{ fontSize: 12, fontWeight: 600, color: C.sky, textDecoration: "none" }}>
-                      Details →
-                    </Link>
-                  </div>
                 </div>
               );
             })
-          )}
+          }
         </div>
 
         {/* ══════════════════════════════════════════
@@ -1176,6 +1224,47 @@ function Dashboard() {
         </div>
 
                 </div>{/* end inner padding div */}
+
+        {/* ── SPOT PICKER BOTTOMSHEET ── */}
+        {pickerSpots && (
+          <div onClick={() => setPickerSpots(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: C.cream, borderRadius: "22px 22px 0 0", padding: "0 0 32px", boxShadow: "0 -8px 40px rgba(0,0,0,0.18)" }}>
+              {/* Handle */}
+              <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
+                <div style={{ width: 36, height: 4, borderRadius: 2, background: C.cardBorder }} />
+              </div>
+              {/* Titel */}
+              <div style={{ padding: "10px 20px 16px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "1px", marginBottom: 4 }}>WAAR GA JE NAARTOE?</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: C.navy }}>Kies je spot</div>
+              </div>
+              {/* Spots */}
+              <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 8 }}>
+                {pickerSpots.map((s: any) => (
+                  <button key={s.spotName} onClick={() => { if (pickerCallback) pickerCallback(s.spotName); setPickerSpots(null); }} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 14, cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #1B6B4E, #27A070)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                      </div>
+                      <div style={{ textAlign: "left" }}>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{s.spotName}</div>
+                        <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{s.dir}{s.gust > 0 ? ` · gusts ${s.gust}kn` : ""}</div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <span style={{ fontSize: 22, fontWeight: 900, color: C.green, letterSpacing: "-1px" }}>{s.wind}</span>
+                      <span style={{ fontSize: 10, color: C.muted, fontWeight: 600 }}> kn</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {/* Annuleer */}
+              <button onClick={() => setPickerSpots(null)} style={{ width: "calc(100% - 32px)", margin: "12px 16px 0", padding: "12px", background: "transparent", border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 13, fontWeight: 600, color: C.muted, cursor: "pointer" }}>
+                Annuleer
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── HANDMATIGE SESSIE MODAL ── */}
         {showManualSession && (() => {
