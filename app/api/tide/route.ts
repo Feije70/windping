@@ -21,11 +21,11 @@ const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "eyJhbGciOiJIU
 const SEA_LEVEL_CACHE_HOURS = 1;    // Refresh every hour (includes weather influence)
 const EXTREMES_CACHE_HOURS = 24;     // HW/LW times are stable, refresh daily
 
-async function sbFetch(path: string, options?: { method?: string; body?: unknown; token?: string }) {
+async function sbFetch(path: string, options?: { method?: string; body?: unknown; token?: string; upsert?: boolean }) {
   const headers: Record<string, string> = {
     apikey: SUPABASE_KEY,
     "Content-Type": "application/json",
-    Prefer: "return=representation",
+    Prefer: options?.upsert ? "return=representation,resolution=merge-duplicates" : "return=representation",
   };
   if (options?.token) headers.Authorization = `Bearer ${options.token}`;
 
@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
   }
 
   // 1. Check cache
+  let staleEntry: any = null;
   try {
     const cached = await sbFetch(
       `tide_cache?spot_id=eq.${spotId}&data_type=eq.${dataType}&select=*`,
@@ -65,7 +66,6 @@ export async function GET(req: NextRequest) {
       const entry = cached[0];
       const validUntil = new Date(entry.valid_until);
       if (validUntil > new Date()) {
-        // Cache is still valid
         return NextResponse.json({
           data: entry.data,
           station: { name: entry.station_name, distance_km: entry.station_distance_km },
@@ -73,6 +73,8 @@ export async function GET(req: NextRequest) {
           valid_until: entry.valid_until,
         });
       }
+      // Verlopen maar bewaar als fallback
+      staleEntry = entry;
     }
   } catch (e) {
     console.warn("Cache check failed:", e);
@@ -100,6 +102,14 @@ export async function GET(req: NextRequest) {
     if (!sgRes.ok) {
       const errText = await sgRes.text();
       console.error("Stormglass error:", sgRes.status, errText);
+      if (staleEntry) {
+        return NextResponse.json({
+          data: staleEntry.data,
+          station: { name: staleEntry.station_name, distance_km: staleEntry.station_distance_km },
+          cached: true,
+          stale: true,
+        });
+      }
       return NextResponse.json({ error: "Stormglass API error", status: sgRes.status }, { status: 502 });
     }
 
@@ -119,6 +129,7 @@ export async function GET(req: NextRequest) {
         `tide_cache?on_conflict=spot_id,data_type`,
         {
           method: "POST",
+          upsert: true,
           body: {
             spot_id: parseInt(spotId),
             data_type: dataType,
@@ -145,6 +156,15 @@ export async function GET(req: NextRequest) {
 
   } catch (e) {
     console.error("Stormglass fetch error:", e);
+    // Fallback: stale cache beter dan niets
+    if (staleEntry) {
+      return NextResponse.json({
+        data: staleEntry.data,
+        station: { name: staleEntry.station_name, distance_km: staleEntry.station_distance_km },
+        cached: true,
+        stale: true,
+      });
+    }
     return NextResponse.json({ error: "Failed to fetch tide data" }, { status: 500 });
   }
 }
