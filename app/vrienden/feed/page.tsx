@@ -140,7 +140,7 @@ export default function VriendenFeedPage() {
   }
 
   return (
-    <div style={{ background: C.cream, minHeight: "100vh" }}>
+    <div style={{ background: "#E4D9CB", minHeight: "100vh" }}>
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "20px 16px 100px" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
