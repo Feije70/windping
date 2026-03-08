@@ -578,7 +578,7 @@ function SpotDetailContent() {
       {/* Tab bar */}
       <div style={{ display: "flex", background: "#E2D8CC", borderRadius: 12, padding: 4, marginBottom: 20, gap: 4 }}>
         {TABS.map(tab => (
-          <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
+          <button key={tab.key} onClick={() => { setActiveTab(tab.key); if (tab.key === 'voorkeuren') { setTimeout(() => { mapRef.current?.invalidateSize(); }, 100); setTimeout(() => { mapRef.current?.invalidateSize(); }, 400); } }} style={{
             flex: 1, padding: "9px 8px", borderRadius: 9, border: "none",
             background: activeTab === tab.key ? "#FFFFFF" : "transparent",
             color: activeTab === tab.key ? C.navy : "#8A7A6A",
