@@ -1,5 +1,4 @@
 "use client";
-import React from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
@@ -20,7 +19,6 @@ interface Session {
   wind_feel: string | null;
   notes: string | null;
   photo_url: string | null;
-  image_url: string | null;
   _spotName?: string;
 }
 
@@ -47,9 +45,9 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
       overflow: "hidden", marginBottom: 12, cursor: "pointer",
       borderLeft: s.rating ? `3px solid ${ratingColors[s.rating]}` : `3px solid ${C.cardBorder}`,
     }}>
-      {(s.photo_url || s.image_url) && (
+      {s.photo_url && (
         <div style={{ position: "relative" }}>
-          <img src={s.photo_url || s.image_url || ""} alt="" style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }} />
+          <img src={s.photo_url} alt="" style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.5) 100%)" }} />
           <div style={{ position: "absolute", bottom: 10, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
             <div>
@@ -66,7 +64,7 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
         </div>
       )}
       <div style={{ padding: "12px 14px" }}>
-        {!(s.photo_url || s.image_url) && (
+        {!s.photo_url && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{spot}</div>
@@ -78,20 +76,19 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
             </div>
           </div>
         )}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
           {s.gear_type && !isJson(s.gear_type) && (
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.sky, flexShrink: 0 }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>
-                {s.gear_type.replace(/^zeil/, "windsurf").replace(/-/g, " ")}{s.gear_size && !isJson(s.gear_size) ? ` ${s.gear_size}m²` : ""}
-              </span>
-            </div>
+            <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: `${C.sky}12`, borderRadius: 7, padding: "3px 9px" }}>
+              {s.gear_type.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}
+            </span>
+          )}
+          {s.gear_size && !isJson(s.gear_size) && (
+            <span style={{ fontSize: 11, color: C.sub, padding: "3px 0" }}>{s.gear_size}</span>
           )}
           {s.wind_feel && (
-            <>
-              {s.gear_type && <span style={{ color: C.muted, fontSize: 11 }}>·</span>}
-              <span style={{ fontSize: 11, fontWeight: 600, color: C.green }}>{windFeelLabels[s.wind_feel] || s.wind_feel}</span>
-            </>
+            <span style={{ fontSize: 11, fontWeight: 600, color: C.green, background: `${C.green}12`, borderRadius: 7, padding: "3px 9px" }}>
+              {windFeelLabels[s.wind_feel] || s.wind_feel}
+            </span>
           )}
         </div>
         {s.notes && (
@@ -107,22 +104,6 @@ function SessionCard({ s, onClick }: { s: Session; onClick: () => void }) {
 
 function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
   const spot = s._spotName || "Spot";
-  const [confirmDelete, setConfirmDelete] = React.useState(false);
-  const [deleting, setDeleting] = React.useState(false);
-
-  async function handleDelete() {
-    setDeleting(true);
-    try {
-      const token = await getValidToken();
-      await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}`, {
-        method: "DELETE",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, Prefer: "return=minimal" },
-      });
-      onClose();
-      window.location.reload();
-    } catch { setDeleting(false); }
-  }
-
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, background: C.cream, overflowY: "auto" }}>
       <div style={{ position: "sticky", top: 0, zIndex: 10, background: C.cream, padding: "12px 16px", display: "flex", alignItems: "center", gap: 10 }}>
@@ -135,9 +116,9 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
         <span style={{ ...h, fontSize: 17, fontWeight: 700, color: C.navy }}>Sessie detail</span>
       </div>
       <div style={{ padding: "0 16px 120px" }}>
-        {(s.photo_url || s.image_url) && (
+        {s.photo_url && (
           <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
-            <img src={s.photo_url || s.image_url || ""} alt="" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} />
+            <img src={s.photo_url} alt="" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} />
           </div>
         )}
         <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, padding: "16px", marginBottom: 12 }}>
@@ -184,17 +165,6 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
             <div style={{ fontSize: 14, color: C.navy, lineHeight: 1.6 }}>{s.notes}</div>
           </div>
         )}
-
-        <div style={{ marginTop: 24, textAlign: "center" }}>
-          {!confirmDelete ? (
-            <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#8A9BB0", fontWeight: 500 }}>🗑 Verwijder sessie</button>
-          ) : (
-            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              <button onClick={() => setConfirmDelete(false)} style={{ padding: "8px 16px", background: "#F6F1EB", border: "1px solid #E2D9CE", borderRadius: 10, color: "#1F354C", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Annuleer</button>
-              <button onClick={handleDelete} disabled={deleting} style={{ padding: "8px 16px", background: "#C97A63", border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{deleting ? "Verwijderen..." : "Ja, verwijder"}</button>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -219,7 +189,7 @@ export default function MijnSessiesPage() {
         if (!users?.length) return;
         const userId = users[0].id;
 
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url,image_url`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url`, {
           headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
         });
         const data: Session[] = await res.json() || [];
@@ -249,7 +219,7 @@ export default function MijnSessiesPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
           </Link>
           <span style={{ ...h, fontSize: 22, fontWeight: 800, color: C.navy }}>Mijn sessies</span>
-          {!loading && sessions.length > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, marginLeft: "auto", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, padding: "3px 9px" }}>{sessions.length}</span>}
+          {!loading && <span style={{ fontSize: 12, color: C.muted, marginLeft: "auto" }}>{sessions.length} sessies</span>}
         </div>
 
         {loading ? (
