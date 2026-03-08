@@ -1,4 +1,1738 @@
-pbpaste > app/page.tsx && wc -l app/page.tsx
-git add app/page.tsx
-git commit -m "fix: slogan hero groot"
-git push
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { colors as C, fonts } from "@/lib/design";
+import { Icons } from "@/components/Icons";
+import NavBar from "@/components/NavBar";
+import { Logo } from "@/components/Logo";
+import { WPing } from "@/components/WPing";
+import { getEmail, isTokenExpired, getAuthId, getValidToken, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+
+const h = { fontFamily: fonts.heading };
+const OM_BASE = "https://api.open-meteo.com/v1/forecast";
+
+const DIRS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+function degToDir(deg: number) { return DIRS_16[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16]; }
+
+const RATINGS = [
+  { value: 1, label: "Shit" }, { value: 2, label: "Mwah" }, { value: 3, label: "Oké" },
+  { value: 4, label: "Lekker!" }, { value: 5, label: "EPIC!" },
+];
+const RATING_COLORS: Record<number, string> = { 1: "#C97A63", 2: "#D4860B", 3: "#E8A83E", 4: "#2E8FAE", 5: "#3EAA8C" };
+
+function RatingIcon({ value, selected, size = 32 }: { value: number; selected: boolean; size?: number }) {
+  const color = selected ? RATING_COLORS[value] : "#B0BAC5";
+  const paths: Record<number, React.ReactNode> = {
+    1: (<><line x1="12" y1="6" x2="12" y2="26" stroke={color} strokeWidth="2" strokeLinecap="round" /><path d="M12 6 Q14 7 14 10 Q14 13 12 14" stroke={color} strokeWidth="1.8" fill={`${color}20`} strokeLinecap="round" /><path d="M4 26 Q12 24 20 26 Q28 28 28 26" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5" /></>),
+    2: (<><path d="M6 14 Q10 12 14 14 Q18 16 22 14" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" /><path d="M8 20 Q12 18 16 20 Q20 22 24 20" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.6" /><path d="M26 10 L22 12 L26 14" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" /></>),
+    3: (<><path d="M4 12 Q8 8 14 12 Q20 16 26 12" stroke={color} strokeWidth="2.2" strokeLinecap="round" fill="none" /><path d="M6 19 Q10 16 16 19 Q22 22 28 19" stroke={color} strokeWidth="1.8" strokeLinecap="round" fill="none" /><path d="M22 6 L28 9 L22 12" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" /><line x1="10" y1="8" x2="20" y2="6" stroke={color} strokeWidth="1.2" strokeLinecap="round" opacity="0.4" /></>),
+    4: (<><path d="M3 13 Q8 7 15 13 Q22 19 28 11" stroke={color} strokeWidth="2.5" strokeLinecap="round" fill="none" /><path d="M5 21 Q10 16 17 21 Q24 26 29 19" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" /><path d="M18 3 L24 5 L20 10 Z" fill={`${color}30`} stroke={color} strokeWidth="1.5" strokeLinejoin="round" /><line x1="18" y1="3" x2="14" y2="13" stroke={color} strokeWidth="1" strokeDasharray="2 2" /></>),
+    5: (<><path d="M2 14 Q7 6 14 14 Q21 22 28 12" stroke={color} strokeWidth="2.8" strokeLinecap="round" fill="none" /><path d="M4 22 Q9 15 16 22 Q23 29 30 20" stroke={color} strokeWidth="2.2" strokeLinecap="round" fill="none" /><path d="M16 2 L24 5 L18 12 Z" fill={`${color}35`} stroke={color} strokeWidth="1.6" strokeLinejoin="round" /><line x1="16" y1="2" x2="12" y2="14" stroke={color} strokeWidth="1.2" /><circle cx="6" cy="6" r="2" fill={color} opacity="0.3" /><circle cx="27" cy="7" r="1.5" fill={color} opacity="0.25" /><path d="M3 8 L7 7" stroke={color} strokeWidth="1.2" strokeLinecap="round" opacity="0.4" /><path d="M24 3 L28 4" stroke={color} strokeWidth="1.2" strokeLinecap="round" opacity="0.4" /></>),
+  };
+  return <svg width={size} height={size} viewBox="0 0 32 32" fill="none">{paths[value]}</svg>;
+}
+
+const GEAR_TYPES = [
+  { id: "kite", label: "Kite" }, { id: "windsurf", label: "Windsurf" },
+  { id: "wing", label: "Wing" }, { id: "foil", label: "Foil" },
+];
+
+function GearIcon({ id, selected, size = 36 }: { id: string; selected: boolean; size?: number }) {
+  const color = selected ? "#2E8FAE" : "#B0BAC5";
+  const icons: Record<string, React.ReactNode> = {
+    kite: (<><path d="M18 4 L28 10 L18 22 L8 10 Z" fill={`${color}20`} stroke={color} strokeWidth="1.8" strokeLinejoin="round" /><line x1="18" y1="22" x2="18" y2="32" stroke={color} strokeWidth="1.2" strokeDasharray="2 2" /><path d="M18 4 L18 22" stroke={color} strokeWidth="1" opacity="0.4" /><path d="M8 10 L28 10" stroke={color} strokeWidth="1" opacity="0.4" /></>),
+    windsurf: (<><path d="M10 30 Q16 28 22 30" stroke={color} strokeWidth="2.2" strokeLinecap="round" fill="none" /><line x1="16" y1="28" x2="16" y2="8" stroke={color} strokeWidth="1.8" strokeLinecap="round" /><path d="M16 8 L26 14 L16 24" fill={`${color}20`} stroke={color} strokeWidth="1.6" strokeLinejoin="round" /></>),
+    wing: (<><ellipse cx="18" cy="16" rx="12" ry="6" fill={`${color}15`} stroke={color} strokeWidth="1.8" /><line x1="18" y1="10" x2="18" y2="22" stroke={color} strokeWidth="1.2" opacity="0.4" /><circle cx="12" cy="16" r="1.5" fill={color} opacity="0.5" /><circle cx="24" cy="16" r="1.5" fill={color} opacity="0.5" /><line x1="18" y1="22" x2="18" y2="30" stroke={color} strokeWidth="1.2" strokeDasharray="2 2" /></>),
+    foil: (<><line x1="18" y1="6" x2="18" y2="26" stroke={color} strokeWidth="2" strokeLinecap="round" /><path d="M8 26 L28 26" stroke={color} strokeWidth="2" strokeLinecap="round" /><path d="M10 26 L6 22 Q10 20 14 22 Z" fill={`${color}25`} stroke={color} strokeWidth="1.4" strokeLinejoin="round" /><path d="M22 26 L30 22 Q26 20 22 22 Z" fill={`${color}25`} stroke={color} strokeWidth="1.4" strokeLinejoin="round" /><path d="M12 6 Q18 4 24 6 Q18 8 12 6" fill={`${color}20`} stroke={color} strokeWidth="1.4" /></>),
+  };
+  return <svg width={size} height={size} viewBox="0 0 36 36" fill="none">{icons[id]}</svg>;
+}
+
+const WIND_FEELS = [
+  { id: "underpowered", label: "Te weinig" }, { id: "perfect", label: "Perfect" },
+  { id: "overpowered", label: "Te veel" }, { id: "gusty", label: "Gusty" },
+];
+
+const KITE_SIZES = ["5","6","7","8","9","10","11","12","13","14"];
+
+function PropIcon({ id, selected, size = 44 }: { id: string; selected: boolean; size?: number }) {
+  const color = selected ? C.sky : "#B0BAC5";
+  if (id === "kite") return (
+    <svg width={size} height={size} viewBox="0 0 44 44" fill="none">
+      <path d="M8 28 Q22 6 36 28" fill={`${color}20`} stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M8 28 Q22 6 36 28" stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" />
+      <line x1="22" y1="10" x2="22" y2="28" stroke={color} strokeWidth="1" opacity="0.4" />
+      <line x1="12" y1="26" x2="22" y2="40" stroke={color} strokeWidth="1" strokeDasharray="2 2" />
+      <line x1="32" y1="26" x2="22" y2="40" stroke={color} strokeWidth="1" strokeDasharray="2 2" />
+      <path d="M16 40 L28 40" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+  if (id === "wing") return (
+    <svg width={size} height={size} viewBox="0 0 44 44" fill="none">
+      <path d="M8 28 Q22 6 36 28" fill={`${color}20`} stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M8 28 Q22 6 36 28" stroke={color} strokeWidth="3" strokeLinecap="round" fill="none" />
+      <line x1="22" y1="10" x2="22" y2="28" stroke={color} strokeWidth="1" opacity="0.4" />
+      <circle cx="15" cy="24" r="2.5" fill={color} opacity="0.5" />
+      <circle cx="29" cy="24" r="2.5" fill={color} opacity="0.5" />
+      <line x1="15" y1="24" x2="15" y2="32" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="29" y1="24" x2="29" y2="32" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+  return (
+    <svg width={size} height={size} viewBox="0 0 44 44" fill="none">
+      <line x1="20" y1="38" x2="20" y2="6" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <path d="M20 6 L34 14 L20 30" fill={`${color}20`} stroke={color} strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M10 38 Q20 36 30 38" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
+function WindFeelIcon({ id, selected, size = 28 }: { id: string; selected: boolean; size?: number }) {
+  const color = selected ? "#2E8FAE" : "#B0BAC5";
+  const icons: Record<string, React.ReactNode> = {
+    underpowered: (<><path d="M4 14 Q10 12 16 14" stroke={color} strokeWidth="1.8" strokeLinecap="round" fill="none" /><circle cx="20" cy="10" r="1" fill={color} opacity="0.3" /></>),
+    perfect: (<><path d="M3 10 Q8 6 14 10 Q20 14 26 10" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" /><path d="M5 17 Q10 14 16 17 Q22 20 28 17" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.6" /><circle cx="24" cy="6" r="3" fill="none" stroke={color} strokeWidth="1.5" /><path d="M24 3 L24 2 M27 6 L28 6 M24 9 L24 10 M21 6 L20 6" stroke={color} strokeWidth="1" strokeLinecap="round" /></>),
+    overpowered: (<><path d="M2 8 Q6 3 12 8 Q18 13 24 6" stroke={color} strokeWidth="2.5" strokeLinecap="round" fill="none" /><path d="M4 15 Q8 10 14 15 Q20 20 26 13" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" /><path d="M6 22 Q10 18 16 22 Q22 26 28 20" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5" /></>),
+    gusty: (<><path d="M4 8 L14 8 Q18 8 16 12" stroke={color} strokeWidth="2" strokeLinecap="round" fill="none" /><path d="M6 15 L20 15 Q24 15 22 19" stroke={color} strokeWidth="1.8" strokeLinecap="round" fill="none" /><path d="M4 22 L12 22 Q15 22 13 25" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.6" /></>),
+  };
+  return <svg width={size} height={size} viewBox="0 0 28 28" fill="none">{icons[id]}</svg>;
+}
+
+
+async function sbPatch(path: string, body: any) {
+  const token = await getValidToken();
+  await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method: "PATCH",
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function sbGet(path: string) {
+  const token = await getValidToken();
+  const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers });
+  if (!res.ok) throw new Error(`${res.status}`);
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BADGE SVG ICONS (filled style)
+   ═══════════════════════════════════════════════════════════ */
+
+const BADGE_COLORS: Record<string, string> = {
+  local_hero: "#2E8FAE",
+  storm_chaser: "#1F354C",
+  ice_surfer: "#5BA4C9",
+  early_bird: "#E8A83E",
+  call_in_sick: "#3EAA8C",
+  streak_5: "#C97A63",
+};
+
+function getBadgeColor(id: string): string {
+  return BADGE_COLORS[id] || "#6B7B8F";
+}
+
+function BadgeIcon({ id, earned, size = 36 }: { id: string; earned: boolean; size?: number }) {
+  const color = earned ? getBadgeColor(id) : "#B0BAC5";
+  const bg = earned ? `${getBadgeColor(id)}18` : "#E8ECF0";
+  const fillLight = earned ? `${color}40` : "#D0D5DB";
+
+  const paths: Record<string, React.ReactNode> = {
+    local_hero: (<>
+      <path d="M18 4L6 9v9c0 6.5 5.1 10.8 12 13 6.9-2.2 12-6.5 12-13V9L18 4z" fill={fillLight} />
+      <path d="M18 4L6 9v9c0 6.5 5.1 10.8 12 13 6.9-2.2 12-6.5 12-13V9L18 4z" stroke={color} strokeWidth="1.8" fill="none" />
+      <path d="M18 12l1.5 3.1 3.4.5-2.5 2.4.6 3.4L18 19.7l-3 1.7.6-3.4-2.5-2.4 3.4-.5L18 12z" fill={color} />
+    </>),
+    storm_chaser: (<>
+      <path d="M8 12h16c1.5 0 2.5-1 2-2.2s-2-1.8-3.5-1.8c-.3-2.5-2.5-4-5-4-2.8 0-5 2-5.2 4.5C10 8.7 8 10.2 8 12z" fill={fillLight} />
+      <path d="M8 12h16c1.5 0 2.5-1 2-2.2s-2-1.8-3.5-1.8c-.3-2.5-2.5-4-5-4-2.8 0-5 2-5.2 4.5C10 8.7 8 10.2 8 12z" stroke={color} strokeWidth="1.8" fill="none" />
+      <path d="M19 14l-3.5 5H19l-4 7 1.5-5H13l4-7h2z" fill={color} />
+      <path d="M6 17h6M8 21h8M5 25h5" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+    </>),
+    ice_surfer: (<>
+      <circle cx="18" cy="18" r="12" fill={fillLight} />
+      <path d="M18 6v24M8.4 12.6l19.2 10.8M8.4 23.4l19.2-10.8" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M15 7.5l3 2.5 3-2.5M15 28.5l3-2.5 3 2.5M7.5 14l2 3.5-2 3.5M28.5 14l-2 3.5 2 3.5M9.5 24.5l3-.5 1-3M26.5 11.5l-3 .5-1 3" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </>),
+    early_bird: (<>
+      <path d="M4 24h28" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <path d="M8 24c0-5.5 4.5-10 10-10s10 4.5 10 10" fill={fillLight} />
+      <path d="M8 24c0-5.5 4.5-10 10-10s10 4.5 10 10" stroke={color} strokeWidth="1.8" fill="none" />
+      <path d="M18 8v-3M10 12l-2-2M26 12l2-2M6 19H3M33 19h-3" stroke={color} strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M4 28h28" stroke={color} strokeWidth="1.2" strokeLinecap="round" opacity="0.4" />
+    </>),
+    call_in_sick: (<>
+      <rect x="10" y="5" width="12" height="22" rx="3" fill={fillLight} stroke={color} strokeWidth="1.8" />
+      <circle cx="16" cy="23" r="1.2" fill={color} />
+      <path d="M16 9h4" stroke={color} strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M25 10c2 0 3.5.8 3.5 1.8s-1.2 1.2-2.5 1.2M26 15c1.5 0 3 .6 3 1.5s-1 1.5-2.5 1.5M24 20c2 0 3 .5 3 1.3s-1 1.2-2 1.2" stroke={color} strokeWidth="1.6" strokeLinecap="round" />
+    </>),
+    streak_5: (<>
+      <path d="M18 4c0 4-6 8-6 14a8 8 0 0016 0c0-4-2-6-4-8-1 3-3 4-4 2-1-3 2-6-2-8z" fill={fillLight} />
+      <path d="M18 4c0 4-6 8-6 14a8 8 0 0016 0c0-4-2-6-4-8-1 3-3 4-4 2-1-3 2-6-2-8z" stroke={color} strokeWidth="1.8" fill="none" />
+      <path d="M16 20c0-2 1-3 2-4 1 1 2 2 2 4a2 2 0 01-4 0z" fill={color} />
+      <path d="M4 14h4M4 18h3M4 22h4" stroke={color} strokeWidth="1.4" strokeLinecap="round" opacity="0.5" />
+    </>),
+  };
+
+  return (
+    <div style={{
+      width: size + 12, height: size + 12, borderRadius: 14,
+      background: bg, display: "flex", alignItems: "center", justifyContent: "center",
+    }}>
+      <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
+        {paths[id] || null}
+      </svg>
+    </div>
+  );
+}
+
+const ALL_BADGES = [
+  { id: "local_hero", name: "Local Hero", desc: "10+ sessies op één spot" },
+  { id: "storm_chaser", name: "Stormchaser", desc: "Sessie bij 30+ knots" },
+  { id: "ice_surfer", name: "Ice Surfer", desc: "Sessie onder 5°C" },
+  { id: "early_bird", name: "Dawn Patrol", desc: "Op het water vóór 8:00" },
+  { id: "call_in_sick", name: "Called in Sick", desc: "Doordeweeks epic sessie" },
+  { id: "streak_5", name: "Wind Junkie", desc: "5 sessies in één week" },
+];
+
+/* ═══════════════════════════════════════════════════════════
+   FEED — bundel alerts per target_date
+   ═══════════════════════════════════════════════════════════ */
+
+interface FeedSpot {
+  spotName: string;
+  wind: number;
+  dir: string;
+  gust: number;
+}
+
+interface FeedDowngradeSpot {
+  spotName: string;
+  wind: number;
+  dir: string;
+  reasons: string[];
+}
+
+interface BundledFeedItem {
+  targetDate: string;
+  dateLabel: string;
+  latestCreatedAt: string;
+  goSpots: FeedSpot[];
+  downgradeSpots: FeedDowngradeSpot[];
+  alertType: "go" | "downgrade" | "mixed";
+}
+
+function bundleAlertsByDate(alerts: any[]): BundledFeedItem[] {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Track the latest alert per spot per date, so downgrade correctly overrides go
+  type SpotState = { type: "go"; spot: FeedSpot; ts: string } | { type: "downgrade"; spot: FeedDowngradeSpot; ts: string };
+  const byDate: Record<string, { spotStates: Map<string, SpotState>; latestCreatedAt: string }> = {};
+
+  // Process alerts in chronological order so newer alerts override older ones
+  const sorted = [...alerts].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  for (const a of sorted) {
+    const date = a.target_date;
+
+    // Skip dates in the past (only show today and future on homepage)
+    const d = new Date(date + "T12:00:00");
+    const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diff = Math.round((target.getTime() - today.getTime()) / 86400000);
+    if (diff < 0) continue;
+
+    if (!byDate[date]) {
+      byDate[date] = { spotStates: new Map(), latestCreatedAt: a.created_at };
+    }
+    if (new Date(a.created_at) > new Date(byDate[date].latestCreatedAt)) {
+      byDate[date].latestCreatedAt = a.created_at;
+    }
+
+    const spots = a.conditions?.spots || [];
+    if (a.alert_type === "go" || a.alert_type === "heads_up" || a.alert_type === "epic") {
+      for (const s of spots) {
+        const key = s.spotName || String(s.spotId);
+        // Only set as go if there's no newer downgrade for this spot
+        const existing = byDate[date].spotStates.get(key);
+        if (!existing || existing.type !== "downgrade" || new Date(a.created_at) > new Date(existing.ts)) {
+          byDate[date].spotStates.set(key, { type: "go", spot: { spotName: s.spotName, wind: s.wind, dir: s.dir, gust: s.gust }, ts: a.created_at });
+        }
+      }
+    } else if (a.alert_type === "downgrade") {
+      for (const s of spots) {
+        const key = s.spotName || String(s.spotId);
+        const reasons = a.conditions?.downgradeReasons?.[s.spotId] || [];
+        // Downgrade always overrides a previous go for the same spot
+        byDate[date].spotStates.set(key, { type: "downgrade", spot: { spotName: s.spotName, wind: s.wind, dir: s.dir, reasons }, ts: a.created_at });
+      }
+    }
+  }
+
+  const items: BundledFeedItem[] = Object.entries(byDate).map(([date, data]) => {
+    const d = new Date(date + "T12:00:00");
+    const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const diff = Math.round((target.getTime() - today.getTime()) / 86400000);
+    let dateLabel = "onbekend";
+    if (diff === 0) dateLabel = "vandaag";
+    else if (diff === 1) dateLabel = "morgen";
+    else if (diff === 2) dateLabel = "overmorgen";
+    else {
+      const weekday = d.toLocaleDateString("nl-NL", { weekday: "short" }).replace(".", "").toUpperCase();
+      const dag = d.getDate();
+      const maand = d.toLocaleDateString("nl-NL", { month: "short" }).replace(".", "").toUpperCase();
+      dateLabel = `${weekday} ${dag} ${maand}`;
+    }
+
+    const goSpots: FeedSpot[] = [];
+    const downgradeSpots: FeedDowngradeSpot[] = [];
+    for (const state of data.spotStates.values()) {
+      if (state.type === "go") goSpots.push(state.spot);
+      else downgradeSpots.push(state.spot);
+    }
+
+    let alertType: "go" | "downgrade" | "mixed" = "go";
+    if (goSpots.length > 0 && downgradeSpots.length > 0) alertType = "mixed";
+    else if (downgradeSpots.length > 0) alertType = "downgrade";
+
+    return { targetDate: date, dateLabel, latestCreatedAt: data.latestCreatedAt, goSpots, downgradeSpots, alertType };
+  });
+
+  // Sort: soonest first (today before tomorrow before next week)
+  return items
+    .filter(item => {
+      const d2 = new Date(item.targetDate + "T12:00:00");
+      const t2 = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate());
+      return t2 >= today;
+    })
+    .sort((a, b) => a.targetDate.localeCompare(b.targetDate))
+    .slice(0, 5);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SESSION STATS
+   ═══════════════════════════════════════════════════════════ */
+
+interface SessionStats {
+  total_sessions: number;
+  total_spots: number;
+  current_streak: number;
+  longest_streak: number;
+  avg_rating: number | null;
+  favorite_spot_id: number | null;
+  last_session_date: string | null;
+  season_sessions: number;
+  badges: string[];
+}
+
+interface RecentSession {
+  id: number;
+  spot_id: number;
+  session_date: string;
+  status: string;
+  rating: number | null;
+  gear_type: string | null;
+  gear_size: string | null;
+  notes: string | null;
+  forecast_wind: number | null;
+  forecast_dir: string | null;
+  photo_url: string | null;
+  spots?: { display_name: string };
+}
+
+function SessionStatsSection({ stats, sessions, spotNames }: { stats: SessionStats; sessions: RecentSession[]; spotNames: Record<number, string> }) {
+  const completed = sessions.filter(s => s.status === "completed");
+  const hasData = stats.total_sessions > 0 || completed.length > 0;
+
+  if (!hasData) {
+    return (
+      <div style={{ padding: "24px 20px", background: C.card, boxShadow: C.cardShadow, borderRadius: 16, textAlign: "center" }}>
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" style={{ marginBottom: 8 }}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Nog geen sessies</div>
+        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>Klik &apos;Ik ga!&apos; bij je volgende Go-alert<br />om je eerste sessie te starten.</div>
+      </div>
+    );
+  }
+
+  const favSpotName = stats.favorite_spot_id ? (spotNames[stats.favorite_spot_id] || "–") : "–";
+  const latest = completed[0];
+  const latestSpot = latest ? (latest.spots?.display_name || spotNames[latest.spot_id] || "Spot") : null;
+  const ratingLabelsL: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker!", 5: "EPIC!" };
+  const ratingColorsL: Record<number, string> = { 1: "#C97A63", 2: "#D4860B", 3: "#E8A83E", 4: "#2E8FAE", 5: "#3EAA8C" };
+
+  function dateLabelFn(dateStr: string) {
+    const d = new Date(dateStr + "T12:00:00");
+    const now = new Date();
+    const diff = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000);
+    if (diff === 0) return "Vandaag";
+    if (diff === -1) return "Gisteren";
+    return d.toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
+  }
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+        {[
+          { val: String(stats.total_sessions), label: "Sessies", color: C.navy },
+          { val: String(stats.current_streak), label: "Streak", color: C.sky },
+          { val: stats.avg_rating ? stats.avg_rating.toFixed(1) : "–", label: "Gem. rating", color: C.gold },
+        ].map((s) => (
+          <div key={s.label} style={{ padding: "14px 10px", background: C.card, boxShadow: C.cardShadow, borderRadius: 14, textAlign: "center" }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.val}</div>
+            <div style={{ fontSize: 10, color: C.sub, marginTop: 4, fontWeight: 600 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
+        <div style={{ padding: "12px 14px", background: C.card, boxShadow: C.cardShadow, borderRadius: 14, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: C.goBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.2" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{stats.total_spots}</div>
+            <div style={{ fontSize: 10, color: C.sub }}>Spots bezocht</div>
+          </div>
+        </div>
+        <div style={{ padding: "12px 14px", background: C.card, boxShadow: C.cardShadow, borderRadius: 14, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: C.epicBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.gold} strokeWidth="2.2" strokeLinecap="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 100 }}>{favSpotName}</div>
+            <div style={{ fontSize: 10, color: C.sub }}>Favoriete spot</div>
+          </div>
+        </div>
+      </div>
+
+      {latest && (
+        <Link href={`/sessie/${latest.id}`} style={{ display: "block", textDecoration: "none", marginBottom: 12 }}>
+          <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, overflow: "hidden" }}>
+            {latest.photo_url && (
+              <div style={{ position: "relative" }}>
+                <img src={latest.photo_url} alt="" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+                <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 30%, rgba(31,53,76,0.85) 100%)" }} />
+                <div style={{ position: "absolute", bottom: 12, left: 14, right: 14, display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: "#fff" }}>{latestSpot}</div>
+                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)" }}>{dateLabelFn(latest.session_date)}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {latest.forecast_wind && (
+                      <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", borderRadius: 9, padding: "5px 9px", textAlign: "center" }}>
+                        <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{latest.forecast_wind}</div>
+                        <div style={{ fontSize: 9, color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>KN</div>
+                      </div>
+                    )}
+                    {latest.rating && (
+                      <div style={{ fontSize: 13, fontWeight: 800, color: ratingColorsL[latest.rating], background: `${ratingColorsL[latest.rating]}25`, padding: "4px 10px", borderRadius: 16 }}>
+                        {ratingLabelsL[latest.rating]}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+            <div style={{ padding: "12px 14px" }}>
+              {!latest.photo_url && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{latestSpot}</div>
+                    <div style={{ fontSize: 11, color: C.sub, marginTop: 2 }}>{dateLabelFn(latest.session_date)}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {latest.forecast_wind && <div style={{ fontSize: 15, fontWeight: 800, color: C.sky }}>{latest.forecast_wind}<span style={{ fontSize: 10 }}>kn</span></div>}
+                    {latest.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColorsL[latest.rating] }}>{ratingLabelsL[latest.rating]}</div>}
+                  </div>
+                </div>
+              )}
+              {(latest.gear_type || latest.gear_size) && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                  {latest.gear_type && <span style={{ fontSize: 11, fontWeight: 600, color: C.sky, background: C.sky + "12", borderRadius: 7, padding: "3px 9px" }}>{latest.gear_type.replace(/^zeil\b/, "windsurf").replace(/-/g, " ")}</span>}
+                  {latest.gear_size && <span style={{ fontSize: 11, color: C.sub, padding: "3px 0" }}>{latest.gear_size}</span>}
+                  {latest.notes && <div style={{ fontSize: 12, color: C.sub, marginTop: 6, lineHeight: 1.5 }}>{latest.notes}</div>}
+                </div>
+              )}
+            </div>
+          </div>
+        </Link>
+      )}
+
+      {stats.total_sessions > 3 && (
+        <Link href="/mijn-sessies" style={{ display: "block", textAlign: "center", marginTop: 10, fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>
+          Alle {stats.total_sessions} sessies bekijken →
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DASHBOARD
+   ═══════════════════════════════════════════════════════════ */
+
+interface SpotSummary { id: number; name: string; ws: number; wd: number; match: "go" | "maybe" | "no"; }
+
+function Dashboard() {
+  const [userName, setUserName] = useState("");
+  const [userId, setUserId] = useState<number | null>(null);
+  const [spots, setSpots] = useState<SpotSummary[]>([]);
+
+  const [loading, setLoading] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const [showPause, setShowPause] = useState(false);
+  const [pauseUntil, setPauseUntil] = useState("");
+  const [pauseOption, setPauseOption] = useState<"24h" | "48h" | "1w" | "2w" | "custom">("24h");
+  const [recentAlerts, setRecentAlerts] = useState<any[]>([]);
+  const [sessionStats, setSessionStats] = useState<SessionStats>({ total_sessions: 0, total_spots: 0, current_streak: 0, longest_streak: 0, avg_rating: null, favorite_spot_id: null, last_session_date: null, season_sessions: 0, badges: [] });
+  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
+  const [spotNames, setSpotNames] = useState<Record<number, string>>({});
+  const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
+  const [friendActivity, setFriendActivity] = useState<any[]>([]);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [allSpots, setAllSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
+
+  // Handmatige sessie modal
+  const [showManualSession, setShowManualSession] = useState(false);
+
+
+  // Lees spot terug van spot-select pagina via localStorage
+  useEffect(() => {
+    function checkSpotFromStorage() {
+      const spotId = localStorage.getItem("session_spot_id");
+      const spotName = localStorage.getItem("session_spot_name");
+      if (spotId && spotName) {
+        setManualSpotId(Number(spotId));
+        setShowManualSession(true);
+        setManualStep(1);
+        localStorage.removeItem("session_spot_id");
+        localStorage.removeItem("session_spot_name");
+      }
+    }
+    window.addEventListener("focus", checkSpotFromStorage);
+    window.addEventListener("popstate", checkSpotFromStorage);
+    checkSpotFromStorage();
+    return () => { window.removeEventListener("focus", checkSpotFromStorage); window.removeEventListener("popstate", checkSpotFromStorage); };
+  }, []);
+  const [manualSpotId, setManualSpotId] = useState<number | "">("");
+  const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
+  const [manualWeather, setManualWeather] = useState<{wind: number; gust: number; dir: number; dirStr: string} | null>(null);
+  const [manualWeatherLoading, setManualWeatherLoading] = useState(false);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [savedSessionId, setSavedSessionId] = useState<number | null>(null);
+  const [manualStep, setManualStep] = useState<"pick" | 1 | 2 | 3 | 4 | 5 | 6>("pick");
+  const [manualRating, setManualRating] = useState<number | null>(null);
+  const [manualPropulsion, setManualPropulsion] = useState<"kite" | "wing" | "zeil" | null>(null);
+  const [manualBoardOrFoil, setManualBoardOrFoil] = useState<"board" | "foil" | null>(null);
+  const [manualBoardType, setManualBoardType] = useState<string | null>(null);
+  const [manualSailSize, setManualSailSize] = useState("");
+  const [manualBoardLength, setManualBoardLength] = useState("");
+  const [manualWindFeel, setManualWindFeel] = useState<string | null>(null);
+  const [manualNotes, setManualNotes] = useState("");
+  const [manualPhotoUrl, setManualPhotoUrl] = useState<string | null>(null);
+  const [manualPhotoUploading, setManualPhotoUploading] = useState(false);
+  const [manualError, setManualError] = useState("");
+  const [allPublicSpots, setAllPublicSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
+
+  const goSpots = spots.filter(s => s.match === "go");
+  const matchColors: Record<string, string> = { go: C.green, maybe: C.gold, no: C.amber };
+
+  const loadData = useCallback(async () => {
+    try {
+      const email = getEmail();
+      if (!email) return;
+      const authId = getAuthId();
+      const users = await sbGet(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,name,min_wind_speed,max_wind_speed,welcome_shown`);
+      if (!users?.length) return;
+      const user = users[0];
+      setUserName(user.name || email.split("@")[0]);
+      setUserId(user.id);
+      // Show welcome message first time on homepage
+      if (!user.welcome_shown) {
+        setShowWelcome(true);
+        sbPatch(`users?id=eq.${user.id}`, { welcome_shown: true }).catch(() => {});
+      }
+      try {
+        const pauseData = await sbGet(`user_settings?user_id=eq.${user.id}&select=alerts_paused_until`);
+        if (pauseData?.[0]?.alerts_paused_until) {
+          const until = new Date(pauseData[0].alerts_paused_until);
+          if (until > new Date()) { setPaused(true); setPauseUntil(until.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" })); }
+        }
+      } catch {}
+      const userSpots = await sbGet(`user_spots?user_id=eq.${user.id}&select=spot_id`);
+      
+      // Onboarding check: redirect if not set up
+      try {
+        const prefs = await sbGet(`alert_preferences?user_id=eq.${user.id}&select=id`);
+        const needsOnboarding = !user.name || !userSpots?.length || !prefs?.length;
+        if (needsOnboarding) { window.location.href = "/onboarding"; return; }
+      } catch {}
+      
+      if (!userSpots?.length) { setLoading(false); return; }
+      const ids = userSpots.map((x: any) => x.spot_id);
+      const [spotsData, condsData] = await Promise.all([
+        sbGet(`spots?id=in.(${ids.join(",")})&select=id,display_name,latitude,longitude,good_directions`),
+        sbGet(`ideal_conditions?user_id=eq.${user.id}&spot_id=in.(${ids.join(",")})&select=spot_id,wind_min,wind_max,directions`),
+      ]);
+      const names: Record<number, string> = {};
+      (spotsData || []).forEach((s: any) => { names[s.id] = s.display_name; });
+      
+      // Haal ook namen op van spots in recente sessies die niet in user_spots zitten
+      try {
+        const sessRes2 = await sbGet(`sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=spot_id`);
+        const sessionSpotIds = (sessRes2 || []).map((s: any) => s.spot_id).filter((id: number) => !names[id]);
+        if (sessionSpotIds.length > 0) {
+          const extraSpots = await sbGet(`spots?id=in.(${sessionSpotIds.join(",")})&select=id,display_name`);
+          (extraSpots || []).forEach((s: any) => { names[s.id] = s.display_name; });
+        }
+      } catch {}
+      
+      setSpotNames(names);
+      setAllSpots((spotsData || []).filter((s: any) => s.latitude && s.longitude).map((s: any) => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude })));
+      // Load ALL public spots for manual session spot picker
+      try {
+        const publicSpots = await sbGet(`spots?select=id,display_name,latitude,longitude&order=display_name.asc`);
+        setAllPublicSpots((publicSpots || []).filter((s: any) => s.latitude && s.longitude).map((s: any) => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude })));
+      } catch {}
+      const conds: Record<number, any> = {};
+      (condsData || []).forEach((ic: any) => { conds[ic.spot_id] = ic; });
+      const valid = (spotsData || []).filter((s: any) => s.latitude && s.longitude);
+      const results: SpotSummary[] = [];
+      await Promise.all(valid.map(async (s: any) => {
+        try {
+          const res = await fetch(`${OM_BASE}?latitude=${s.latitude}&longitude=${s.longitude}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&timezone=auto`);
+          const w = await res.json();
+          const ws = Math.round(w.current?.wind_speed_10m || 0);
+          const wd = w.current?.wind_direction_10m || 0;
+          const ic = conds[s.id];
+          const wMin = ic?.wind_min ?? 15;
+          const wMax = ic?.wind_max ?? 25;
+          const dirs = ic?.directions?.length ? ic.directions : (s.good_directions || []);
+          const dirOk = dirs.length === 0 || dirs.includes(degToDir(wd));
+          const speedOk = ws >= wMin && ws <= wMax;
+          results.push({ id: s.id, name: s.display_name, ws, wd, match: speedOk && dirOk ? "go" : speedOk || dirOk ? "maybe" : "no" });
+        } catch {}
+      }));
+      results.sort((a, b) => { const o: Record<string, number> = { go: 0, maybe: 1, no: 2 }; return o[a.match] - o[b.match]; });
+      setSpots(results);
+      try {
+        const since = new Date(); since.setDate(since.getDate() - 7);
+        const alertData = await sbGet(`alert_history?user_id=eq.${user.id}&target_date=gte.${since.toISOString().split("T")[0]}&order=created_at.desc&limit=20`);
+        setRecentAlerts(alertData || []);
+      } catch {}
+      try {
+        const token = await getValidToken();
+        if (token) {
+          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,photo_url,notes`, {
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+          });
+          if (sessRes.ok) setRecentSessions(await sessRes.json() || []);
+          const statsRes = await fetch(`${SUPABASE_URL}/rest/v1/user_stats?user_id=eq.${user.id}&select=*`, {
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+          });
+          if (statsRes.ok) {
+            const statsData = await statsRes.json();
+            if (statsData?.[0]) {
+              const s = statsData[0];
+              const badges = typeof s.badges === "string" ? JSON.parse(s.badges) : (s.badges || []);
+              setSessionStats({ ...s, badges });
+              setEarnedBadges(badges);
+            }
+          }
+        }
+      } catch (e) { console.error("Session stats load error:", e); }
+      // Load friend activity
+      try {
+        const token = await getValidToken();
+        if (token) {
+          const actRes = await fetch("/api/friends?type=activity", {
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+          });
+          if (actRes.ok) {
+            const actData = await actRes.json();
+            setFriendActivity(actData.activity || []);
+          }
+        }
+      } catch (e) { console.error("Friend activity load error:", e); }
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Goedemorgen" : hour < 18 ? "Goedemiddag" : "Goedenavond";
+  const feedItems = bundleAlertsByDate(recentAlerts);
+
+  // Handler: "Ik ga!" — open manual session with spot pre-selected
+  const handleIkGa = (spotName: string) => {
+    setShowManualSession(true);
+    setManualStep("pick");
+  };
+
+  // Fetch weer voor handmatige sessie
+  const fetchManualWeather = async (spotId: number, date: string) => {
+    const spot = allSpots.find(s => s.id === spotId);
+    if (!spot) return;
+    setManualWeatherLoading(true);
+    setManualWeather(null);
+    try {
+      const url = `${OM_BASE}?latitude=${spot.lat}&longitude=${spot.lng}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Europe/Amsterdam&start_date=${date}&end_date=${date}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const midday = 12; // gebruik middagwaarden
+      const wind = Math.round(data.hourly.wind_speed_10m[midday] || 0);
+      const gust = Math.round(data.hourly.wind_gusts_10m[midday] || 0);
+      const dir = Math.round(data.hourly.wind_direction_10m[midday] || 0);
+      const dirStr = degToDir(dir);
+      setManualWeather({ wind, gust, dir, dirStr });
+    } catch { setManualWeather(null); }
+    setManualWeatherLoading(false);
+  };
+
+  function manualBuildGearType(): string {
+    const parts: string[] = [];
+    if (manualPropulsion) parts.push(manualPropulsion === "zeil" ? "windsurf" : manualPropulsion);
+    if (manualBoardOrFoil === "foil") parts.push("foil");
+    else if (manualBoardType) parts.push(manualBoardType);
+    return parts.join("-") || "unknown";
+  }
+
+  function manualBuildGearSize(): string | null {
+    const parts: string[] = [];
+    if (manualSailSize.trim()) parts.push(manualSailSize.trim() + "m²");
+    if (manualBoardLength.trim()) parts.push(`board ${manualBoardLength.trim()}cm`);
+    return parts.length ? parts.join(", ") : null;
+  }
+
+  function resetManualSession() {
+    setManualStep("pick");
+    setSavedSessionId(null);
+    setManualSpotId("");
+    setManualDate(new Date().toISOString().split("T")[0]);
+    setManualWeather(null);
+    setManualRating(null);
+    setManualPropulsion(null);
+    setManualBoardOrFoil(null);
+    setManualBoardType(null);
+    setManualSailSize("");
+    setManualBoardLength("");
+    setManualWindFeel(null);
+    setManualNotes("");
+    setManualPhotoUrl(null);
+    setManualError("");
+  }
+
+  const handleManualSessionSave = async () => {
+    if (!manualSpotId || !manualRating || !userId) return;
+    setManualSaving(true);
+    setManualError("");
+    try {
+      const token = await getValidToken();
+      const body: any = {
+        created_by: userId,
+        spot_id: manualSpotId,
+        session_date: manualDate,
+        status: "completed",
+        rating: manualRating,
+        gear_type: manualBuildGearType(),
+        gear_size: manualBuildGearSize(),
+      };
+      if (manualWindFeel) body.wind_feel = manualWindFeel;
+      if (manualNotes) body.notes = manualNotes;
+      if (manualPhotoUrl) body.photo_url = manualPhotoUrl;
+      if (manualWeather) {
+        body.forecast_wind = manualWeather.wind;
+        body.forecast_gust = manualWeather.gust;
+        body.forecast_dir = manualWeather.dirStr;
+      }
+      const saveRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(body),
+      });
+      if (!saveRes.ok) { setManualError("Opslaan mislukt: " + saveRes.status); setManualSaving(false); return; }
+      const savedData = await saveRes.json();
+      const sessionId = savedData?.[0]?.id || null;
+      setSavedSessionId(sessionId);
+      setManualStep("saved" as any);
+      loadData();
+    } catch { setManualError("Opslaan mislukt, probeer opnieuw."); }
+    setManualSaving(false);
+  };
+
+
+  return (
+    <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
+      <NavBar />
+
+      <div style={{ maxWidth: 480, margin: "0 auto", padding: "0 0 100px" }}>
+
+        {/* ══════════════════════════════════════════
+            HEADER — open, licht, uitnodigend
+            ══════════════════════════════════════════ */}
+        <div style={{ padding: "28px 16px 0" }}>
+
+          {/* Greeting + Go-badge */}
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10, gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 12, color: C.muted, fontWeight: 500, marginBottom: 3, letterSpacing: "0.3px" }}>{greeting}</div>
+              <h2 style={{ ...h, fontSize: 34, fontWeight: 800, margin: 0, color: C.navy, letterSpacing: "-0.5px", lineHeight: 1.05 }}>
+                {userName ? userName.split(" ")[0] : ""}
+              </h2>
+            </div>
+            {/* Alleen tonen als er Go-spots zijn — groen badge */}
+            {!loading && goSpots.length > 0 && (
+              <div style={{ flexShrink: 0, background: "linear-gradient(135deg, #1B6B4E 0%, #27A070 100%)", borderRadius: 16, padding: "9px 14px", textAlign: "center", boxShadow: "0 4px 14px rgba(39,160,112,0.30)" }}>
+                <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-1px" }}>{goSpots[0].ws}</div>
+                <div style={{ fontSize: 8, fontWeight: 800, color: "rgba(255,255,255,0.65)", letterSpacing: "1.2px", marginTop: 1 }}>KN · GO</div>
+              </div>
+            )}
+          </div>
+
+          {/* Status tekst */}
+          <p style={{ fontSize: 13, color: C.sub, margin: "0 0 16px", lineHeight: 1.5 }}>
+            {loading ? "Even kijken…" :
+              goSpots.length > 0
+                ? <><span style={{ fontWeight: 700, color: C.green }}>{goSpots.length > 1 ? `${goSpots.length} spots` : goSpots[0].name}</span> {goSpots.length > 1 ? "zijn" : "is"} nu Go — <a href="/alert" style={{ color: C.sky, textDecoration: "none", fontWeight: 600 }}>bekijk je alert →</a></>
+                : recentAlerts.some(a => a.alert_type === "go")
+                  ? <><span style={{ fontWeight: 600, color: C.navy }}>Er komen Go-dagen aan</span> — check je alerts</>
+                  : spots.length > 0 ? "Vandaag even geen wind op je spots"
+                  : "Voeg spots toe om te beginnen"}
+          </p>
+
+          {/* Wind Check kaart — grote duidelijke windgetallen */}
+          {!loading && spots.length > 0 && (
+            <Link href="/check" style={{ display: "block", padding: "14px 16px", background: C.card, borderRadius: 16, textDecoration: "none", boxShadow: "0 2px 12px rgba(31,53,76,0.07)", border: `1.5px solid ${C.cardBorder}`, marginBottom: 20 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "1px" }}>WIND CHECK</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 11, color: C.sky, fontWeight: 600 }}>
+                  Bekijk alles <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(spots.length, 4)}, 1fr)`, gap: 4 }}>
+                {[...spots].sort((a, b) => b.ws - a.ws).slice(0, 4).map((s) => {
+                  const col = s.match === "go" ? C.green : s.match === "maybe" ? C.gold : C.muted;
+                  const bg = s.match === "go" ? C.goBg : s.match === "maybe" ? C.epicBg : C.cream;
+                  return (
+                    <div key={s.id} style={{ background: bg, borderRadius: 12, padding: "10px 6px 8px", textAlign: "center", border: `1.5px solid ${s.match === "go" ? "rgba(62,170,140,0.2)" : s.match === "maybe" ? "rgba(232,168,62,0.2)" : C.cardBorder}` }}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 1, marginBottom: 4 }}>
+                        <span style={{ fontSize: 24, fontWeight: 900, color: col, lineHeight: 1, letterSpacing: "-0.5px" }}>{s.ws}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: col, opacity: 0.75 }}>kn</span>
+                      </div>
+                      <div style={{ fontSize: 9, color: C.sub, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingBottom: 2 }}>{s.name.split(" ")[0]}</div>
+                      {s.match === "go" && <div style={{ fontSize: 7, fontWeight: 800, color: C.green, letterSpacing: "0.8px", marginTop: 2 }}>GO</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </Link>
+          )}
+        </div>
+
+        <div style={{ padding: "0 16px" }}>
+
+        {/* Quick actions — horizontale pill-rij */}
+        <div style={{ display: "flex", gap: 7, marginBottom: 24, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any, msOverflowStyle: "none", scrollbarWidth: "none" as any }}>
+          {[
+            { label: "Sessie +", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>, bg: C.goBg, border: `1.5px solid rgba(62,170,140,0.25)`, color: C.green, onClick: () => { setShowManualSession(true); setManualStep("pick"); } },
+            { label: "Mijn Spots", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.5" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>, bg: C.oceanTint, border: `1.5px solid rgba(46,143,174,0.2)`, color: C.sky, href: "/mijn-spots" },
+            { label: "Vrienden", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.purple} strokeWidth="2.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, bg: "#EDE6F0", border: `1.5px solid rgba(139,126,200,0.2)`, color: C.purple, href: "/vrienden" },
+            { label: "Spot toevoegen", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2.5" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><path d="M12 7v6M9 10h6"/></svg>, bg: C.terraTint, border: `1.5px solid rgba(201,122,99,0.2)`, color: C.amber, href: "/add-spot" },
+            { label: "Pauzeer alerts", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={showPause ? C.gold : C.muted} strokeWidth="2.2" strokeLinecap="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>, bg: showPause ? C.epicBg : C.cream, border: `1.5px solid ${showPause ? "rgba(232,168,62,0.3)" : C.cardBorder}`, color: showPause ? C.gold : C.muted, onClick: () => setShowPause(!showPause) },
+          ].map((a: any) => {
+            const style = { display: "inline-flex", alignItems: "center", gap: 6, padding: "9px 14px", background: a.bg, border: a.border, borderRadius: 22, fontSize: 12, fontWeight: 600, color: a.color, whiteSpace: "nowrap" as const, cursor: "pointer", textDecoration: "none", flexShrink: 0 };
+            if (a.href) return <Link key={a.label} href={a.href} style={style}>{a.icon}{a.label}</Link>;
+            return <button key={a.label} onClick={a.onClick} style={{ ...style, background: a.bg, fontFamily: "inherit" }}>{a.icon}{a.label}</button>;
+          })}
+        </div>
+
+        {/* Pause options */}
+        {showPause && !paused && (
+          <div style={{ marginBottom: 20, padding: "16px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 14, boxShadow: C.cardShadow }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+              {([["24h", "24 uur"], ["48h", "48 uur"], ["1w", "1 week"], ["2w", "2 weken"], ["custom", "Kies datum"]] as const).map(([val, label]) => (
+                <button key={val} onClick={() => setPauseOption(val)} style={{ padding: "8px 14px", borderRadius: 10, fontSize: 12, fontWeight: 600, cursor: "pointer", background: pauseOption === val ? C.gold : C.cream, color: pauseOption === val ? "#FFF" : C.sub, border: `1px solid ${pauseOption === val ? C.gold : C.cardBorder}` }}>{label}</button>
+              ))}
+            </div>
+            {pauseOption === "custom" && <input type="date" min={new Date().toISOString().split("T")[0]} style={{ width: "100%", padding: "10px 14px", background: C.cream, border: `1px solid ${C.cardBorder}`, borderRadius: 10, fontSize: 13, color: C.navy, marginBottom: 12 }} onChange={(e) => setPauseUntil(e.target.value)} />}
+            <button onClick={() => { setPaused(true); setShowPause(false); setPauseUntil(pauseOption === "custom" ? pauseUntil : pauseOption === "24h" ? "morgen" : pauseOption === "48h" ? "overmorgen" : pauseOption === "1w" ? "volgende week" : "over 2 weken"); }} style={{ width: "100%", padding: "11px", background: C.gold, border: "none", borderRadius: 10, color: "#FFF", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Pauzeer alerts</button>
+          </div>
+        )}
+
+        {/* Paused banner */}
+        {paused && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: C.epicBg, border: "1px solid rgba(212,146,46,0.2)", borderRadius: 14, marginBottom: 20 }}>
+            <span style={{ fontSize: 18 }}>⏸️</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.gold }}>Alerts gepauzeerd</div>
+              <div style={{ fontSize: 11, color: C.sub }}>Tot {pauseUntil}</div>
+            </div>
+            <button onClick={() => setPaused(false)} style={{ padding: "6px 12px", background: C.gold, border: "none", borderRadius: 8, color: "#FFF", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Hervatten</button>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════
+            ZONE 1 — JOUW ALERTS
+            ══════════════════════════════════════════ */}
+        <div style={{ marginBottom: 32 }}>
+          {/* Sectie header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              <span style={{ ...h, fontSize: 22, fontWeight: 800, color: C.navy, letterSpacing: "-0.3px" }}>Jouw alerts</span>
+            </div>
+            <Link href="/alert" style={{ fontSize: 13, color: C.sky, textDecoration: "none", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              Alle alerts <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            </Link>
+          </div>
+
+          {feedItems.length === 0 ? (
+            <div style={{ padding: "28px 20px", background: C.card, borderRadius: 18, boxShadow: C.cardShadow, display: "flex", alignItems: "center", gap: 16, border: `1.5px solid ${C.cardBorder}` }}>
+              <div style={{ width: 52, height: 52, borderRadius: 14, background: C.oceanTint, border: `1.5px solid ${C.sky}20`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="1.8" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 3 }}>Geen actieve alerts</div>
+                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Voeg spots toe en stel je windvoorkeuren in. WindPing waarschuwt je als het Go is.</div>
+              </div>
+            </div>
+          ) : (
+            feedItems.map((item) => {
+              const isGo = item.alertType === "go" || item.alertType === "mixed";
+              const isEpic = item.goSpots.some((s: any) => s.wind >= 25);
+              return (
+                <div key={item.targetDate} style={{ background: C.card, borderRadius: 18, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 12, border: `1.5px solid ${C.cardBorder}` }}>
+                  {/* Groene gradient header */}
+                  <div style={{ background: "linear-gradient(135deg, #1B6B4E 0%, #259068 60%, #2EAA7A 100%)", padding: "14px 16px 12px", position: "relative", overflow: "hidden" }}>
+                    <svg style={{ position: "absolute", right: -10, top: -5, opacity: 0.08, pointerEvents: "none" }} width="120" height="80" viewBox="0 0 120 80">
+                      <path d="M5 40 Q30 10 65 35 Q100 60 120 25" stroke="white" strokeWidth="12" fill="none" strokeLinecap="round"/>
+                      <path d="M0 65 Q25 40 55 58 Q85 76 120 50" stroke="white" strokeWidth="8" fill="none" strokeLinecap="round"/>
+                    </svg>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ flex: 1, position: "relative" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.7)", letterSpacing: "1.2px" }}>GO ALERT · {item.dateLabel.toUpperCase()}</span>
+                          {isEpic && <span style={{ fontSize: 8, fontWeight: 900, color: C.gold, background: "rgba(232,168,62,0.2)", padding: "1px 6px", borderRadius: 4, letterSpacing: "0.5px" }}>EPIC</span>}
+                        </div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-0.3px", lineHeight: 1.1 }}>
+                          {item.goSpots.length === 1 ? item.goSpots[0].spotName : `${item.goSpots.length} spots`}
+                        </div>
+                      </div>
+                      <div style={{ flexShrink: 0, textAlign: "center" }}>
+                        <div style={{ fontSize: 44, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-2px" }}>
+                          {Math.max(...item.goSpots.map((s: any) => s.wind))}
+                        </div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.55)", letterSpacing: "1px", marginTop: 1 }}>KNOPEN</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Body */}
+                  <div style={{ padding: "14px 16px 10px" }}>
+                    {/* Enkelvoudige spot: wind info balk */}
+                    {item.goSpots.length === 1 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12, padding: "10px 14px", background: C.goBg, borderRadius: 12, border: "1px solid rgba(62,170,140,0.15)" }}>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+                          <span style={{ fontSize: 28, fontWeight: 900, color: C.green, lineHeight: 1, letterSpacing: "-0.5px" }}>{item.goSpots[0].wind}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: C.green, opacity: 0.75 }}>kn</span>
+                        </div>
+                        <div style={{ width: 1, height: 28, background: "rgba(62,170,140,0.2)" }} />
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{item.goSpots[0].dir}</div>
+                          {item.goSpots[0].gust > 0 && <div style={{ fontSize: 11, color: C.muted }}>gusts {item.goSpots[0].gust}kn</div>}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Meerdere spots: lijst */}
+                    {item.goSpots.length > 1 && (
+                      <div style={{ marginBottom: 12 }}>
+                        {item.goSpots.map((s: any) => (
+                          <div key={s.spotName} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${C.cardBorder}` }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{s.spotName}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 14, fontWeight: 900, color: C.green }}>{s.wind}<span style={{ fontSize: 9, fontWeight: 600 }}>kn</span></span>
+                              <span style={{ fontSize: 11, color: C.muted }}>{s.dir}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Ik ga buttons */}
+                    {item.goSpots.length === 1 ? (
+                      <a href="#" onClick={(e) => { e.preventDefault(); handleIkGa(item.goSpots[0].spotName); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "10px 18px", background: "transparent", border: `2px solid ${C.green}`, borderRadius: 12, fontSize: 13, fontWeight: 700, color: C.green, textDecoration: "none", cursor: "pointer" }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Ik ga!
+                      </a>
+                    ) : (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+                        {item.goSpots.map((s: any) => (
+                          <a key={s.spotName} href="#" onClick={(e) => { e.preventDefault(); handleIkGa(s.spotName); }} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "8px 14px", background: "transparent", border: `2px solid ${C.green}`, borderRadius: 10, fontSize: 12, fontWeight: 700, color: C.green, textDecoration: "none", cursor: "pointer" }}>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                            → {s.spotName}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Downgrade sectie */}
+                    {item.downgradeSpots.length > 0 && (
+                      <div style={{ marginTop: 10, padding: "10px 12px", background: "#FEF2F2", borderRadius: 10, border: "1px solid rgba(220,38,38,0.12)" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#DC2626" }}>Alert ingetrokken</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#EF4444" }}>
+                          {item.downgradeSpots.map((s: any) => `${s.spotName} ${s.wind}kn`).join(" · ")}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px 12px", borderTop: `1px solid ${C.cardBorder}` }}>
+                    <div style={{ fontSize: 11, color: C.muted }}>
+                      {(() => { const diff = Math.floor((Date.now() - new Date(item.latestCreatedAt).getTime()) / 3600000); return diff < 1 ? "Zojuist" : diff < 24 ? `${diff}u geleden` : `${Math.floor(diff/24)}d geleden`; })()}
+                    </div>
+                    <Link href="/alert" style={{ fontSize: 12, fontWeight: 600, color: C.sky, textDecoration: "none" }}>
+                      Details →
+                    </Link>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* ══════════════════════════════════════════
+            ZONE 2 — CREW
+            ══════════════════════════════════════════ */}
+        {/* ── Sectie scheiding: Op het water ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "8px 0 20px" }}>
+          <div style={{ flex: 1, height: 1, background: `linear-gradient(to right, ${C.cardBorder}, transparent)` }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 14 }}>🤙</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "1.2px" }}>FEED</span>
+          </div>
+          <div style={{ flex: 1, height: 1, background: `linear-gradient(to left, ${C.cardBorder}, transparent)` }} />
+        </div>
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <span style={{ ...h, fontSize: 22, fontWeight: 800, color: C.navy, letterSpacing: "-0.3px" }}>Feed</span>
+            <Link href="/vrienden/feed" style={{ fontSize: 13, color: C.sky, textDecoration: "none", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+              Bekijk alles <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            </Link>
+          </div>
+
+          {friendActivity.length === 0 ? (
+            <div style={{ padding: "28px 20px", background: C.card, borderRadius: 18, boxShadow: C.cardShadow, display: "flex", alignItems: "center", gap: 16, border: `1.5px solid ${C.cardBorder}` }}>
+              <div style={{ width: 52, height: 52, borderRadius: 14, background: C.goBg, border: `1.5px solid ${C.green}20`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="1.8" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 3 }}>Nog geen vrienden</div>
+                <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Nodig je maten uit via Surfers —<br />zie wie er gaan en stook hun sessies.</div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {friendActivity.slice(0, 2).map((a: any) => {
+                const ratingLabels: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker!", 5: "EPIC!" };
+                const ratingColors: Record<number, string> = { 1: C.terra, 2: C.terra, 3: C.gold, 4: C.sky, 5: C.green };
+                return (
+                  <div key={a.id} style={{ background: C.card, borderRadius: 16, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 10, border: `1.5px solid ${C.cardBorder}` }}>
+                    {/* Header */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px 10px" }}>
+                      <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                        {a.friendName.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{a.friendName}</div>
+                        <div style={{ fontSize: 11, color: C.muted }}>{a.status === "completed" ? "Gisteren" : "Gaat"} · {a.spotName}</div>
+                      </div>
+                      {a.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColors[a.rating], background: `${ratingColors[a.rating]}15`, padding: "3px 9px", borderRadius: 8, flexShrink: 0 }}>{ratingLabels[a.rating]}</div>}
+                      {a.status === "going" && <div style={{ fontSize: 11, fontWeight: 700, color: C.green, background: `${C.green}15`, padding: "3px 9px", borderRadius: 8, flexShrink: 0 }}>Gaat!</div>}
+                    </div>
+                    {/* Photo */}
+                    {a.photoUrl && (
+                      <div style={{ width: "100%", aspectRatio: "16/9", overflow: "hidden", position: "relative" }}>
+                        <img src={a.photoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: a.photoCrop || "50% 50%", display: "block" }} />
+                        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(31,53,76,0.5) 100%)" }} />
+                        {a.forecastWind && (
+                          <div style={{ position: "absolute", bottom: 10, right: 12, background: "rgba(31,53,76,0.7)", backdropFilter: "blur(8px)", borderRadius: 8, padding: "4px 9px", textAlign: "center" }}>
+                            <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", lineHeight: 1 }}>{a.forecastWind}</div>
+                            <div style={{ fontSize: 8, color: "rgba(255,255,255,0.6)", fontWeight: 600 }}>{a.forecastDir || "KN"}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Gear / notes */}
+                    {(a.gearType || a.notes) && (
+                      <div style={{ padding: "9px 14px 12px", borderTop: `1px solid ${C.cardBorder}`, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+                        {a.gearType && (
+                          <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                            <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.sky, flexShrink: 0 }} />
+                            <span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>{a.gearType.replace(/-/g, " ")}{a.gearSize ? ` ${a.gearSize}m²` : ""}</span>
+                          </div>
+                        )}
+                        {(a.gearType || a.gearSize) && a.notes && <span style={{ color: C.muted, fontSize: 12 }}>·</span>}
+                        {a.notes && <span style={{ fontSize: 12, color: C.muted }}>{a.notes}</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+            </>
+          )}
+        </div>
+
+        {/* ── W. Ping scheiding */}
+        <div style={{ height: 1, background: C.cardBorder, margin: "4px 0 24px" }} />
+
+        {/* W. Ping message — prominent karakter */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ padding: "20px 18px 18px", background: `linear-gradient(135deg, ${C.oceanTint} 0%, #E8F6FA 100%)`, borderRadius: 20, border: "1.5px solid rgba(46,143,174,0.18)", boxShadow: "0 4px 20px rgba(46,143,174,0.10)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
+              <div style={{ flexShrink: 0, width: 52, height: 52, borderRadius: "50%", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(46,143,174,0.14)", border: "2px solid rgba(46,143,174,0.22)", boxShadow: "0 3px 10px rgba(46,143,174,0.12)" }}><WPing mood={showWelcome || goSpots.length > 0 ? "happy" : "sleep"} size={38} /></div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 15, fontWeight: 800, color: C.sky, lineHeight: 1 }}>W. Ping</div>
+                <div style={{ fontSize: 11, color: C.sub, marginTop: 3 }}>Jouw persoonlijke windwatcher</div>
+              </div>
+              <div style={{ fontSize: 11, color: C.muted, fontWeight: 500 }}>nu</div>
+            </div>
+            <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.6 }}>
+              {showWelcome ? (
+                <div>
+                  <div style={{ fontWeight: 700, color: C.navy, marginBottom: 6 }}>Welkom bij WindPing, {userName}! 🤙</div>
+                  <div style={{ marginBottom: 10 }}>Fijn dat je er bent. Dit kun je allemaal doen:</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[
+                      [Icons.wind, "Check", "zie de huidige wind op al je spots"],
+                      [Icons.mapPin, "Spots", "voeg je favoriete spots toe"],
+                      [Icons.calendar, "Sessies", "log je sessies en bekijk je stats"],
+                      [Icons.users, "Vrienden", "nodig je maten uit en deel sessies"],
+                      [Icons.bell, "Alerts", "ik ping je automatisch als het waait"],
+                    ].map(([icon, title, desc]: any) => (
+                      <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                        <span style={{ flexShrink: 0 }}>{icon({ color: C.sky, size: 14 })}</span>
+                        <span><strong>{title}</strong> — {desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(46,111,126,0.1)", fontSize: 12, color: C.sub }}>Zet je gear maar alvast klaar. 🤙</div>
+                </div>
+              ) : spots.length === 0 ? "Voeg je favoriete spots toe en ik houd de wind voor je in de gaten."
+                : goSpots.length > 0 ? `Yes! ${goSpots.length > 1 ? `${goSpots.length} spots zijn` : `${goSpots[0].name} is`} Go vandaag. Tas al ingepakt?`
+                : "Vandaag even geen wind op je spots. Ik houd het in de gaten!"}
+              {!showWelcome && friendActivity.length === 0 && spots.length > 0 && (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(46,111,126,0.1)" }}>
+                  <a href="/vrienden" style={{ fontSize: 12, color: C.sky, fontWeight: 600, textDecoration: "none" }}>🤙 Nodig je kitesurfers uit →</a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* ── SESSIES sectie scheiding ── */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
+          <div style={{ flex: 1, height: 1, background: `linear-gradient(to right, ${C.cardBorder}, transparent)` }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2.5" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "1.2px" }}>SESSIES</span>
+          </div>
+          <div style={{ flex: 1, height: 1, background: `linear-gradient(to left, ${C.cardBorder}, transparent)` }} />
+        </div>
+
+        {/* ── Sessie snelkoppeling ── */}
+        <div style={{ marginBottom: 16 }}>
+          <Link href="/mijn-sessies" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", background: C.card, borderRadius: 16, textDecoration: "none", boxShadow: C.cardShadow, border: `1.5px solid ${C.cardBorder}` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 13, background: "linear-gradient(135deg, #1B6B4E, #27A070)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {/* Golf/surf icoon */}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
+                  <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
+                  <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, lineHeight: 1.2 }}>Mijn sessies</div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                  {sessionStats.total_sessions > 0
+                    ? <>{sessionStats.season_sessions} dit seizoen · gem. rating <span style={{ color: C.gold, fontWeight: 700 }}>{sessionStats.avg_rating ? sessionStats.avg_rating.toFixed(1) : "—"}</span></>
+                    : "Log je eerste sessie →"}
+                </div>
+              </div>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2.5" strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+          </Link>
+        </div>
+
+                </div>{/* end inner padding div */}
+
+        {/* ── HANDMATIGE SESSIE MODAL ── */}
+        {showManualSession && (() => {
+          const userSpotIds = new Set(allSpots.map(s => s.id));
+          const otherSpots = allPublicSpots.filter(s => !userSpotIds.has(s.id));
+          const manualBoardTypesForProp = manualPropulsion === "zeil"
+            ? [{id:"freeride",label:"Freeride"},{id:"wave",label:"Wave"},{id:"freestyle",label:"Freestyle"},{id:"slalom",label:"Race / Slalom"}]
+            : manualPropulsion === "wing"
+            ? [{id:"wingboard",label:"Wingboard"},{id:"sup",label:"SUP"}]
+            : [{id:"twintip",label:"Twintip"},{id:"directional",label:"Directional"},{id:"wave",label:"Wave"},{id:"strapless",label:"Strapless"}];
+
+          return (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(31,53,76,0.55)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 16 }}
+              onClick={(e) => { if (e.target === e.currentTarget) { setShowManualSession(false); resetManualSession(); } }}>
+              <div style={{ background: C.cream, borderRadius: "20px 20px 20px 20px", width: "100%", maxWidth: 480, padding: "24px 20px 48px", maxHeight: "85vh", overflowY: "auto" }}>
+
+                {/* Header */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+                  <span style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, color: C.navy, letterSpacing: 0.5 }}>Sessie loggen</span>
+                  <button onClick={() => { setShowManualSession(false); resetManualSession(); }}
+                    style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: C.muted, lineHeight: 1 }}>×</button>
+                </div>
+
+                {/* Progress bar */}
+                {manualStep !== "pick" && (
+                  <div style={{ display: "flex", gap: 4, marginBottom: 24 }}>
+                    {[1,2,3,4,5,6].map(s => (
+                      <div key={s} style={{ flex: 1, height: 4, borderRadius: 2, background: (manualStep as number) >= s ? C.sky : C.cardBorder, transition: "background 0.3s ease" }} />
+                    ))}
+                  </div>
+                )}
+
+                {manualError && (
+                  <div style={{ padding: "10px 14px", background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 10, fontSize: 12, color: "#DC2626", marginBottom: 16 }}>{manualError}</div>
+                )}
+
+                {/* ── SAVED: Sessie opgeslagen + deel ── */}
+                {(manualStep as any) === "saved" && (
+                  <div style={{ textAlign: "center", padding: "8px 0 16px" }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>🤙</div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: C.navy, marginBottom: 6 }}>Sessie gelogd!</div>
+                    <div style={{ fontSize: 14, color: C.sub, marginBottom: 28 }}>
+                      {manualWeather ? `${manualWeather.wind}kn ${manualWeather.dirStr} · ` : ""}
+                      {allSpots.find(s => s.id === manualSpotId)?.name || ""}
+                    </div>
+
+                    {savedSessionId && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                        <button
+                          onClick={() => {
+                            const spotName = allSpots.find(s => s.id === manualSpotId)?.name || "een spot";
+                            const wind = manualWeather ? `${manualWeather.wind}kn ${manualWeather.dirStr}` : "";
+                            const text = `🤙 Net een sessie gelogd op ${spotName}${wind ? ` · ${wind}` : ""} — bekijk hem op WindPing!`;
+                            const url = `https://www.windping.com/sessie/${savedSessionId}`;
+                            if ((navigator as any).share) {
+                              (navigator as any).share({ title: "WindPing sessie", text, url }).catch(() => {});
+                            } else {
+                              navigator.clipboard.writeText(`${text} ${url}`);
+                            }
+                          }}
+                          style={{ width: "100%", padding: "14px", background: `linear-gradient(135deg, ${C.green}, ${C.skyDark})`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                          Deel sessie 🤙
+                        </button>
+                        <a
+                          href={`https://wa.me/?text=${encodeURIComponent(`🤙 Net een sessie gelogd op ${allSpots.find(s => s.id === manualSpotId)?.name || "een spot"}${manualWeather ? ` · ${manualWeather.wind}kn ${manualWeather.dirStr}` : ""} — https://www.windping.com/sessie/${savedSessionId}`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: "block", width: "100%", padding: "14px", background: "#25D366", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer", textDecoration: "none", boxSizing: "border-box" }}>
+                          Stuur via WhatsApp
+                        </a>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => { setShowManualSession(false); resetManualSession(); }}
+                      style={{ width: "100%", padding: "12px", background: "rgba(31,53,76,0.06)", color: C.navy, border: "none", borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                      Klaar
+                    </button>
+                  </div>
+                )}
+
+                {/* ── PICK: Spot + datum ── */}
+                {manualStep === "pick" && (
+                  <>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>SPOT</label>
+                      {manualSpotId ? (
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.sky}`, borderRadius: 12 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{allSpots.find(s => s.id === manualSpotId)?.name || otherSpots.find(s => s.id === manualSpotId)?.name || "Spot"}</span>
+                          <button onClick={() => setManualSpotId("")} style={{ fontSize: 11, color: C.sky, fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}>Wijzig</button>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, overflow: "hidden" }}>
+                            {allSpots.length > 0 ? (
+                              <>
+                                <div style={{ padding: "8px 14px 4px", fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.5 }}>MIJN SPOTS</div>
+                                {allSpots.map(s => (
+                                  <button key={s.id} onClick={() => setManualSpotId(s.id)}
+                                    style={{ padding: "10px 14px", textAlign: "left", background: "none", border: "none", borderTop: `1px solid ${C.cardBorder}`, cursor: "pointer", fontSize: 14, fontWeight: 600, color: C.navy }}>
+                                    {s.name}
+                                  </button>
+                                ))}
+                              </>
+                            ) : (
+                              <div style={{ padding: "12px 14px", fontSize: 13, color: C.muted }}>Geen eigen spots</div>
+                            )}
+                          </div>
+                          <a href="/spot-select" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, textDecoration: "none" }}>
+                            <span style={{ fontSize: 14, fontWeight: 600, color: C.navy }}>Andere spot kiezen</span>
+                            <span style={{ fontSize: 14, color: C.sky }}>→</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ marginBottom: 24 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>DATUM</label>
+                      <input type="date" value={manualDate} max={new Date().toISOString().split("T")[0]}
+                        onChange={e => setManualDate(e.target.value)}
+                        style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy, boxSizing: "border-box", outline: "none" }} />
+                    </div>
+                    <button onClick={async () => { if (!manualSpotId) return; await fetchManualWeather(Number(manualSpotId), manualDate); setManualStep(1); }}
+                      disabled={!manualSpotId}
+                      style={{ width: "100%", padding: "14px", background: manualSpotId ? C.sky : C.cardBorder, border: "none", borderRadius: 12, color: "#FFF", fontSize: 15, fontWeight: 700, cursor: manualSpotId ? "pointer" : "not-allowed", opacity: manualSpotId ? 1 : 0.6 }}>
+                      Volgende →
+                    </button>
+                  </>
+                )}
+
+                {/* ── STEP 1: Rating ── */}
+                {manualStep === 1 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Hoe was het?</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 16px" }}>Geef je sessie een eerlijke beoordeling</p>
+                    {(manualWeatherLoading || manualWeather) && (
+                      <div style={{ textAlign: "center", marginBottom: 16 }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 16px", background: C.goBg, borderRadius: 20, fontSize: 13 }}>
+                          {manualWeatherLoading
+                            ? <span style={{ color: C.muted }}>Weerdata ophalen...</span>
+                            : <><span style={{ fontWeight: 800, color: C.green }}>{manualWeather!.wind}kn</span><span style={{ color: C.sub }}>{manualWeather!.dirStr}</span><span style={{ color: C.muted, fontSize: 11 }}> · gusts {manualWeather!.gust}kn</span></>
+                          }
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 28 }}>
+                      {RATINGS.map(r => (
+                        <button key={r.value} onClick={() => { setManualRating(r.value); setTimeout(() => setManualStep(2), 280); }} style={{
+                          width: 58, padding: "14px 0", borderRadius: 16,
+                          border: `2px solid ${manualRating === r.value ? RATING_COLORS[r.value] : C.cardBorder}`,
+                          background: manualRating === r.value ? `${RATING_COLORS[r.value]}12` : C.card,
+                          cursor: "pointer", transition: "all 0.2s",
+                          transform: manualRating === r.value ? "scale(1.12)" : "scale(1)",
+                          boxShadow: manualRating === r.value ? `0 6px 20px ${RATING_COLORS[r.value]}35` : C.cardShadow,
+                          display: "flex", flexDirection: "column", alignItems: "center",
+                        }}>
+                          <RatingIcon value={r.value} selected={manualRating === r.value} size={32} />
+                          <div style={{ fontSize: 9, fontWeight: 800, color: manualRating === r.value ? RATING_COLORS[r.value] : C.muted, marginTop: 6 }}>{r.label}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── STEP 2: Propulsion ── */}
+                {manualStep === 2 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Wat reed je?</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 20px" }}>Kite, wing of sail?</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                      {(["kite","wing","zeil"] as const).map(p => (
+                        <button key={p} onClick={() => { setManualPropulsion(p); setManualStep(p === "kite" ? 4 : 3); }} style={{
+                          padding: "22px 10px", borderRadius: 16,
+                          border: `2px solid ${manualPropulsion === p ? C.sky : C.cardBorder}`,
+                          background: manualPropulsion === p ? `${C.sky}12` : C.card,
+                          cursor: "pointer", transition: "all 0.2s",
+                          boxShadow: manualPropulsion === p ? `0 4px 16px ${C.sky}25` : C.cardShadow,
+                          display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+                        }}>
+                          <PropIcon id={p} selected={manualPropulsion === p} />
+                          <div style={{ fontSize: 13, fontWeight: 700, color: manualPropulsion === p ? C.sky : C.navy }}>{p === "zeil" ? "Sail" : p.charAt(0).toUpperCase() + p.slice(1)}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setManualStep(6)} style={{ width: "100%", marginTop: 14, padding: "13px", background: "none", border: "none", color: C.muted, fontSize: 13, cursor: "pointer" }}>Overslaan →</button>
+                  </div>
+                )}
+
+                {/* ── STEP 3: Foil or Board ── */}
+                {manualStep === 3 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Foil of board?</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 20px" }}>Wat had je onder je voeten?</p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <button onClick={() => { setManualBoardOrFoil("foil"); setManualStep(5); }} style={{
+                        padding: "28px 16px", borderRadius: 16,
+                        border: `2px solid ${manualBoardOrFoil === "foil" ? C.sky : C.cardBorder}`,
+                        background: manualBoardOrFoil === "foil" ? `${C.sky}12` : C.card,
+                        cursor: "pointer", transition: "all 0.2s",
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
+                      }}>
+                        <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+                          <line x1="26" y1="8" x2="26" y2="40" stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="2.5" strokeLinecap="round"/>
+                          <path d="M10 34 L42 34" stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="2.5" strokeLinecap="round"/>
+                          <rect x="19" y="5" width="14" height="6" rx="3" fill={manualBoardOrFoil === "foil" ? `${C.sky}20` : "#B0BAC520"} stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="1.5"/>
+                        </svg>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: manualBoardOrFoil === "foil" ? C.sky : C.navy }}>Foil</div>
+                      </button>
+                      <button onClick={() => { setManualBoardOrFoil("board"); setManualStep(4); }} style={{
+                        padding: "28px 16px", borderRadius: 16,
+                        border: `2px solid ${manualBoardOrFoil === "board" ? C.sky : C.cardBorder}`,
+                        background: manualBoardOrFoil === "board" ? `${C.sky}12` : C.card,
+                        cursor: "pointer", transition: "all 0.2s",
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
+                      }}>
+                        <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
+                          <path d="M26 8 Q38 10 40 26 Q38 42 26 44 Q14 42 12 26 Q14 10 26 8Z" fill={manualBoardOrFoil === "board" ? `${C.sky}15` : "#B0BAC515"} stroke={manualBoardOrFoil === "board" ? C.sky : "#B0BAC5"} strokeWidth="1.8"/>
+                        </svg>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: manualBoardOrFoil === "board" ? C.sky : C.navy }}>Board</div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── STEP 4: Board type ── */}
+                {manualStep === 4 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Welk type board?</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 16px" }}>
+                      {manualPropulsion === "zeil" ? "Windsurf board type" : manualPropulsion === "wing" ? "Board onder de wing" : "Kite board type"}
+                    </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {manualBoardTypesForProp.map(bt => (
+                        <button key={bt.id} onClick={() => { setManualBoardType(bt.id); setManualStep(5); }} style={{
+                          padding: "16px 20px", borderRadius: 14, textAlign: "left",
+                          border: `2px solid ${manualBoardType === bt.id ? C.sky : C.cardBorder}`,
+                          background: manualBoardType === bt.id ? `${C.sky}10` : C.card,
+                          cursor: "pointer", transition: "all 0.2s",
+                        }}>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: manualBoardType === bt.id ? C.sky : C.navy }}>{bt.label}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => setManualStep(5)} style={{ width: "100%", marginTop: 14, padding: "13px", background: "none", border: "none", color: C.muted, fontSize: 13, cursor: "pointer" }}>Overslaan →</button>
+                  </div>
+                )}
+
+                {/* ── STEP 5: Maten ── */}
+                {manualStep === 5 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Maten</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 20px" }}>Optioneel — wat had je op?</p>
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>
+                        {manualPropulsion === "kite" ? "KITE (m²)" : manualPropulsion === "wing" ? "WING (m²)" : "ZEIL (m²)"}
+                      </label>
+                      <div style={{ position: "relative" }}>
+                        <input type="text" inputMode="decimal" value={manualSailSize}
+                          onChange={e => setManualSailSize(e.target.value.replace(/[^0-9.,]/g,"").replace(",","."))}
+                          placeholder={manualPropulsion === "zeil" ? "7.6" : manualPropulsion === "wing" ? "5.0" : "12"}
+                          style={{ width: "100%", padding: "13px 48px 13px 16px", borderRadius: 12, border: `1.5px solid ${manualSailSize ? C.sky : C.cardBorder}`, fontSize: 16, color: C.navy, background: C.card, boxSizing: "border-box", outline: "none" }} />
+                        <span style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: C.muted, pointerEvents: "none" }}>m²</span>
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 24 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>BOARD LENGTE (cm)</label>
+                      <div style={{ position: "relative" }}>
+                        <input type="text" inputMode="numeric" value={manualBoardLength}
+                          onChange={e => setManualBoardLength(e.target.value.replace(/[^0-9]/g,""))}
+                          placeholder={manualPropulsion === "zeil" ? "245" : "138"}
+                          style={{ width: "100%", padding: "13px 48px 13px 16px", borderRadius: 12, border: `1.5px solid ${manualBoardLength ? C.sky : C.cardBorder}`, fontSize: 16, color: C.navy, background: C.card, boxSizing: "border-box", outline: "none" }} />
+                        <span style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: C.muted, pointerEvents: "none" }}>cm</span>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button onClick={() => setManualStep(manualBoardOrFoil === "foil" ? 3 : 4)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
+                      <button onClick={() => setManualStep(6)} style={{ flex: 1, padding: "14px", background: C.sky, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                        {manualSailSize || manualBoardLength ? "Volgende →" : "Overslaan →"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── STEP 6: Details + samenvatting ── */}
+                {manualStep === 6 && (
+                  <div style={{ animation: "fadeUp 0.3s ease" }}>
+                    <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Details</h2>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 16px" }}>Hoe voelde het op het water?</p>
+
+                    {/* Wind feel */}
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>HOE VOELDE DE WIND?</label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {WIND_FEELS.map(w => (
+                          <button key={w.id} onClick={() => setManualWindFeel(manualWindFeel === w.id ? null : w.id)} style={{
+                            flex: 1, padding: "12px 6px", borderRadius: 12,
+                            border: `2px solid ${manualWindFeel === w.id ? C.sky : C.cardBorder}`,
+                            background: manualWindFeel === w.id ? `${C.sky}12` : C.card,
+                            cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center",
+                          }}>
+                            <WindFeelIcon id={w.id} selected={manualWindFeel === w.id} size={26} />
+                            <div style={{ fontSize: 9, fontWeight: 700, color: manualWindFeel === w.id ? C.sky : C.muted, marginTop: 4 }}>{w.label}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Notes */}
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6, letterSpacing: 0.5 }}>NOTITIES (optioneel)</label>
+                      <textarea value={manualNotes} onChange={e => setManualNotes(e.target.value)}
+                        placeholder="Hoe was het water? Iets bijzonders? Tips voor de volgende keer?"
+                        rows={3}
+                        style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${C.cardBorder}`, fontSize: 14, color: C.navy, background: C.card, resize: "vertical", boxSizing: "border-box", lineHeight: 1.5, outline: "none", fontFamily: "DM Sans, sans-serif" }} />
+                    </div>
+
+                    {/* Foto */}
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6, letterSpacing: 0.5 }}>FOTO (optioneel)</label>
+                      {manualPhotoUrl ? (
+                        <div style={{ position: "relative", borderRadius: 12, overflow: "hidden" }}>
+                          <img src={manualPhotoUrl} alt="Sessie foto" style={{ width: "100%", height: 180, objectFit: "cover", display: "block" }} />
+                          <button onClick={() => setManualPhotoUrl(null)} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                        </div>
+                      ) : (
+                        <div onClick={() => { if (!manualPhotoUploading) document.getElementById("manual-photo-input")?.click(); }}
+                          style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "24px 16px", borderRadius: 12, border: `2px dashed ${C.cardBorder}`, background: C.card, cursor: manualPhotoUploading ? "not-allowed" : "pointer" }}>
+                          {manualPhotoUploading ? (
+                            <><div style={{ width: 20, height: 20, border: `2px solid ${C.cardBorder}`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite" }} /><div style={{ fontSize: 13, color: C.muted }}>Uploaden...</div></>
+                          ) : (
+                            <><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><div style={{ fontSize: 13, color: C.muted, fontWeight: 600 }}>Tik om foto toe te voegen</div></>
+                          )}
+                        </div>
+                      )}
+                      <input id="manual-photo-input" type="file" accept="image/*" style={{ display: "none" }}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setManualPhotoUploading(true);
+                          setManualError("");
+                          try {
+                            const formData = new FormData();
+                            formData.append("file", file);
+                            formData.append("session_id", "temp_" + Date.now());
+                            const res = await fetch("/api/upload", { method: "POST", body: formData });
+                            const data = await res.json();
+                            if (res.ok && data.url) { setManualPhotoUrl(data.url); }
+                            else { setManualError(`Foto upload mislukt: ${data.error || "onbekend"}`); }
+                          } catch { setManualError("Foto upload mislukt."); }
+                          setManualPhotoUploading(false);
+                          e.target.value = "";
+                        }} />
+                    </div>
+
+                    {/* Samenvatting */}
+                    <div style={{ padding: "14px 16px", background: C.card, borderRadius: 14, boxShadow: C.cardShadow, marginBottom: 20, border: `1px solid ${C.cardBorder}` }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 10, letterSpacing: 0.5 }}>SAMENVATTING</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        {manualRating && <RatingIcon value={manualRating} selected={true} size={36} />}
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>
+                            {[...allSpots, ...otherSpots].find(s => s.id === manualSpotId)?.name}
+                          </div>
+                          <div style={{ fontSize: 12, color: C.sub, marginTop: 2, lineHeight: 1.5 }}>
+                            {new Date(manualDate + "T12:00:00").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" })}
+                            {manualPropulsion && ` · ${manualPropulsion === "zeil" ? "windsurf" : manualPropulsion}`}
+                            {manualBoardType && ` ${manualBoardType}`}
+                            {manualSailSize && ` · ${manualSailSize}m²`}
+                            {manualBoardLength && ` · ${manualBoardLength}cm`}
+                            {manualWindFeel && ` · ${WIND_FEELS.find(w => w.id === manualWindFeel)?.label}`}
+                          </div>
+                        </div>
+                        {manualWeather && <div style={{ fontSize: 15, fontWeight: 800, color: C.green }}>{manualWeather.wind}kn</div>}
+                        {manualRating && <div style={{ fontSize: 12, fontWeight: 800, color: RATING_COLORS[manualRating], minWidth: 44, textAlign: "right" }}>{RATINGS.find(r => r.value === manualRating)?.label}</div>}
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button onClick={() => setManualStep(5)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
+                      <button onClick={handleManualSessionSave} disabled={manualSaving || manualPhotoUploading}
+                        style={{ flex: 1, padding: "14px", background: C.green, color: "#FFF", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: (manualSaving || manualPhotoUploading) ? "not-allowed" : "pointer", opacity: (manualSaving || manualPhotoUploading) ? 0.6 : 1 }}>
+                        {manualSaving ? "Opslaan..." : "✓ Log sessie"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Logout */}
+        <div style={{ padding: "0 16px" }}>
+          <button onClick={async () => { await clearAuth(); window.location.href = "/login"; }} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "13px", background: "none", border: `1px solid ${C.cardBorder}`, borderRadius: 12, color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Uitloggen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LANDING PAGE
+   ═══════════════════════════════════════════════════════════ */
+
+function FeatureCard({ icon, title, desc, color, soon }: { icon: any; title: string; desc: string; color: string; soon?: boolean }) {
+  return (
+    <div style={{ background: C.card, borderRadius: 14, boxShadow: C.cardShadow, padding: 16, display: "flex", alignItems: "center", gap: 14 }}>
+      <div style={{ width: 40, height: 40, borderRadius: 11, background: `${color}12`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{icon({ color, size: 20 })}</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{title}</div>
+          {soon && <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: `${C.purple}15`, color: C.purple }}>Binnenkort</span>}
+        </div>
+        <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5, marginTop: 2 }}>{desc}</div>
+      </div>
+    </div>
+  );
+}
+
+function StepCard({ num, title, desc }: { num: string; title: string; desc: string }) {
+  return (
+    <div style={{ display: "flex", gap: 14 }}>
+      <div style={{ flexShrink: 0 }}><div style={{ width: 32, height: 32, borderRadius: "50%", background: C.sky, display: "flex", alignItems: "center", justifyContent: "center", color: "#FFF", fontWeight: 800, fontSize: 14, boxShadow: "0 2px 8px rgba(46,111,126,0.2)" }}>{num}</div></div>
+      <div style={{ paddingTop: 4 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 2 }}>{title}</div>
+        <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.5 }}>{desc}</div>
+      </div>
+    </div>
+  );
+}
+
+const features = [
+  { icon: Icons.mapPin, title: "Jouw Spots", desc: "Sla je favoriete kite- en windsurfspots op. Wij volgen 393+ locaties met live winddata.", color: C.sky },
+  { icon: Icons.bell, title: "Slimme Alerts", desc: "Ontvang dagen van tevoren een melding als de condities matchen. Push en e-mail.", color: C.green },
+  { icon: Icons.sliders, title: "Jouw Voorkeuren", desc: "Stel je ideale windsnelheid, richting, getij en temperatuur in.", color: C.gold },
+  { icon: Icons.plus, title: "Eigen Spot Toevoegen", desc: "Spot niet in de lijst? Voeg hem zelf toe — privé of gedeeld.", color: C.skyDark },
+  { icon: Icons.users, title: "Community", desc: "Zie wie er op het water gaat, deel sessies en ontdek nieuwe spots.", color: C.purple, soon: true },
+];
+
+const steps = [
+  { num: "1", title: "Kies je spots", desc: "Selecteer spots uit onze database of voeg je eigen geheime plekje toe." },
+  { num: "2", title: "Stel je voorkeuren in", desc: "Windsnelheid, richting, temperatuur en de dagen dat jij kunt." },
+  { num: "3", title: "Ontvang je ping", desc: "WindPing checkt de forecast en stuurt je een alert zodra het matcht." },
+];
+
+function LandingPage() {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { setTimeout(() => setLoaded(true), 50); }, []);
+
+  return (
+    <main style={{ background: C.cream, minHeight: "100vh", overflowX: "hidden" }}>
+      <section style={{ position: "relative", minHeight: "92svh", overflow: "hidden", background: "#1A3A4A" }}>
+        <img src="/Hero-ocean.jpg" alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "70% 40%" }} />
+        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(160deg, rgba(26,58,74,0.88) 0%, rgba(26,58,74,0.7) 30%, rgba(26,58,74,0.35) 55%, rgba(26,58,74,0.1) 75%, transparent 100%)", zIndex: 2 }} />
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "35%", background: `linear-gradient(to bottom, transparent 0%, ${C.cream}44 30%, ${C.cream}aa 60%, ${C.cream} 90%)`, zIndex: 3 }} />
+        <div style={{ position: "relative", zIndex: 10, minHeight: "92svh", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px" }}>
+            <Logo size={28} dark />
+            <Link href="/login" style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.85)", textDecoration: "none", padding: "8px 18px", border: "1.5px solid rgba(255,255,255,0.25)", borderRadius: 10, backdropFilter: "blur(4px)", background: "rgba(255,255,255,0.05)" }}>Log in</Link>
+          </div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 600, width: "100%", margin: "0 auto", padding: "0 24px" }}>
+            <div style={{ maxWidth: 440, margin: "0 auto", opacity: loaded ? 1 : 0, transform: loaded ? "translateY(0)" : "translateY(30px)", transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1)" }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 16px", borderRadius: 20, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.1)", marginBottom: 24, backdropFilter: "blur(8px)" }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, boxShadow: `0 0 8px ${C.green}` }} />
+                <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "1.5px", color: "rgba(255,255,255,0.7)", textTransform: "uppercase" }}>Kitesurf &amp; Windsurf Alerts</span>
+              </div>
+              <h1 style={{ ...h, fontSize: "clamp(3rem, 12vw, 4.2rem)", lineHeight: 0.95, color: "white", margin: "0 0 16px", letterSpacing: -1 }}>
+                Stop Checkin&apos; The Weather,<br />
+                <span style={{ color: C.terra, position: "relative" }}>
+                  Start Riding Together!
+                  <svg viewBox="0 0 200 12" style={{ position: "absolute", bottom: -4, left: 0, width: "100%", height: 12, overflow: "visible" }}><path d="M5 8 Q50 2 100 7 Q150 12 195 5" stroke={C.terra} strokeWidth="3" fill="none" strokeLinecap="round" opacity="0.5" /></svg>
+                </span>
+              </h1>
+              <p style={{ fontSize: 18, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, maxWidth: 360, marginBottom: 32, fontWeight: 400 }}>We&apos;ll ping you when it&apos;s Go!</p>
+              <div style={{ display: "flex", gap: 12, marginBottom: 40, maxWidth: 380 }}>
+                <Link href="/signup" style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 0", background: C.terra, color: "#FFF", fontWeight: 700, fontSize: 15, borderRadius: 12, textDecoration: "none", boxShadow: "0 4px 20px rgba(201,122,99,0.4)" }}>Gratis aanmelden <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></Link>
+                <Link href="#how" style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 0", background: "white", color: C.navy, fontWeight: 600, fontSize: 14, borderRadius: 12, textDecoration: "none", boxShadow: "0 2px 12px rgba(0,0,0,0.12)" }}>Hoe werkt het?</Link>
+              </div>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 14, padding: "10px 20px", borderRadius: 14, background: "rgba(26,58,74,0.7)", backdropFilter: "blur(12px)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span style={{ fontSize: 12, color: "white", fontWeight: 600 }}>393+ spots</span></div>
+                <div style={{ width: 1, height: 12, background: "rgba(255,255,255,0.25)" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg><span style={{ fontSize: 12, color: "white", fontWeight: 600 }}>Alerts vooraf</span></div>
+                <div style={{ width: 1, height: 12, background: "rgba(255,255,255,0.25)" }} />
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span style={{ fontSize: 12, color: "white", fontWeight: 600 }}>Push alerts</span></div>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, paddingBottom: 20 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "1px", color: "rgba(255,255,255,0.35)", textTransform: "uppercase" }}>Meer</span>
+            <div style={{ width: 1, height: 24, background: "linear-gradient(to bottom, rgba(255,255,255,0.3), transparent)", animation: "scrollPulse 2s ease-in-out infinite" }} />
+          </div>
+        </div>
+      </section>
+      <section style={{ padding: "20px 20px 12px", maxWidth: 520, margin: "0 auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px", background: C.oceanTint, borderRadius: 16, border: "1px solid rgba(46,111,126,0.08)", marginBottom: 24 }}>
+          <WPing mood="happy" size={48} />
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 2 }}>Hoi, ik ben W. Ping!</div>
+            <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.5 }}>Ik houd de wind in de gaten en stuur je <strong style={{ color: C.navy }}>dagen van tevoren</strong> een seintje als er een goede sessie aankomt.</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "1.5px", color: C.sky, marginBottom: 16 }}>Waarom WindPing</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{features.map((f: any) => <FeatureCard key={f.title} {...f} />)}</div>
+      </section>
+      <section id="how" style={{ padding: "36px 20px 40px", maxWidth: 520, margin: "0 auto" }}>
+        <div style={{ padding: "28px 24px", background: C.creamDark, borderRadius: 18 }}>
+          <h2 style={{ ...h, fontSize: 20, fontWeight: 800, color: C.navy, marginBottom: 20 }}>Hoe werkt het?</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>{steps.map((s) => <StepCard key={s.num} {...s} />)}</div>
+        </div>
+      </section>
+      <section style={{ padding: "0 20px 36px", maxWidth: 520, margin: "0 auto" }}>
+        <div style={{ background: C.card, borderRadius: 16, boxShadow: C.cardShadow, padding: "22px 20px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}><Logo variant="icon" size={28} /><span style={{ fontSize: 12, fontWeight: 700, color: C.sky, letterSpacing: "0.5px" }}>393+ Spots</span></div>
+          <h3 style={{ ...h, fontSize: 18, fontWeight: 800, color: C.navy, margin: "0 0 6px" }}>Vind Jouw Spot</h3>
+          <p style={{ fontSize: 12, color: C.sub, lineHeight: 1.55, margin: "0 0 16px" }}>Ontdek kite- en windsurfspots door heel Europa en Marokko. Staat jouw spot er niet bij? Voeg hem toe.</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Link href="/spot-select" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 20px", background: C.oceanTint, color: C.sky, fontWeight: 600, fontSize: 13, borderRadius: 12, textDecoration: "none" }}>{Icons.search({ color: C.sky })} Bekijk spots</Link>
+            <Link href="/signup" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 20px", background: C.cream, color: C.sub, fontWeight: 600, fontSize: 13, borderRadius: 12, border: `1px solid ${C.cardBorder}`, textDecoration: "none" }}>{Icons.plus({ color: C.sub })} Voeg jouw spot toe</Link>
+          </div>
+        </div>
+      </section>
+      <section style={{ padding: "40px 20px 52px", background: "linear-gradient(170deg, #1F354C 0%, #2E6F7E 100%)", textAlign: "center", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", top: -1, left: 0, right: 0, height: 50, background: C.cream, maskImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 430 50' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0 L430 0 L430 25 Q380 50 320 20 Q260 -5 200 25 Q140 50 80 20 Q30 -5 0 25Z' fill='black'/%3E%3C/svg%3E")`, WebkitMaskImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 430 50' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0 L430 0 L430 25 Q380 50 320 20 Q260 -5 200 25 Q140 50 80 20 Q30 -5 0 25Z' fill='black'/%3E%3C/svg%3E")`, maskSize: "cover", WebkitMaskSize: "cover" }} />
+        <svg style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", opacity: 0.06 }} viewBox="0 0 430 200" preserveAspectRatio="none"><path d="M-50 100 C50 70 150 130 250 80 S400 50 530 100" stroke="white" strokeWidth="40" strokeLinecap="round" fill="none" /></svg>
+        <div style={{ position: "relative", zIndex: 1, maxWidth: 380, margin: "0 auto" }}>
+          <div style={{ marginBottom: 12 }}><WPing mood="happy" size={44} style={{ margin: "0 auto" }} /></div>
+          <Logo variant="text" size={32} dark style={{ justifyContent: "center", marginBottom: 8 }} />
+          <div style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", fontStyle: "italic", marginBottom: 28 }}>Jouw perfecte sessie, onze obsessie</div>
+          <Link href="/signup" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "15px 32px", background: C.terra, color: "#FFF", fontWeight: 700, fontSize: 15, borderRadius: 12, textDecoration: "none", boxShadow: "0 4px 20px rgba(201,122,99,0.3)" }}>Gratis aanmelden <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></Link>
+          <div style={{ marginTop: 16, fontSize: 13, color: "rgba(255,255,255,0.35)" }}>Al een account? <Link href="/login" style={{ color: "rgba(255,255,255,0.6)", textDecoration: "none", fontWeight: 600 }}>Log in</Link></div>
+        </div>
+      </section>
+      <footer style={{ borderTop: `1px solid ${C.cardBorder}`, padding: "24px 20px", background: C.cream }}>
+        <div style={{ maxWidth: 520, margin: "0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}><Logo variant="icon" size={20} /><span style={{ fontSize: 11, color: C.sub }}>© 2026 WindPing</span></div>
+          <nav style={{ display: "flex", gap: 20 }}>
+            <Link href="/spot-select" style={{ fontSize: 12, color: C.sub, textDecoration: "none" }}>Spots</Link>
+            <Link href="/login" style={{ fontSize: 12, color: C.sub, textDecoration: "none" }}>Log in</Link>
+            <Link href="/signup" style={{ fontSize: 12, color: C.sky, textDecoration: "none", fontWeight: 600 }}>Aanmelden</Link>
+          </nav>
+        </div>
+      </footer>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}@keyframes scrollPulse{0%,100%{opacity:0.3;transform:scaleY(1)}50%{opacity:0.8;transform:scaleY(1.3)}}`}</style>
+    </main>
+  );
+}
+
+export default function HomePage() {
+  const [view, setView] = useState<"loading" | "landing" | "dashboard">("loading");
+  useEffect(() => {
+    const email = getEmail();
+    setView(email && !isTokenExpired() ? "dashboard" : "landing");
+  }, []);
+  if (view === "loading") return (<div style={{ background: C.cream, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><Logo variant="icon" size={48} animated /></div>);
+  if (view === "dashboard") return <Dashboard />;
+  return <LandingPage />;
+}
