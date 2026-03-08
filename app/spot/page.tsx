@@ -210,13 +210,12 @@ function SpotDetailContent() {
 
       if (existing) setIsSaved(true);
       setLoading(false);
-
-      // Laad prikbord posts
-      try {
-        const posts = await sbGet(`spot_posts?spot_id=eq.${spotId}&order=created_at.desc&limit=20&select=id,type,content,author_name,created_at,wind_speed,wind_dir`);
-        setPrikbordPosts(posts || []);
-      } catch {}
     }).catch((e) => { setError(e.message); setLoading(false); });
+
+    // Laad prikbord posts (los van de main fetch)
+    sbGet(`spot_posts?spot_id=eq.${spotId}&order=created_at.desc&limit=20&select=id,type,content,author_name,created_at,wind_speed,wind_dir`)
+      .then(posts => setPrikbordPosts(posts || []))
+      .catch(() => {});
   }, [spotId]);
 
   /* ── Load Leaflet ── */
