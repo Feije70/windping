@@ -1114,16 +1114,9 @@ function Dashboard() {
         {/* ══════════════════════════════════════════
             ZONE 2 — CREW
             ══════════════════════════════════════════ */}
-        {/* ── Sectie scheiding: Op het water ── */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "8px 0 20px" }}>
-          <div style={{ flex: 1, height: 1, background: `linear-gradient(to right, ${C.cardBorder}, transparent)` }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 14 }}>🤙</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "1.2px" }}>FEED</span>
-          </div>
-          <div style={{ flex: 1, height: 1, background: `linear-gradient(to left, ${C.cardBorder}, transparent)` }} />
-        </div>
-        <div style={{ marginBottom: 32 }}>
+        {/* ── Feed scheiding ── */}
+        <div style={{ height: 1, background: C.cardBorder, margin: "4px 0 0" }} />
+        <div style={{ marginLeft: -16, marginRight: -16, marginBottom: 32, padding: "24px 16px 20px", background: "#E4D9CB" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <span style={{ ...h, fontSize: 22, fontWeight: 800, color: C.navy, letterSpacing: "-0.3px" }}>Feed</span>
             <Link href="/vrienden/feed" style={{ fontSize: 13, color: C.sky, textDecoration: "none", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
