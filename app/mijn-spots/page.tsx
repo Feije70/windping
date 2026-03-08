@@ -47,7 +47,7 @@ const typeGrad: Record<string, string> = {
   rivier: "linear-gradient(90deg,#B07030,#E8A83E)",
 };
 
-function MySpotCard({ spot, userId, onDelete }: { spot: MySpot; userId: number; onDelete: () => void }) {
+function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: { spot: MySpot; userId: number; onDelete: () => void; isHome: boolean; onSetHome: () => void; settingHome: boolean }) {
   const [enabled, setEnabled] = useState(spot.enabled);
   const [deleting, setDeleting] = useState(false);
   const tc = typeColors[spot.type] || C.sky;
@@ -85,7 +85,10 @@ function MySpotCard({ spot, userId, onDelete }: { spot: MySpot; userId: number; 
       <div style={{ padding: "16px 18px 18px" }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-          <span style={{ fontSize: 16, fontWeight: 700, color: C.navy, lineHeight: 1.2 }}>{spot.name}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+            <span style={{ fontSize: 16, fontWeight: 700, color: C.navy, lineHeight: 1.2 }}>{spot.name}</span>
+            {isHome && <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 8, background: `${C.sky}20`, color: C.sky }}>🏠 Homespot</span>}
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, marginLeft: 8 }}>
             {spot.epicEnabled && (
               <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 8, background: "linear-gradient(135deg,rgba(232,168,62,0.2),rgba(232,168,62,0.35))", color: "#E8A83E", border: "1px solid rgba(232,168,62,0.4)" }}>🤙 Epic</span>
@@ -126,6 +129,11 @@ function MySpotCard({ spot, userId, onDelete }: { spot: MySpot; userId: number; 
             </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {!isHome && (
+              <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSetHome(); }} disabled={settingHome} style={{ fontSize: 11, fontWeight: 700, color: C.muted, background: "none", border: `1px solid ${C.cardBorder}`, borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>
+                {settingHome ? "..." : "🏠 Homespot"}
+              </button>
+            )}
             <Link href={`/spot?id=${spot.id}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 12, fontWeight: 600, color: C.sky, textDecoration: "none" }}>
               Edit →
             </Link>
@@ -141,6 +149,18 @@ export default function MySpotPage() {
   const [loading, setLoading] = useState(true);
   const [spots, setSpots] = useState<MySpot[]>([]);
   const [userId, setUserId] = useState<number | null>(null);
+  const [homeSpotId, setHomeSpotId] = useState<number | null>(null);
+  const [settingHome, setSettingHome] = useState<number | null>(null);
+
+  async function setAsHomeSpot(spotId: number) {
+    if (!userId) return;
+    setSettingHome(spotId);
+    try {
+      await sbPatch(`users?id=eq.${userId}`, { home_spot_id: spotId });
+      setHomeSpotId(spotId);
+    } catch {}
+    setSettingHome(null);
+  }
 
   useEffect(() => {
     async function load() {
@@ -149,10 +169,11 @@ export default function MySpotPage() {
 
       try {
         const authId = getAuthId();
-        const users = await sbFetch(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id`);
+        const users = await sbFetch(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,home_spot_id`);
         if (!users?.length) throw new Error("no_user");
         const uid = users[0].id;
         setUserId(uid);
+        if (users[0].home_spot_id) setHomeSpotId(users[0].home_spot_id);
 
         const userSpots = await sbFetch(`user_spots?user_id=eq.${uid}&select=spot_id`);
         if (!userSpots?.length) { setSpots([]); setLoading(false); return; }
@@ -222,6 +243,9 @@ export default function MySpotPage() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
               {spots.map((s) => (
                 <MySpotCard key={s.id} spot={s} userId={userId!}
+                  isHome={homeSpotId === s.id}
+                  onSetHome={() => setAsHomeSpot(s.id)}
+                  settingHome={settingHome === s.id}
                   onDelete={() => setSpots((prev) => prev.filter((p) => p.id !== s.id))}
                 />
               ))}
