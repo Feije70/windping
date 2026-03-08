@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback, Suspense } from "react";
+import React, { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
@@ -137,7 +137,7 @@ function SpotDetailContent() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [prikbordPosts, setPrikbordPosts] = useState<PrikbordPost[]>([]);
-  const [activeTab, setActiveTab] = useState<"info" | "prikbord" | "voorkeuren">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "prikbord" | "voorkeuren">("prikbord");
 
   // Refs
   const mapRef = useRef<any>(null);
@@ -554,10 +554,15 @@ function SpotDetailContent() {
 
   const tc = typeColors[spot.spot_type] || C.sky;
 
-  const TABS: { key: "info" | "prikbord" | "voorkeuren"; label: string; emoji: string }[] = [
-    { key: "info", label: "Spot info", emoji: "📍" },
-    { key: "prikbord", label: "Prikbord", emoji: "📌" },
-    { key: "voorkeuren", label: "Voorkeuren", emoji: "⚙️" },
+  const TAB_ICONS: Record<string, React.ReactElement> = {
+    prikbord: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+    info: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+    voorkeuren: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="8" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="10" cy="18" r="2" fill="currentColor" stroke="none"/></svg>,
+  };
+  const TABS: { key: "info" | "prikbord" | "voorkeuren"; label: string }[] = [
+    { key: "prikbord", label: "Prikbord" },
+    { key: "info", label: "Spot info" },
+    { key: "voorkeuren", label: "Voorkeuren" },
   ];
 
   return (
@@ -587,7 +592,7 @@ function SpotDetailContent() {
             boxShadow: activeTab === tab.key ? "0 1px 6px rgba(0,0,0,0.10)" : "none",
             transition: "all 0.15s ease",
           }}>
-            <span style={{ fontSize: 13 }}>{tab.emoji}</span>
+            {TAB_ICONS[tab.key]}
             {tab.label}
             {tab.key === "prikbord" && prikbordPosts.length > 0 && (
               <span style={{ background: C.sky, color: "#fff", borderRadius: 10, fontSize: 9, fontWeight: 800, padding: "1px 5px", minWidth: 16, textAlign: "center" }}>
