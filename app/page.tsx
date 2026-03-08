@@ -823,7 +823,7 @@ function Dashboard() {
             </div>
             {/* Alleen tonen als er Go-spots zijn — groen badge */}
             {!loading && goSpots.length > 0 && (
-              <div style={{ flexShrink: 0, background: "linear-gradient(135deg, #1B6B4E 0%, #27A070 100%)", borderRadius: 16, padding: "9px 14px", textAlign: "center", boxShadow: "0 4px 14px rgba(39,160,112,0.30)" }}>
+              <div style={{ flexShrink: 0, background: "linear-gradient(135deg, #1A5F7A 0%, #2E8FAE 100%)", borderRadius: 16, padding: "9px 14px", textAlign: "center", boxShadow: "0 4px 14px rgba(46,143,174,0.30)" }}>
                 <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-1px" }}>{goSpots[0].ws}</div>
                 <div style={{ fontSize: 8, fontWeight: 800, color: "rgba(255,255,255,0.65)", letterSpacing: "1.2px", marginTop: 1 }}>KN · GO</div>
               </div>
@@ -852,16 +852,24 @@ function Dashboard() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(spots.length, 4)}, 1fr)`, gap: 4 }}>
                 {[...spots].sort((a, b) => b.ws - a.ws).slice(0, 4).map((s) => {
-                  const col = s.match === "go" ? C.green : s.match === "maybe" ? C.gold : C.muted;
-                  const bg = s.match === "go" ? C.goBg : s.match === "maybe" ? C.epicBg : C.cream;
+                  const isGo = s.match === "go";
+                  const isMaybe = s.match === "maybe";
+                  const col = isGo ? "#2A9B76" : isMaybe ? "#D4860B" : C.muted;
+                  const bg = isGo ? "linear-gradient(160deg, #D6F5EA 0%, #B8EED8 100%)"
+                    : isMaybe ? "linear-gradient(160deg, #FEF3D6 0%, #FDEAB8 100%)"
+                    : C.cream;
+                  const border = isGo ? "1.5px solid rgba(42,155,118,0.35)"
+                    : isMaybe ? "1.5px solid rgba(212,134,11,0.30)"
+                    : `1.5px solid ${C.cardBorder}`;
                   return (
-                    <div key={s.id} style={{ background: bg, borderRadius: 12, padding: "10px 6px 8px", textAlign: "center", border: `1.5px solid ${s.match === "go" ? "rgba(62,170,140,0.2)" : s.match === "maybe" ? "rgba(232,168,62,0.2)" : C.cardBorder}` }}>
+                    <div key={s.id} style={{ background: bg, borderRadius: 12, padding: "10px 6px 8px", textAlign: "center", border, boxShadow: isGo ? "0 2px 8px rgba(42,155,118,0.15)" : isMaybe ? "0 2px 8px rgba(212,134,11,0.12)" : "none" }}>
                       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 1, marginBottom: 4 }}>
                         <span style={{ fontSize: 24, fontWeight: 900, color: col, lineHeight: 1, letterSpacing: "-0.5px" }}>{s.ws}</span>
                         <span style={{ fontSize: 9, fontWeight: 700, color: col, opacity: 0.75 }}>kn</span>
                       </div>
-                      <div style={{ fontSize: 9, color: C.sub, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingBottom: 2 }}>{s.name.split(" ")[0]}</div>
-                      {s.match === "go" && <div style={{ fontSize: 7, fontWeight: 800, color: C.green, letterSpacing: "0.8px", marginTop: 2 }}>GO</div>}
+                      <div style={{ fontSize: 9, color: isGo ? "#1A7A58" : isMaybe ? "#A06208" : C.sub, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingBottom: 2 }}>{s.name.split(" ")[0]}</div>
+                      {isGo && <div style={{ fontSize: 7, fontWeight: 900, color: "#2A9B76", letterSpacing: "1px", marginTop: 2 }}>GO</div>}
+                      {isMaybe && <div style={{ fontSize: 7, fontWeight: 800, color: "#D4860B", letterSpacing: "1px", marginTop: 2 }}>BIJNA</div>}
                     </div>
                   );
                 })}
@@ -875,7 +883,7 @@ function Dashboard() {
         {/* Quick actions — horizontale pill-rij */}
         <div style={{ display: "flex", gap: 7, marginBottom: 24, overflowX: "auto", paddingBottom: 2, WebkitOverflowScrolling: "touch" as any, msOverflowStyle: "none", scrollbarWidth: "none" as any }}>
           {[
-            { label: "Sessie +", icon: null, bg: C.goBg, border: `1.5px solid rgba(62,170,140,0.25)`, color: C.green, onClick: () => { setShowManualSession(true); setManualStep("pick"); } },
+            { label: "Sessie +", icon: null, bg: C.skyGlow, border: `1.5px solid rgba(46,143,174,0.25)`, color: C.sky, onClick: () => { setShowManualSession(true); setManualStep("pick"); } },
             { label: "Mijn Spots", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.5" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>, bg: C.oceanTint, border: `1.5px solid rgba(46,143,174,0.2)`, color: C.sky, href: "/mijn-spots" },
             { label: "Vrienden", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.purple} strokeWidth="2.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>, bg: "#EDE6F0", border: `1.5px solid rgba(139,126,200,0.2)`, color: C.purple, href: "/vrienden" },
             { label: "Spot toevoegen", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2.5" strokeLinecap="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><path d="M12 7v6M9 10h6"/></svg>, bg: C.terraTint, border: `1.5px solid rgba(201,122,99,0.2)`, color: C.amber, href: "/add-spot" },
@@ -944,7 +952,7 @@ function Dashboard() {
               return (
                 <div key={item.targetDate} style={{ background: C.card, borderRadius: 18, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 12, border: `1.5px solid ${C.cardBorder}` }}>
                   {/* Groene gradient header — visuele impact behouden, iets compacter */}
-                  <div style={{ background: "linear-gradient(135deg, #1B6B4E 0%, #259068 60%, #2EAA7A 100%)", padding: "13px 16px 11px", position: "relative", overflow: "hidden" }}>
+                  <div style={{ background: "linear-gradient(135deg, #0D4A63 0%, #1A7A9E 55%, #2E8FAE 100%)", padding: "13px 16px 11px", position: "relative", overflow: "hidden" }}>
                     {/* Wave SVG achtergrond */}
                     <svg style={{ position: "absolute", right: -10, top: -5, opacity: 0.08, pointerEvents: "none" }} width="120" height="80" viewBox="0 0 120 80">
                       <path d="M5 40 Q30 10 65 35 Q100 60 120 25" stroke="white" strokeWidth="12" fill="none" strokeLinecap="round"/>
@@ -1021,12 +1029,12 @@ function Dashboard() {
                       return (
                         <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
                           {item.goSpots.length === 1 ? (
-                            <a href="#" onClick={(e) => { e.preventDefault(); const s = item.goSpots[0]; handleIkGa(s.spotName, s.spotId, item.targetDate, s.wind, s.gust, s.dir); }} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: "linear-gradient(135deg, #1B6B4E, #27A070)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", cursor: "pointer" }}>
+                            <a href="#" onClick={(e) => { e.preventDefault(); const s = item.goSpots[0]; handleIkGa(s.spotName, s.spotId, item.targetDate, s.wind, s.gust, s.dir); }} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", cursor: "pointer" }}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                               Ik ga!
                             </a>
                           ) : (
-                            <a href="#" onClick={(e) => { e.preventDefault(); setPickerSpots(item.goSpots); setPickerCallback(() => (spotName: string) => { const s = item.goSpots.find((x: any) => x.spotName === spotName); if (s) handleIkGa(s.spotName, s.spotId, item.targetDate, s.wind, s.gust, s.dir); }); }} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: "linear-gradient(135deg, #1B6B4E, #27A070)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", cursor: "pointer" }}>
+                            <a href="#" onClick={(e) => { e.preventDefault(); setPickerSpots(item.goSpots); setPickerCallback(() => (spotName: string) => { const s = item.goSpots.find((x: any) => x.spotName === spotName); if (s) handleIkGa(s.spotName, s.spotId, item.targetDate, s.wind, s.gust, s.dir); }); }} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", cursor: "pointer" }}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                               Ik ga!
                             </a>
@@ -1080,7 +1088,7 @@ function Dashboard() {
 
           {friendActivity.length === 0 ? (
             <div style={{ padding: "28px 20px", background: C.card, borderRadius: 18, boxShadow: C.cardShadow, display: "flex", alignItems: "center", gap: 16, border: `1.5px solid ${C.cardBorder}` }}>
-              <div style={{ width: 52, height: 52, borderRadius: 14, background: C.goBg, border: `1.5px solid ${C.green}20`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <div style={{ width: 52, height: 52, borderRadius: 14, background: C.skyGlow, border: `1.5px solid ${C.sky}20`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="1.8" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
               </div>
               <div>
@@ -1202,7 +1210,7 @@ function Dashboard() {
         <div style={{ marginBottom: 16 }}>
           <Link href="/mijn-sessies" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", background: C.card, borderRadius: 16, textDecoration: "none", boxShadow: C.cardShadow, border: `1.5px solid ${C.cardBorder}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 13, background: "linear-gradient(135deg, #1B6B4E, #27A070)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <div style={{ width: 44, height: 44, borderRadius: 13, background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 {/* Golf/surf icoon */}
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
@@ -1243,7 +1251,7 @@ function Dashboard() {
                 {pickerSpots.map((s: any) => (
                   <button key={s.spotName} onClick={() => { if (pickerCallback) pickerCallback(s.spotName); setPickerSpots(null); }} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 14, cursor: "pointer" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #1B6B4E, #27A070)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
                       </div>
                       <div style={{ textAlign: "left" }}>
@@ -1325,7 +1333,7 @@ function Dashboard() {
                               navigator.clipboard.writeText(`${text} ${url}`);
                             }
                           }}
-                          style={{ width: "100%", padding: "14px", background: `linear-gradient(135deg, ${C.green}, ${C.skyDark})`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                          style={{ width: "100%", padding: "14px", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
                           Deel sessie 🤙
                         </button>
                         <a
@@ -1644,7 +1652,7 @@ function Dashboard() {
                     <div style={{ display: "flex", gap: 10 }}>
                       <button onClick={() => setManualStep(5)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
                       <button onClick={handleManualSessionSave} disabled={manualSaving || manualPhotoUploading}
-                        style={{ flex: 1, padding: "14px", background: C.green, color: "#FFF", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: (manualSaving || manualPhotoUploading) ? "not-allowed" : "pointer", opacity: (manualSaving || manualPhotoUploading) ? 0.6 : 1 }}>
+                        style={{ flex: 1, padding: "14px", background: C.sky, color: "#FFF", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: (manualSaving || manualPhotoUploading) ? "not-allowed" : "pointer", opacity: (manualSaving || manualPhotoUploading) ? 0.6 : 1 }}>
                         {manualSaving ? "Opslaan..." : "✓ Log sessie"}
                       </button>
                     </div>
