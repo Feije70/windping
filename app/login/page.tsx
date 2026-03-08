@@ -75,7 +75,7 @@ export default function LoginPage() {
           <Link href="/" style={{ textDecoration: "none", display: "inline-block" }}>
             <Logo size={44} />
           </Link>
-          <p style={{ fontSize: 13, color: C.sub, fontStyle: "italic", margin: 0 }}>Stop checking, start riding.</p>
+          <p style={{ fontSize: 13, color: C.sub, fontStyle: "italic", margin: 0 }}>Stop checkin' the weather, start riding together!</p>
         </div>
 
         {/* Card */}
