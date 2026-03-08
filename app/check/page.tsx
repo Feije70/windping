@@ -19,17 +19,19 @@ interface SpotData { spot: Spot; weather: WeatherData; match: "epic" | "go" | "m
 const DIRS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
 function degToDir(deg: number) { return DIRS_16[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16]; }
 
-function weatherEmoji(code: number, isDay: number) {
-  if (code <= 1) return isDay ? "☀️" : "🌙";
-  if (code <= 3) return isDay ? "⛅" : "☁️";
-  if (code <= 48) return "🌫️";
-  if (code <= 67) return "🌧️";
-  if (code <= 77) return "❄️";
-  return "⛈️";
+function weatherIcon(code: number, isDay: number, size = 18, color = "#6B7B8F") {
+  if (code <= 1) return isDay
+    ? <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#E8A83E" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    : <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#8A9BB0" strokeWidth="2" strokeLinecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>;
+  if (code <= 3) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>;
+  if (code <= 48) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round"><path d="M3 11.9C3 9.2 5.2 7 7.9 7c.2 0 .4 0 .6.02A5.5 5.5 0 0 1 19 9.5c0 .17-.01.34-.03.5H20a3 3 0 0 1 0 6H7a4 4 0 0 1-4-4.1z"/><line x1="4" y1="16" x2="4" y2="18" opacity=".4"/><line x1="8" y1="16" x2="8" y2="18" opacity=".4"/><line x1="12" y1="16" x2="12" y2="18" opacity=".4"/></svg>;
+  if (code <= 67) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#2E8FAE" strokeWidth="2" strokeLinecap="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><line x1="8" y1="19" x2="8" y2="23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="16" y1="19" x2="16" y2="23"/></svg>;
+  if (code <= 77) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#8A9BB0" strokeWidth="2" strokeLinecap="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><line x1="8" y1="20" x2="10" y2="22"/><line x1="12" y1="20" x2="14" y2="22"/><line x1="16" y1="20" x2="18" y2="22"/></svg>;
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#E8A83E" strokeWidth="2" strokeLinecap="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><path d="M13 11l-4 6h6l-4 6"/></svg>;
 }
 function weatherLabel(code: number) {
-  if (code <= 1) return "Sun"; if (code <= 3) return "Cloudy"; if (code <= 48) return "Fog";
-  if (code <= 67) return "Rain"; if (code <= 77) return "Snow"; return "Thunder";
+  if (code <= 1) return "Zonnig"; if (code <= 3) return "Bewolkt"; if (code <= 48) return "Mist";
+  if (code <= 67) return "Regen"; if (code <= 77) return "Sneeuw"; return "Onweer";
 }
 
 function calcMatch(ws: number, wd: number, prefs: { wMin: number; wMax: number; dirs: string[] }, temp: number | null, minTemp: number | null) {
@@ -127,7 +129,7 @@ function SpotCard({ d, expanded, onToggle }: { d: SpotData; expanded: boolean; o
           <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.4 }}>
             <span style={{ color: C.navy, fontWeight: 600 }}>{dir}</span> · gusts {gusts} kn ·{" "}
             <span style={tooC ? { color: C.sky, fontWeight: 700 } : { color: C.sub }}>{temp != null ? `${temp}°` : "--"}</span>{" "}
-            {weatherEmoji(c.weather_code || 0, c.is_day || 1)}
+            <span style={{ display: "inline-flex", verticalAlign: "middle", marginLeft: 2 }}>{weatherIcon(c.weather_code || 0, c.is_day || 1, 13)}</span>
           </div>
         </div>
 
@@ -154,17 +156,15 @@ function SpotCard({ d, expanded, onToggle }: { d: SpotData; expanded: boolean; o
           {/* Detail stats */}
           <div style={{ display: "flex", justifyContent: "space-around", textAlign: "center", marginBottom: 16 }}>
             {[
-              { icon: "🌡️", val: temp != null ? `${temp}°` : "--", lbl: "Temp", highlight: tooC },
-              { icon: weatherEmoji(c.weather_code || 0, c.is_day || 1), val: weatherLabel(c.weather_code || 0), lbl: "Weather" },
-              { icon: "🌧️", val: `${rainP}%`, lbl: "Rain" },
-              { icon: "💨", val: `${gusts}`, lbl: "Gusts" },
-              { icon: "🧭", val: dir, lbl: "Direction" },
+              { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={tooC ? C.sky : C.sub} strokeWidth="2" strokeLinecap="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>, val: temp != null ? `${temp}°` : "--", lbl: "Temp", highlight: tooC },
+              { icon: weatherIcon(c.weather_code || 0, c.is_day || 1, 16, C.sub), val: weatherLabel(c.weather_code || 0), lbl: "Weer" },
+              { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2E8FAE" strokeWidth="2" strokeLinecap="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/><line x1="8" y1="19" x2="8" y2="23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="16" y1="19" x2="16" y2="23"/></svg>, val: `${rainP}%`, lbl: "Regen" },
+              { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>, val: `${gusts}`, lbl: "Windstoten" },
+              { icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/><path d="M12 2l2.5 5L12 8.5 9.5 7z" fill={C.sub}/></svg>, val: dir, lbl: "Richting" },
             ].map((d, i) => (
-              <div key={i} style={{
-                padding: "8px 4px", background: C.cream, borderRadius: 10, flex: 1, margin: "0 2px",
-              }}>
-                <div style={{ fontSize: 16, marginBottom: 3 }}>{d.icon}</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: d.highlight ? C.sky : C.navy }}>{d.val}</div>
+              <div key={i} style={{ padding: "8px 4px", background: C.cream, borderRadius: 10, flex: 1, margin: "0 2px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 20, marginBottom: 3 }}>{d.icon}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: d.highlight ? C.sky : C.navy }}>{d.val}</div>
                 <div style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>{d.lbl}</div>
               </div>
             ))}
@@ -182,7 +182,7 @@ function SpotCard({ d, expanded, onToggle }: { d: SpotData; expanded: boolean; o
               return (
                 <div key={idx} style={{ flex: "0 0 auto", textAlign: "center", padding: "6px 5px", minWidth: 40 }}>
                   <div style={{ fontSize: 10, color: C.muted, marginBottom: 3 }}>{hr.time[idx]?.substring(11, 16) || "--"}</div>
-                  <div style={{ fontSize: 12, marginBottom: 3 }}>{weatherEmoji(fCode, 1)}</div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 16, marginBottom: 3 }}>{weatherIcon(fCode, 1, 14)}</div>
                   <div style={{
                     fontSize: 13, fontWeight: 800, color: fColor, background: `${fColor}15`,
                     borderRadius: 6, padding: "2px 5px", marginBottom: 3,
@@ -197,8 +197,8 @@ function SpotCard({ d, expanded, onToggle }: { d: SpotData; expanded: boolean; o
           {d.tide && d.tide.extremes.length > 0 && (
             <div style={{ marginTop: 14, padding: "12px 14px", background: C.oceanTint, borderRadius: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 15 }}>🌊</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>Tides</span>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2" strokeLinecap="round"><path d="M2 12c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/><path d="M2 18c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/><path d="M2 6c1.5-3 3.5-4.5 6-4.5s4.5 1.5 6 4.5 3.5 4.5 6 4.5"/></svg>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>Getijden</span>
                 {d.tide.station && <span style={{ fontSize: 10, color: C.muted, marginLeft: "auto" }}>{d.tide.station}</span>}
               </div>
               <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
@@ -216,7 +216,7 @@ function SpotCard({ d, expanded, onToggle }: { d: SpotData; expanded: boolean; o
                       border: `1px solid ${isHW ? "rgba(46,111,126,0.12)" : C.cardBorder}`,
                       opacity: isPast ? 0.5 : 1,
                     }}>
-                      <div style={{ fontSize: 9, color: C.muted, marginBottom: 2 }}>{isToday ? "today" : dayStr}</div>
+                      <div style={{ fontSize: 9, color: C.muted, marginBottom: 2 }}>{isToday ? "vandaag" : dayStr}</div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: isHW ? C.sky : C.sub }}>{timeStr}</div>
                       <div style={{ fontSize: 10, fontWeight: 700, color: isHW ? C.sky : C.muted, marginTop: 1 }}>
                         {isHW ? "▲ HW" : "▼ LW"}
@@ -244,6 +244,7 @@ export default function CheckPage() {
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState("");
   const [sortMode, setSortMode] = useState<"status" | "mine">("status");
+  const [search, setSearch] = useState("");
 
   const loadWeather = useCallback(async () => {
     const email = getEmail();
@@ -275,7 +276,8 @@ export default function CheckPage() {
 
       const tideToken = await getValidToken();
       async function fetchTide(s: Spot): Promise<SpotData["tide"] | undefined> {
-        if (s.spot_type?.toLowerCase() !== "zee") return undefined;
+        const isZee = s.spot_type?.toLowerCase() === "zee" || s.spot_type?.toLowerCase() === "sea" || s.spot_type?.toLowerCase() === "coast";
+        if (!isZee) return undefined;
         try {
           const [slRes, exRes] = await Promise.all([
             fetch(`/api/tide?spot_id=${s.id}&lat=${s.latitude}&lng=${s.longitude}&type=sea_level`, {
@@ -287,9 +289,11 @@ export default function CheckPage() {
           ]);
           const sl = slRes.ok ? await slRes.json() : null;
           const ex = exRes.ok ? await exRes.json() : null;
+          const extremes = (ex?.data || []).map((p: any) => ({ time: p.time, height: p.height, type: p.type }));
+          if (!extremes.length && !sl?.data?.length) return undefined;
           return {
             seaLevel: (sl?.data || []).map((p: any) => ({ time: p.time, height: p.sg ?? p.height ?? p.value })),
-            extremes: (ex?.data || []).map((p: any) => ({ time: p.time, height: p.height, type: p.type })),
+            extremes,
             station: sl?.station?.name || ex?.station?.name,
           };
         } catch { return undefined; }
@@ -332,23 +336,61 @@ export default function CheckPage() {
 
   useEffect(() => { loadWeather(); }, [loadWeather]);
 
-  const sorted = [...spots].sort((a, b) => {
-    if (sortMode === "status") {
-      const order = { epic: 0, go: 1, maybe: 2, no: 3 };
-      return order[a.match] - order[b.match];
-    }
-    return 0;
-  });
+  const filtered = [...spots]
+    .filter(d => !search || d.spot.display_name.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      if (sortMode === "status") {
+        const order = { epic: 0, go: 1, maybe: 2, no: 3 };
+        return order[a.match] - order[b.match];
+      }
+      return 0;
+    });
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
       <NavBar />
       <div style={{ maxWidth: 600, margin: "0 auto", padding: "24px 16px 100px" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 18 }}>
-          <h1 style={{ ...h, fontSize: 26, fontWeight: 800, color: C.navy, margin: 0 }}>Wind Check</h1>
-          {updatedAt && <span style={{ fontSize: 12, color: C.muted }}>Updated {updatedAt}</span>}
+
+        {/* Header met terugknop */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <a href="/" style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 36, height: 36, borderRadius: 10, background: C.card,
+            boxShadow: "0 1px 3px rgba(31,53,76,0.08)", border: `1px solid ${C.cardBorder}`,
+            textDecoration: "none", flexShrink: 0,
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.5" strokeLinecap="round"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+          </a>
+          <h1 style={{ ...h, fontSize: 26, fontWeight: 800, color: C.navy, margin: 0, flex: 1 }}>Wind Check</h1>
+          {updatedAt && <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>{updatedAt}</span>}
         </div>
+
+        {/* Zoekbalk — geïntegreerd als pill met icoon */}
+        {status === "done" && spots.length > 2 && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10,
+            background: C.card, borderRadius: 12, padding: "0 14px",
+            boxShadow: "0 1px 3px rgba(31,53,76,0.06)", border: `1.5px solid ${C.cardBorder}`,
+            marginBottom: 12, height: 44,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+              <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Zoek een spot…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                flex: 1, border: "none", background: "transparent", outline: "none",
+                fontSize: 14, fontWeight: 500, color: C.navy, fontFamily: fonts.body,
+              }}
+            />
+            {search && (
+              <button onClick={() => setSearch("")} style={{ border: "none", background: "none", cursor: "pointer", padding: 0, color: C.muted, fontSize: 16, lineHeight: 1 }}>×</button>
+            )}
+          </div>
+        )}
 
         {/* Sort bar */}
         {status === "done" && spots.length > 1 && (
@@ -361,7 +403,7 @@ export default function CheckPage() {
                 boxShadow: sortMode === mode ? "0 1px 3px rgba(31,53,76,0.06)" : "none",
                 transition: "all 0.15s",
               }}>
-                {mode === "status" ? "By status" : "My order"}
+                {mode === "status" ? "Op status" : "Mijn volgorde"}
               </button>
             ))}
           </div>
@@ -413,7 +455,7 @@ export default function CheckPage() {
         {status === "done" && (
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {sorted.map((d) => (
+              {filtered.map((d) => (
                 <SpotCard key={d.spot.id} d={d} expanded={expanded.has(d.spot.id)}
                   onToggle={() => setExpanded(prev => { const next = new Set(prev); if (next.has(d.spot.id)) next.delete(d.spot.id); else next.add(d.spot.id); return next; })}
                 />
