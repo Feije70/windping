@@ -639,6 +639,19 @@ function Dashboard() {
   const [unreadFriendCount, setUnreadFriendCount] = useState(0);
   const [showWelcome, setShowWelcome] = useState(false);
   const [allSpots, setAllSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
+  const [showPwaBanner, setShowPwaBanner] = useState(false);
+  const [isIos, setIsIos] = useState(false);
+
+  // PWA installatie detectie
+  useEffect(() => {
+    const isStandalone = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as any).standalone === true;
+    if (isStandalone) return; // Al geïnstalleerd — geen banner
+    const dismissed = localStorage.getItem("pwa_banner_dismissed");
+    if (dismissed && Date.now() - Number(dismissed) < 30 * 24 * 60 * 60 * 1000) return; // 30 dagen niet tonen
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    setIsIos(ios);
+    setShowPwaBanner(true);
+  }, []);
 
   // Handmatige sessie modal
   const [showManualSession, setShowManualSession] = useState(false);
@@ -966,6 +979,55 @@ function Dashboard() {
               <div style={{ fontSize: 11, color: C.sub }}>Tot {pauseUntil}</div>
             </div>
             <button onClick={() => setPaused(false)} style={{ padding: "6px 12px", background: C.gold, border: "none", borderRadius: 8, color: "#FFF", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>Hervatten</button>
+          </div>
+        )}
+
+        {/* PWA installatie banner */}
+        {showPwaBanner && (
+          <div style={{ background: C.card, border: `1.5px solid ${C.sky}30`, borderRadius: 16, padding: "14px 16px", marginBottom: 16, boxShadow: C.cardShadow }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>Voeg WindPing toe aan je beginscherm</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>Zo mis je geen enkele wind-alert</div>
+                </div>
+              </div>
+              <button onClick={() => { setShowPwaBanner(false); localStorage.setItem("pwa_banner_dismissed", String(Date.now())); }} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 18, lineHeight: 1, padding: "0 0 0 8px", flexShrink: 0 }}>×</button>
+            </div>
+            {isIos ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>1</div>
+                  <span>Tik op het <strong style={{ color: C.navy }}>deel-icoontje</strong> onderaan je browser</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>2</div>
+                  <span>Kies <strong style={{ color: C.navy }}>"Zet op beginscherm"</strong></span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>3</div>
+                  <span>Tik op <strong style={{ color: C.navy }}>"Voeg toe"</strong></span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>1</div>
+                  <span>Tik op het <strong style={{ color: C.navy }}>menu (⋮)</strong> rechtsboven in Chrome</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>2</div>
+                  <span>Kies <strong style={{ color: C.navy }}>"Toevoegen aan beginscherm"</strong></span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.sub }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `${C.sky}15`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 11, fontWeight: 700, color: C.sky }}>3</div>
+                  <span>Tik op <strong style={{ color: C.navy }}>"Toevoegen"</strong></span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
