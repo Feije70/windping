@@ -73,21 +73,26 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
     } catch { setDeleting(false); }
   }
 
+  const homeBorder = isHome ? "2px solid #E8A83E" : `1px solid ${C.cardBorder}`;
+  const homeTopBar = isHome ? "linear-gradient(90deg,#E8A83E,#F5C842)" : (spot.isPrivate ? "linear-gradient(90deg,#EA580C,#FB923C)" : tg);
+
   return (
     <a href={`/spot?id=${spot.id}`} style={{
-      display: "block", background: C.card, borderRadius: 16, boxShadow: C.cardShadow,
+      display: "block", background: C.card, borderRadius: 16,
+      boxShadow: isHome ? "0 4px 20px rgba(232,168,62,0.18)" : C.cardShadow,
+      border: homeBorder,
       overflow: "hidden", opacity: deleting ? 0.4 : 1, transition: "opacity 0.3s", cursor: "pointer",
       textDecoration: "none", color: "inherit",
     }}>
-      {/* Top color bar */}
-      <div style={{ height: 4, background: spot.isPrivate ? "linear-gradient(90deg,#EA580C,#FB923C)" : tg }} />
+      {/* Top color bar — goud als homespot */}
+      <div style={{ height: 4, background: homeTopBar }} />
 
       <div style={{ padding: "16px 18px 18px" }}>
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" as const }}>
+            {isHome && <span style={{ fontSize: 15, lineHeight: 1 }}>⭐</span>}
             <span style={{ fontSize: 16, fontWeight: 700, color: C.navy, lineHeight: 1.2 }}>{spot.name}</span>
-            {isHome && <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 8, background: `${C.sky}20`, color: C.sky }}>🏠 Homespot</span>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, marginLeft: 8 }}>
             {spot.epicEnabled && (
@@ -100,6 +105,13 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
             )}
           </div>
         </div>
+
+        {/* Homespot label — alleen als actief */}
+        {isHome && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 5, marginBottom: 10, padding: "4px 10px", borderRadius: 20, background: "rgba(232,168,62,0.12)", border: "1px solid rgba(232,168,62,0.3)" }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: "#C8860A", letterSpacing: 0.5, textTransform: "uppercase" as const }}>Jouw homespot</span>
+          </div>
+        )}
 
         {/* Wind range */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
@@ -115,7 +127,7 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
         </div>
 
         {/* Footer */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12, borderTop: `1px solid ${C.cardBorder}` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12, borderTop: `1px solid ${isHome ? "rgba(232,168,62,0.2)" : C.cardBorder}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {/* Toggle */}
             <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleAlert(); }} style={{
@@ -130,8 +142,13 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {!isHome && (
-              <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSetHome(); }} disabled={settingHome} style={{ fontSize: 11, fontWeight: 700, color: C.muted, background: "none", border: `1px solid ${C.cardBorder}`, borderRadius: 8, padding: "4px 8px", cursor: "pointer" }}>
-                {settingHome ? "..." : "🏠 Homespot"}
+              <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSetHome(); }} disabled={settingHome} style={{
+                fontSize: 11, fontWeight: 600, color: C.muted, background: "none",
+                border: `1px dashed ${C.cardBorder}`, borderRadius: 8, padding: "4px 9px",
+                cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+              }}>
+                <span style={{ fontSize: 12 }}>⭐</span>
+                {settingHome ? "Instellen..." : "Maak homespot"}
               </button>
             )}
             <Link href={`/spot?id=${spot.id}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 12, fontWeight: 600, color: C.sky, textDecoration: "none" }}>
