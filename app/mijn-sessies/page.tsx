@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
+import PhotoCropModal from "@/app/components/PhotoCropModal";
+import { cropStyle } from "@/lib/cropStyle";
 import { getValidToken, isTokenExpired, getAuthId, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 const h = { fontFamily: fonts.heading };
 
@@ -20,6 +22,7 @@ interface Session {
   wind_feel: string | null;
   notes: string | null;
   photo_url: string | null;
+  photo_crop: string | null;
   image_url: string | null;
   _spotName?: string;
 }
@@ -125,6 +128,22 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
   const spot = s._spotName || "Spot";
   const [confirmDelete, setConfirmDelete] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [showCrop, setShowCrop] = React.useState(false);
+  const [cropSaving, setCropSaving] = React.useState(false);
+
+  const saveCrop = async (cropString: string) => {
+    setCropSaving(true);
+    try {
+      const token = await getValidToken();
+      await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${s.id}`, {
+        method: "PATCH",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({ photo_crop: cropString }),
+      });
+      setShowCrop(false);
+      window.location.reload();
+    } catch { setCropSaving(false); }
+  };
 
   async function handleDelete() {
     setDeleting(true);
@@ -170,8 +189,9 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
       </div>
       <div style={{ padding: "0 16px 120px" }}>
         {(s.photo_url || s.image_url) && (
-          <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 16 }}>
-            <img src={s.photo_url || s.image_url || ""} alt="" style={{ width: "100%", maxHeight: 280, objectFit: "cover", display: "block" }} />
+          <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 16, position: "relative" }}>
+            <img src={s.photo_url || s.image_url || ""} alt="" style={{ width: "100%", maxHeight: 280, display: "block", ...cropStyle(s.photo_crop) }} />
+            <button onClick={() => setShowCrop(true)} style={{ position: "absolute", top: 8, right: 8, background: "rgba(0,0,0,0.5)", border: "none", borderRadius: 8, padding: "6px 10px", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>✂️ Bijsnijden</button>
           </div>
         )}
         <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 16, padding: "16px", marginBottom: 12 }}>
@@ -244,6 +264,15 @@ function SessionDetail({ s, onClose }: { s: Session; onClose: () => void }) {
           </a>
         </div>
 
+        {showCrop && (s.photo_url || s.image_url) && (
+          <PhotoCropModal
+            imageUrl={s.photo_url || s.image_url || ""}
+            initialPosition={s.photo_crop ?? undefined}
+            onConfirm={saveCrop}
+            onCancel={() => setShowCrop(false)}
+          />
+        )}
+
         <div style={{ marginTop: 8, textAlign: "center" }}>
           {!confirmDelete ? (
             <button onClick={() => setConfirmDelete(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 13, color: "#8A9BB0", fontWeight: 500 }}>🗑 Verwijder sessie</button>
@@ -278,7 +307,7 @@ export default function MijnSessiesPage() {
         if (!users?.length) return;
         const userId = users[0].id;
 
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url,image_url`, {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url,photo_crop,image_url`, {
           headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
         });
         const data: Session[] = await res.json() || [];
