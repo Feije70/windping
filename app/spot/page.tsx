@@ -137,7 +137,8 @@ function SpotDetailContent() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [prikbordPosts, setPrikbordPosts] = useState<PrikbordPost[]>([]);
-  const [activeTab, setActiveTab] = useState<"info" | "prikbord" | "voorkeuren">("prikbord");
+  const tabParam = searchParams.get("tab") as "info" | "prikbord" | "voorkeuren" | null;
+  const [activeTab, setActiveTab] = useState<"info" | "prikbord" | "voorkeuren">(tabParam ?? "prikbord");
 
   // Refs
   const mapRef = useRef<any>(null);
