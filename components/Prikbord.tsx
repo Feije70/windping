@@ -52,41 +52,45 @@ function Pin({ color }: { color: string }) {
 function PostCard({ post, compact }: { post: PrikbordPost; compact: boolean }) {
   const t = T[post.type];
   const ph = post.isPlaceholder;
-  const rot = ((Math.abs(post.id) * 13 + post.id * 7) % 7) - 3.5;
 
   return (
     <div style={{
       position: "relative",
-      background: ph ? "#F5F0E8" : t.bg,
-      border: `1.5px solid ${ph ? "#E0D8CE" : t.border}`,
-      borderRadius: 6,
-      padding: compact ? "18px 12px 12px" : "20px 14px 13px",
-      transform: `rotate(${rot}deg)`,
-      boxShadow: ph ? "1px 2px 6px rgba(0,0,0,0.07)" : "2px 3px 10px rgba(0,0,0,0.12)",
-      opacity: ph ? 0.6 : 1,
-      transition: "transform 0.15s ease, box-shadow 0.15s ease",
+      background: t.bg,
+      border: `1.5px solid ${t.border}`,
+      borderRadius: 10,
+      padding: compact ? "16px 12px 11px" : "18px 14px 12px",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+      opacity: ph ? 0.72 : 1,
+      transition: "transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s",
       cursor: ph ? "default" : "pointer",
-      minHeight: compact ? 90 : 110,
+      minHeight: compact ? 88 : 105,
     }}
-      onMouseEnter={e => { if (!ph) { const el = e.currentTarget as HTMLElement; el.style.transform = `rotate(${rot * 0.2}deg) translateY(-3px)`; el.style.boxShadow = "4px 8px 20px rgba(0,0,0,0.18)"; } }}
-      onMouseLeave={e => { if (!ph) { const el = e.currentTarget as HTMLElement; el.style.transform = `rotate(${rot}deg)`; el.style.boxShadow = "2px 3px 10px rgba(0,0,0,0.12)"; } }}
+      onMouseEnter={e => { if (!ph) { const el = e.currentTarget as HTMLElement; el.style.transform = "translateY(-2px)"; el.style.boxShadow = "0 6px 18px rgba(0,0,0,0.14)"; } }}
+      onMouseLeave={e => { if (!ph) { const el = e.currentTarget as HTMLElement; el.style.transform = ""; el.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)"; } }}
     >
-      <Pin color={ph ? "#C4B8AA" : t.pin} />
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 7 }}>
+      <Pin color={t.pin} />
+
+      {/* Label */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
         <span style={{ fontSize: 12 }}>{t.emoji}</span>
-        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" as const, color: ph ? "#C0B4A4" : t.color, fontFamily: "system-ui" }}>
+        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" as const, color: t.color, fontFamily: "system-ui" }}>
           {t.label}
         </span>
         {post.wind_speed && !ph && (
           <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: t.color, fontFamily: "system-ui" }}>{post.wind_speed}kn {post.wind_dir}</span>
         )}
       </div>
-      <p style={{ margin: "0 0 10px", fontSize: compact ? 12 : 13, lineHeight: 1.45, color: ph ? "#B8AA98" : "#2A1F14", fontFamily: "'Georgia', serif" }}>
+
+      {/* Content */}
+      <p style={{ margin: "0 0 9px", fontSize: compact ? 12 : 13, lineHeight: 1.45, color: "#2A1F14", fontFamily: "'Georgia', serif" }}>
         {post.content}
       </p>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: ph ? "#C0B4A4" : t.color, fontFamily: "system-ui" }}>{post.author_name}</span>
-        <span style={{ fontSize: 10, color: ph ? "#C0B4A4" : "#9B8878", fontFamily: "system-ui" }}>{timeAgo(post.created_at)}</span>
+
+      {/* Footer */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: t.color, fontFamily: "system-ui" }}>{post.author_name}</span>
+        <span style={{ fontSize: 10, color: "#9B8878", fontFamily: "system-ui" }}>{timeAgo(post.created_at)}</span>
       </div>
     </div>
   );
@@ -198,7 +202,7 @@ export default function Prikbord({ spotId, spotName, userId, userName, posts, on
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 8px", borderBottom: "1px solid #D0C4B0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: 1.5, color: "#7A5C38", textTransform: "uppercase" as const, fontFamily: "system-ui" }}>Prikbord</span>
-            {!hasReal && <span style={{ fontSize: 10, color: "#B0A090", fontStyle: "italic", fontFamily: "system-ui" }}>voorbeeldberichten</span>}
+            {!hasReal && <span style={{ fontSize: 9, fontWeight: 700, color: "#A08878", background: "rgba(0,0,0,0.06)", borderRadius: 10, padding: "2px 7px", fontFamily: "system-ui", letterSpacing: 0.3 }}>voorbeeldberichten</span>}
           </div>
           {userId && (
             <button onClick={() => setShowModal(true)} style={{ background: "#2E8FAE", border: "none", borderRadius: 20, padding: "6px 14px", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontFamily: "system-ui", boxShadow: "0 2px 8px rgba(46,143,174,0.3)" }}>
