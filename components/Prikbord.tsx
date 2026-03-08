@@ -41,7 +41,7 @@ function timeAgo(d: string) {
 
 function Pin({ color }: { color: string }) {
   return (
-    <svg width="16" height="22" viewBox="0 0 16 22" fill="none" style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", zIndex: 3, filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.25))" }}>
+    <svg width="11" height="16" viewBox="0 0 16 22" fill="none" style={{ position: "absolute", top: -7, left: "50%", transform: "translateX(-50%)", zIndex: 3, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.2))" }}>
       <circle cx="8" cy="7" r="6" fill={color} />
       <circle cx="6" cy="5" r="2" fill="rgba(255,255,255,0.35)" />
       <line x1="8" y1="13" x2="8" y2="22" stroke="#9B8B7A" strokeWidth="1.5" strokeLinecap="round" />
@@ -199,18 +199,18 @@ export default function Prikbord({ spotId, spotName, userId, userName, posts, on
           <div style={{ width: 10, height: 18, background: "linear-gradient(180deg,#C8A878,#A88850)", borderRadius: "3px 3px 0 0", boxShadow: "1px 0 3px rgba(0,0,0,0.2)" }} />
           <div style={{ width: 10, height: 18, background: "linear-gradient(180deg,#C8A878,#A88850)", borderRadius: "3px 3px 0 0", boxShadow: "1px 0 3px rgba(0,0,0,0.2)" }} />
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px 8px", borderBottom: "1px solid #D0C4B0" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 10px", borderBottom: "1px solid #D0C4B0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: 1.5, color: "#7A5C38", textTransform: "uppercase" as const, fontFamily: "system-ui" }}>Prikbord</span>
-            {!hasReal && <span style={{ fontSize: 9, fontWeight: 700, color: "#A08878", background: "rgba(0,0,0,0.06)", borderRadius: 10, padding: "2px 7px", fontFamily: "system-ui", letterSpacing: 0.3 }}>voorbeeldberichten</span>}
+            <span style={{ fontSize: 14, fontWeight: 800, color: "#7A5C38", fontFamily: "system-ui" }}>Prikbord</span>
+            {!hasReal && <span style={{ fontSize: 9, fontWeight: 700, color: "#A08878", background: "rgba(0,0,0,0.06)", borderRadius: 10, padding: "2px 7px", fontFamily: "system-ui" }}>voorbeeldberichten</span>}
           </div>
           {userId && (
-            <button onClick={() => setShowModal(true)} style={{ background: "#2E8FAE", border: "none", borderRadius: 20, padding: "6px 14px", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontFamily: "system-ui", boxShadow: "0 2px 8px rgba(46,143,174,0.3)" }}>
+            <button onClick={() => setShowModal(true)} style={{ background: "linear-gradient(135deg, #0D4A63, #2E8FAE)", border: "none", borderRadius: 20, padding: "6px 14px", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontFamily: "system-ui", boxShadow: "0 2px 8px rgba(46,143,174,0.3)" }}>
               📌 Prik iets
             </button>
           )}
         </div>
-        <div style={{ margin: "10px 12px 12px", background: "linear-gradient(145deg, #E8D4A8 0%, #D8C090 50%, #CEB080 100%)", borderRadius: 10, padding: "18px 10px 14px", boxShadow: "inset 0 1px 4px rgba(0,0,0,0.12)", minHeight: compact ? 180 : 220, position: "relative" as const }}>
+        <div style={{ margin: "10px 12px 12px", background: "linear-gradient(145deg, #E8D4A8 0%, #D8C090 50%, #CEB080 100%)", borderRadius: 10, padding: "20px 14px 18px", boxShadow: "inset 0 1px 4px rgba(0,0,0,0.12)", minHeight: compact ? 180 : 220, position: "relative" as const }}>
           <div style={{ position: "absolute", inset: 0, borderRadius: 10, pointerEvents: "none" as const, backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px)", backgroundSize: "10px 10px" }} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: compact ? 18 : 22, position: "relative" as const }}>
             {visible.map(p => <PostCard key={p.id} post={p} compact={compact} />)}
