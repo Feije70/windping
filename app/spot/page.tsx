@@ -161,7 +161,7 @@ function SpotDetailContent() {
       sbGet(`spots?id=eq.${spotId}&select=*`),
       sbGet(`users?auth_id=eq.${encodeURIComponent(getAuthId() || "")}&select=id,name,min_wind_speed,max_wind_speed`),
       sbGet(`ideal_conditions?spot_id=eq.${spotId}&select=*`),
-    ]).then(([spots, users, conds]) => {
+    ]).then(async ([spots, users, conds]) => {
       if (!spots?.length) { setError("Spot not found"); setLoading(false); return; }
       if (!users?.length) { setError("User not found"); setLoading(false); return; }
       const sp = spots[0]; const user = users[0];
