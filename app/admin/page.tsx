@@ -853,7 +853,6 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
         method: "POST",
         headers: {
           apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
           "Content-Type": "application/json",
           Prefer: "resolution=merge-duplicates,return=minimal",
         },
