@@ -160,7 +160,7 @@ function EnrichmentInfoTab({ spot, enrichment }: { spot: any; enrichment: any })
               boxShadow: "0 2px 8px rgba(59,130,246,0.08)",
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 16 }}>📰</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>
                 <span style={{ fontSize: 11, fontWeight: 800, color: "#1D4ED8", textTransform: "uppercase" as const, letterSpacing: 0.8 }}>Nieuws</span>
                 <span style={{ fontSize: 10, background: "#DBEAFE", color: "#1D4ED8", padding: "1px 7px", borderRadius: 4, fontWeight: 700 }}>Actueel</span>
               </div>
@@ -176,7 +176,7 @@ function EnrichmentInfoTab({ spot, enrichment }: { spot: any; enrichment: any })
               padding: "14px 16px", marginBottom: 12,
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 16 }}>🏆</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
                 <span style={{ fontSize: 11, fontWeight: 800, color: "#92400E", textTransform: "uppercase" as const, letterSpacing: 0.8 }}>Events & wedstrijden</span>
               </div>
               <div style={{ fontSize: 13, color: "#78350F", lineHeight: 1.7 }}>{stripCiteSpot(cats.events)}</div>
@@ -185,14 +185,14 @@ function EnrichmentInfoTab({ spot, enrichment }: { spot: any; enrichment: any })
 
           {/* Overige categorieën */}
           {[
-            { key: "conditions", label: "Windcondities",     icon: "💨" },
-            { key: "hazards",    label: "Gevaren & regels",  icon: "⚠️" },
-            { key: "facilities", label: "Faciliteiten",      icon: "🏄" },
-            { key: "tips",       label: "Tips",              icon: "💡" },
+            { key: "conditions", label: "Windcondities",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg> },
+            { key: "hazards",    label: "Gevaren & regels", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> },
+            { key: "facilities", label: "Faciliteiten",     icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
+            { key: "tips",       label: "Tips",             icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7Z"/><path d="M10 21h4"/></svg> },
           ].filter(c => cats[c.key]).map(cat => (
             <div key={cat.key} style={{ background: C.card, borderRadius: 12, padding: "14px 16px", marginBottom: 10, boxShadow: C.cardShadow }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontSize: 15 }}>{cat.icon}</span>
+                {cat.icon}
                 <span style={{ fontSize: 11, fontWeight: 700, color: C.navy, textTransform: "uppercase" as const, letterSpacing: 0.8 }}>{cat.label}</span>
               </div>
               <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.7 }}>{stripCiteSpot(cats[cat.key])}</div>
