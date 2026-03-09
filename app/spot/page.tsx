@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { colors as C, fonts } from "@/lib/design";
@@ -7,18 +6,14 @@ import NavBar from "@/components/NavBar";
 import { Icons } from "@/components/Icons";
 import { getValidToken, getEmail, getAuthId, isTokenExpired, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 import Prikbord, { PrikbordPost } from "@/components/Prikbord";
-
 const h = { fontFamily: fonts.heading };
 const SMIN = 5, SMAX = 50, SIZE = 280, CTR = 140, SEG = 16, SEG_A = 22.5, IR = 22, OR = CTR - 16;
 const DIRS = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
 const EXPAND: Record<string, string[]> = { N:["NNW","N","NNE"], NE:["NNE","NE","ENE"], E:["ENE","E","ESE"], SE:["ESE","SE","SSE"], S:["SSE","S","SSW"], SW:["SSW","SW","WSW"], W:["WSW","W","WNW"], NW:["WNW","NW","NNW"] };
 const typeColors: Record<string, string> = { Zee: "#2E8FAE", Meer: "#3EAA8C", Rivier: "#E8A83E" };
-
 function normA(a: number) { return ((a % 360) + 360) % 360; }
 function pct(v: number) { return ((v - SMIN) / (SMAX - SMIN)) * 100; }
 function valFromPct(p: number) { return Math.round(SMIN + (p / 100) * (SMAX - SMIN)); }
-
-/* ── Supabase ── */
 async function sbGet(path: string) {
   const token = await getValidToken(); if (!token) throw new Error("auth");
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } });
@@ -27,7 +22,6 @@ async function sbGet(path: string) {
 }
 async function sbUpsert(table: string, data: any) {
   const token = await getValidToken(); if (!token) throw new Error("auth");
-  // Atomic upsert via POST with merge-duplicates (requires UNIQUE constraint on user_id+spot_id)
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: "POST",
     headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
@@ -35,21 +29,16 @@ async function sbUpsert(table: string, data: any) {
   });
   if (res.status === 401) throw new Error("auth");
   if (!res.ok) {
-    // Fallback: try PATCH if POST upsert fails (e.g. no unique constraint)
     const patchUrl = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${data.user_id}&spot_id=eq.${data.spot_id}`;
     const patchRes = await fetch(patchUrl, { method: "PATCH", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(data) });
     if (!patchRes.ok) { const t = await patchRes.text(); throw new Error(`upsert_${patchRes.status}_${t}`); }
   }
 }
-
-/* ── Wind Range Slider (reusable) ── */
 function WindSlider({ min, max, onChange, color = C.sky }: { min: number; max: number; onChange: (mn: number, mx: number) => void; color?: string }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef<"min" | "max" | null>(null);
-  // Keep onChange/min/max in refs to avoid stale closures in event listeners
   const propsRef = useRef({ onChange, min, max });
   propsRef.current = { onChange, min, max };
-
   useEffect(() => {
     const onM = (e: MouseEvent | TouchEvent) => {
       if (!dragging.current || !trackRef.current) return;
@@ -72,7 +61,7 @@ function WindSlider({ min, max, onChange, color = C.sky }: { min: number; max: n
       document.removeEventListener("mouseup", onU);
       document.removeEventListener("touchend", onU);
     };
-  }, []); // mount once, read from refs
+  }, []);
   return (
     <div style={{ background: C.card, borderRadius: 14, padding: "16px 18px", boxShadow: C.cardShadow, border: color !== C.sky ? `1.5px solid ${color}25` : "none" }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
@@ -92,57 +81,175 @@ function WindSlider({ min, max, onChange, color = C.sky }: { min: number; max: n
   );
 }
 
+/* ── Strip cite tags from enrichment text ── */
+function stripCiteSpot(text: string): string {
+  if (!text) return text;
+  return text.replace(/]*>([\s\S]*?)<\/antml:cite>/g, "$1").trim();
+}
+
+/* ── Enrichment Info Tab Component ── */
+function EnrichmentInfoTab({ spot, enrichment }: { spot: any; enrichment: any }) {
+  const cats = enrichment?.categories || {};
+  const hasEnrichment = enrichment && Object.values(cats).some(Boolean);
+  const conf = enrichment?.confidence || 0;
+  const scannedAt = enrichment?.scanned_at
+    ? new Date(enrichment.scanned_at).toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })
+    : null;
+
+  return (
+    <div>
+      {/* Basis spot info */}
+      <div style={{ background: C.card, borderRadius: 14, padding: "16px 18px", boxShadow: C.cardShadow, marginBottom: 16 }}>
+        {spot.tips && (
+          <p style={{ fontSize: 14, color: C.sub, lineHeight: 1.7, margin: "0 0 14px" }}>{spot.tips}</p>
+        )}
+        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 16 }}>
+          {spot.good_directions?.length > 0 && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.8, textTransform: "uppercase" as const, marginBottom: 4 }}>Richtingen</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.sky }}>{spot.good_directions.join(", ")}</div>
+            </div>
+          )}
+          {spot.min_wind && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.8, textTransform: "uppercase" as const, marginBottom: 4 }}>Windrange</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.sky }}>{spot.min_wind}–{spot.max_wind} kn</div>
+            </div>
+          )}
+          {spot.level && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.8, textTransform: "uppercase" as const, marginBottom: 4 }}>Level</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>{spot.level}</div>
+            </div>
+          )}
+          {spot.region && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.8, textTransform: "uppercase" as const, marginBottom: 4 }}>Regio</div>
+              <div style={{ fontSize: 13, color: C.muted }}>{spot.region}</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {!hasEnrichment ? (
+        <div style={{ background: C.card, borderRadius: 14, padding: "28px 18px", boxShadow: C.cardShadow, textAlign: "center" as const }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>🔍</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.navy, marginBottom: 4 }}>Nog geen uitgebreide info</div>
+          <div style={{ fontSize: 12, color: C.muted }}>Deze spot wordt binnenkort gescand.</div>
+        </div>
+      ) : (
+        <>
+          {/* Meta */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, padding: "0 2px" }}>
+            <span style={{
+              fontSize: 11, padding: "3px 9px", borderRadius: 6, fontWeight: 700,
+              background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2",
+              color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B",
+            }}>
+              {conf > 0.7 ? "✓ Betrouwbaar" : conf > 0.4 ? "~ Gedeeltelijk" : "! Weinig info"}
+            </span>
+            {scannedAt && <span style={{ fontSize: 11, color: C.muted }}>Gescand {scannedAt}</span>}
+          </div>
+
+          {/* Nieuws — speciale blauwe card bovenaan */}
+          {cats.news && (
+            <div style={{
+              background: "linear-gradient(135deg, #EFF6FF, #DBEAFE)",
+              border: "1.5px solid #BFDBFE", borderRadius: 14,
+              padding: "14px 16px", marginBottom: 12,
+              boxShadow: "0 2px 8px rgba(59,130,246,0.08)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 16 }}>📰</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: "#1D4ED8", textTransform: "uppercase" as const, letterSpacing: 0.8 }}>Nieuws</span>
+                <span style={{ fontSize: 10, background: "#DBEAFE", color: "#1D4ED8", padding: "1px 7px", borderRadius: 4, fontWeight: 700 }}>Actueel</span>
+              </div>
+              <div style={{ fontSize: 13, color: "#1E3A5F", lineHeight: 1.7 }}>{stripCiteSpot(cats.news)}</div>
+            </div>
+          )}
+
+          {/* Events — gele card */}
+          {cats.events && (
+            <div style={{
+              background: "linear-gradient(135deg, #FFFBEB, #FEF3C7)",
+              border: "1.5px solid #FDE68A", borderRadius: 14,
+              padding: "14px 16px", marginBottom: 12,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 16 }}>🏆</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: "#92400E", textTransform: "uppercase" as const, letterSpacing: 0.8 }}>Events & wedstrijden</span>
+              </div>
+              <div style={{ fontSize: 13, color: "#78350F", lineHeight: 1.7 }}>{stripCiteSpot(cats.events)}</div>
+            </div>
+          )}
+
+          {/* Overige categorieën */}
+          {[
+            { key: "conditions", label: "Windcondities",     icon: "💨" },
+            { key: "hazards",    label: "Gevaren & regels",  icon: "⚠️" },
+            { key: "facilities", label: "Faciliteiten",      icon: "🏄" },
+            { key: "tips",       label: "Tips",              icon: "💡" },
+          ].filter(c => cats[c.key]).map(cat => (
+            <div key={cat.key} style={{ background: C.card, borderRadius: 12, padding: "14px 16px", marginBottom: 10, boxShadow: C.cardShadow }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 15 }}>{cat.icon}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: C.navy, textTransform: "uppercase" as const, letterSpacing: 0.8 }}>{cat.label}</span>
+              </div>
+              <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.7 }}>{stripCiteSpot(cats[cat.key])}</div>
+            </div>
+          ))}
+
+          {/* Bronnen */}
+          {enrichment.sources?.length > 0 && (
+            <div style={{ marginTop: 6, padding: "10px 14px", background: C.creamDark, borderRadius: 10 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.8, textTransform: "uppercase" as const, marginBottom: 4 }}>Bronnen</div>
+              <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>{enrichment.sources.join(" · ")}</div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ── Main Spot Detail Content ── */
 function SpotDetailContent() {
   const searchParams = useSearchParams();
   const spotId = searchParams.get("id");
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [spot, setSpot] = useState<any>(null);
   const [userId, setUserId] = useState<number | null>(null);
   const [userName, setUserName] = useState<string>("");
-
-  // Conditions
+  const [enrichment, setEnrichment] = useState<any>(null); // ← NIEUW
   const [wMin, setWMin] = useState(15);
   const [wMax, setWMax] = useState(25);
   const [userSegs, setUserSegs] = useState<boolean[]>(new Array(16).fill(false));
-  const [userArc, setUserArc] = useState<[number, number] | null>(null); // [startAngle, endAngle] for smooth rendering
+  const [userArc, setUserArc] = useState<[number, number] | null>(null);
   const [defaults, setDefaults] = useState<boolean[]>(new Array(16).fill(false));
   const [isSaved, setIsSaved] = useState(false);
   const [hasEdits, setHasEdits] = useState(false);
-
-  // Epic
   const [epicEnabled, setEpicEnabled] = useState(false);
   const [eMin, setEMin] = useState(15);
   const [eMax, setEMax] = useState(30);
   const [epicSegs, setEpicSegs] = useState<boolean[]>(new Array(16).fill(false));
   const [epicArc, setEpicArc] = useState<[number, number] | null>(null);
-
-  // Tide preferences (sea spots only)
   const [tideEnabled, setTideEnabled] = useState(false);
   const [tideRef, setTideRef] = useState<"HW" | "LW">("HW");
   const [tideBefore, setTideBefore] = useState(2);
   const [tideAfter, setTideAfter] = useState(1);
-
-  // Map & compass
   const [mode, setMode] = useState<"select" | "map">("select");
   const [compassLayer, setCompassLayer] = useState<"good" | "epic">("good");
   const [compassLat, setCompassLat] = useState<number | null>(null);
   const [compassLng, setCompassLng] = useState<number | null>(null);
   const compassLatRef = useRef<number | null>(null);
   const compassLngRef = useRef<number | null>(null);
-
-  // Save state
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [prikbordPosts, setPrikbordPosts] = useState<PrikbordPost[]>([]);
   const tabParam = searchParams.get("tab") as "info" | "prikbord" | "voorkeuren" | null;
   const [activeTab, setActiveTab] = useState<"info" | "prikbord" | "voorkeuren">(tabParam ?? "voorkeuren");
   const tabSetByData = useRef(false);
-
-  // Zodra data geladen is: eerste bezoek → voorkeuren, terugkerend bezoek → prikbord
-  // (alleen als er geen expliciete ?tab= param in de URL staat)
   useEffect(() => {
     if (tabParam) return;
     if (tabSetByData.current) return;
@@ -150,26 +257,19 @@ function SpotDetailContent() {
     tabSetByData.current = true;
     setActiveTab(isSaved ? "prikbord" : "voorkeuren");
   }, [loading, isSaved, tabParam]);
-
-  // Refs
   const mapRef = useRef<any>(null);
   const mapElRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const LRef = useRef<any>(null);
   const sweepRef = useRef<{ active: boolean; s: number | null; c: number | null }>({ active: false, s: null, c: null });
-
-  // Mutable refs for canvas drawing and auto-save (avoids stale closures)
   const stateRef = useRef({ userSegs, userArc, defaults, isSaved, epicSegs, epicArc, epicEnabled, compassLayer, hasEdits, wMin, wMax, eMin, eMax, tideEnabled, tideRef, tideBefore, tideAfter });
   useEffect(() => { stateRef.current = { userSegs, userArc, defaults, isSaved, epicSegs, epicArc, epicEnabled, compassLayer, hasEdits, wMin, wMax, eMin, eMax, tideEnabled, tideRef, tideBefore, tideAfter }; }, [userSegs, userArc, defaults, isSaved, epicSegs, epicArc, epicEnabled, compassLayer, hasEdits, wMin, wMax, eMin, eMax, tideEnabled, tideRef, tideBefore, tideAfter]);
-
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
 
-  /* ── Load spot data ── */
   useEffect(() => {
     if (!spotId) { setError("No spot ID"); setLoading(false); return; }
     const email = getEmail();
     if (!email || isTokenExpired()) { window.location.href = "/login"; return; }
-
     Promise.all([
       sbGet(`spots?id=eq.${spotId}&select=*`),
       sbGet(`users?auth_id=eq.${encodeURIComponent(getAuthId() || "")}&select=id,name,min_wind_speed,max_wind_speed`),
@@ -180,17 +280,10 @@ function SpotDetailContent() {
       const sp = spots[0]; const user = users[0];
       setSpot(sp); setUserId(user.id);
       if (user.name) setUserName(user.name);
-
       const existing = conds?.find((c: any) => c.user_id === user.id) || null;
-
-      // Wind
       if (existing?.wind_min != null) { setWMin(existing.wind_min); setWMax(existing.wind_max); }
       else if (user.min_wind_speed != null) { setWMin(user.min_wind_speed); setWMax(user.max_wind_speed || 25); }
-
-      // Compass position
       if (existing?.compass_lat != null) { setCompassLat(existing.compass_lat); setCompassLng(existing.compass_lng); compassLatRef.current = existing.compass_lat; compassLngRef.current = existing.compass_lng; }
-
-      // Directions
       if (existing?.directions?.length) {
         const segs = new Array(16).fill(false);
         DIRS.forEach((d, i) => { if (existing.directions.includes(d)) segs[i] = true; });
@@ -201,8 +294,6 @@ function SpotDetailContent() {
         const defs = DIRS.map((d) => !!exp[d]);
         setDefaults(defs);
       }
-
-      // Epic
       if (existing?.perfect_enabled) {
         setEpicEnabled(true);
         if (existing.perfect_wind_min != null) { setEMin(existing.perfect_wind_min); setEMax(existing.perfect_wind_max || 30); }
@@ -212,26 +303,30 @@ function SpotDetailContent() {
           setEpicSegs(eSegs);
         }
       }
-
-      // Tide
       if (existing?.tide_enabled) {
         setTideEnabled(true);
         if (existing.tide_reference) setTideRef(existing.tide_reference);
         if (existing.tide_hours_before != null) setTideBefore(existing.tide_hours_before);
         if (existing.tide_hours_after != null) setTideAfter(existing.tide_hours_after);
       }
-
       if (existing) setIsSaved(true);
       setLoading(false);
     }).catch((e) => { setError(e.message); setLoading(false); });
 
-    // Laad prikbord posts (los van de main fetch)
+    // Prikbord
     sbGet(`spot_posts?spot_id=eq.${spotId}&order=created_at.desc&limit=20&select=id,type,content,author_name,created_at,wind_speed,wind_dir`)
       .then(posts => setPrikbordPosts(posts || []))
       .catch(() => {});
+
+    // Enrichment data ← NIEUW
+    fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=eq.${spotId}&select=*`, {
+      headers: { apikey: SUPABASE_ANON_KEY }
+    })
+      .then(r => r.json())
+      .then(data => { if (Array.isArray(data) && data.length) setEnrichment(data[0]); })
+      .catch(() => {});
   }, [spotId]);
 
-  /* ── Load Leaflet ── */
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!document.querySelector('link[href*="leaflet"]')) { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(l); }
@@ -239,12 +334,10 @@ function SpotDetailContent() {
     else LRef.current = (window as any).L;
   }, []);
 
-  /* ── Init map when spot loads ── */
   const satLayerRef = useRef<any>(null);
   const streetLayerRef = useRef<any>(null);
   const spotMarkerRef = useRef<any>(null);
   const [isSat, setIsSat] = useState(true);
-
   useEffect(() => {
     if (!spot || loading || !mapElRef.current) return;
     const tryInit = () => {
@@ -257,23 +350,16 @@ function SpotDetailContent() {
       const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 });
       const street = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 18 });
       sat.addTo(map);
-      satLayerRef.current = sat;
-      streetLayerRef.current = street;
+      satLayerRef.current = sat; streetLayerRef.current = street;
       const col = typeColors[spot.spot_type] || C.sky;
       if (spot.latitude && spot.longitude) {
         spotMarkerRef.current = L.circleMarker([spot.latitude, spot.longitude], { radius: 8, color: col, fillColor: col, fillOpacity: 0.8, weight: 2 }).addTo(map);
       }
-      // When map is moved (in "Position compass" mode), move marker to center
-      map.on("moveend", () => {
-        if (!spotMarkerRef.current) return;
-        const c = map.getCenter();
-        spotMarkerRef.current.setLatLng([c.lat, c.lng]);
-      });
+      map.on("moveend", () => { if (!spotMarkerRef.current) return; const c = map.getCenter(); spotMarkerRef.current.setLatLng([c.lat, c.lng]); });
       mapRef.current = map;
       setTimeout(() => map.invalidateSize(), 200);
     };
     tryInit();
-    // Cleanup on unmount
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
   }, [spot, loading]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -284,8 +370,6 @@ function SpotDetailContent() {
     else { map.removeLayer(streetLayerRef.current); satLayerRef.current.addTo(map); }
     setIsSat(!isSat);
   }
-
-  /* ── Mode toggle (map drag vs compass select) ── */
   useEffect(() => {
     if (!mapRef.current) return;
     const map = mapRef.current;
@@ -293,49 +377,29 @@ function SpotDetailContent() {
     else { map.dragging.disable(); map.touchZoom.disable(); map.scrollWheelZoom.disable(); }
   }, [mode]);
 
-  /* ── Convert segments array to smooth arc angles ── */
   function segsToArc(segs: boolean[]): [number, number] | null {
     const active: number[] = [];
     for (let i = 0; i < SEG; i++) if (segs[i]) active.push(i);
     if (!active.length) return null;
-    // Find contiguous run (may wrap around 0)
     let start = active[0], end = active[active.length - 1];
-    // Check if it wraps around (e.g. [14,15,0,1])
     let contiguous = true;
-    for (let j = 1; j < active.length; j++) {
-      if (active[j] !== active[j - 1] + 1) { contiguous = false; break; }
-    }
+    for (let j = 1; j < active.length; j++) { if (active[j] !== active[j - 1] + 1) { contiguous = false; break; } }
     if (!contiguous) {
-      // Try wrap-around: find the gap
-      const all = new Set(active);
-      let gapStart = -1;
-      for (let i = 0; i < SEG; i++) {
-        if (!all.has(i) && all.has((i + SEG - 1) % SEG)) { gapStart = i; break; }
-      }
-      if (gapStart >= 0) {
-        // Walk from gapStart to find start and end
-        let s = gapStart;
-        while (!all.has(s)) s = (s + 1) % SEG;
-        start = s;
-        let e = (gapStart + SEG - 1) % SEG;
-        end = e;
-      }
+      const all = new Set(active); let gapStart = -1;
+      for (let i = 0; i < SEG; i++) { if (!all.has(i) && all.has((i + SEG - 1) % SEG)) { gapStart = i; break; } }
+      if (gapStart >= 0) { let s = gapStart; while (!all.has(s)) s = (s + 1) % SEG; start = s; let e = (gapStart + SEG - 1) % SEG; end = e; }
     }
     const fromAngle = start * SEG_A - SEG_A / 2;
     const toAngle = end * SEG_A + SEG_A / 2;
     return [fromAngle, toAngle];
   }
 
-  /* ── Draw compass ── */
   const drawPie = useCallback(() => {
     const canvas = canvasRef.current; if (!canvas) return;
     const ctx = canvas.getContext("2d"); if (!ctx) return;
     const st = stateRef.current;
     ctx.clearRect(0, 0, SIZE, SIZE);
-
     const hasUserSelection = st.userSegs.some(Boolean);
-
-    // Defaults (subtle hint) — only show if user hasn't selected anything
     if (!hasUserSelection && !st.isSaved) {
       const defArc = segsToArc(st.defaults);
       if (defArc) {
@@ -348,8 +412,6 @@ function SpotDetailContent() {
         ctx.setLineDash([6, 4]); ctx.stroke(); ctx.setLineDash([]);
       }
     }
-
-    // User selection (solid teal arc — high opacity)
     if (hasUserSelection) {
       const arc = st.userArc || segsToArc(st.userSegs);
       if (arc) {
@@ -361,29 +423,22 @@ function SpotDetailContent() {
         ctx.strokeStyle = "rgba(46,111,126,0.8)"; ctx.lineWidth = 2.5; ctx.stroke();
       }
     }
-
-    // Epic selection (gold arc, smaller radius, double border for distinction)
     if (st.epicEnabled && st.epicSegs.some(Boolean)) {
       const arc = st.epicArc || segsToArc(st.epicSegs);
       if (arc) {
         const [from, to] = arc;
         const eR = OR * 0.72;
-        // Fill
         ctx.beginPath(); ctx.moveTo(CTR, CTR);
         ctx.arc(CTR, CTR, eR, (from - 90) * Math.PI / 180, (to - 90) * Math.PI / 180);
         ctx.closePath();
         ctx.fillStyle = "rgba(212,146,46,0.45)"; ctx.fill();
-        // Outer border (thick)
         ctx.strokeStyle = "rgba(212,146,46,0.9)"; ctx.lineWidth = 3; ctx.stroke();
-        // Inner highlight border (white, for double-border effect)
         ctx.beginPath(); ctx.moveTo(CTR, CTR);
         ctx.arc(CTR, CTR, eR - 4, (from - 90) * Math.PI / 180, (to - 90) * Math.PI / 180);
         ctx.closePath();
         ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1; ctx.stroke();
       }
     }
-
-    // Sweep preview (live dragging)
     const sw = sweepRef.current;
     if (sw.active && sw.s !== null && sw.c !== null) {
       let s = normA(sw.s), e = normA(sw.c), d = e - s;
@@ -397,10 +452,8 @@ function SpotDetailContent() {
       ctx.fillStyle = fc; ctx.fill(); ctx.strokeStyle = sc; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
     }
   }, []);
-
   useEffect(() => { drawPie(); }, [userSegs, userArc, defaults, isSaved, epicSegs, epicArc, epicEnabled, drawPie]);
 
-  /* ── Sweep handlers ── */
   function angleFromEvent(e: React.MouseEvent | React.TouchEvent | MouseEvent | TouchEvent) {
     const canvas = canvasRef.current; if (!canvas) return null;
     const r = canvas.getBoundingClientRect();
@@ -409,7 +462,6 @@ function SpotDetailContent() {
     if (Math.sqrt(cx * cx + cy * cy) < IR) return null;
     let a = Math.atan2(cy, cx) * 180 / Math.PI + 90; if (a < 0) a += 360; return a;
   }
-
   function arcToSegs(sa: number, ea: number) {
     const segs = new Array(16).fill(false);
     let s = normA(sa), e = normA(ea), d = e - s;
@@ -421,43 +473,30 @@ function SpotDetailContent() {
     }
     return segs;
   }
-
   function finishSweep() {
     const sw = sweepRef.current;
     if (sw.s !== null && sw.c !== null) {
       const d = Math.abs(sw.c - sw.s); const ad = d > 180 ? 360 - d : d;
       if (ad > 5) {
         const newSegs = arcToSegs(sw.s, sw.c);
-        // Calculate smooth arc from sweep
         let s = normA(sw.s), e = normA(sw.c), diff = e - s;
         if (diff > 180) diff -= 360; if (diff < -180) diff += 360;
         let from: number, to: number;
         if (diff >= 0) { from = s; to = s + diff; } else { from = s + diff; to = s; }
         const arc: [number, number] = [from, to];
-
-        if (stateRef.current.compassLayer === "epic") {
-          setEpicSegs(newSegs);
-          setEpicArc(arc);
-        } else {
-          setUserSegs(newSegs);
-          setUserArc(arc);
-          setHasEdits(true);
-          setIsSaved(false);
-        }
+        if (stateRef.current.compassLayer === "epic") { setEpicSegs(newSegs); setEpicArc(arc); }
+        else { setUserSegs(newSegs); setUserArc(arc); setHasEdits(true); setIsSaved(false); }
       }
     }
     sweepRef.current = { active: false, s: null, c: null };
     drawPie();
   }
-
-  // Store finishSweep in a ref so event listeners always call the latest version
   const finishSweepRef = useRef(finishSweep);
   finishSweepRef.current = finishSweep;
-
   useEffect(() => {
     const onMove = (e: MouseEvent | TouchEvent) => {
       if (!sweepRef.current.active) return;
-      if ("touches" in e) e.preventDefault(); // Prevent page scroll during sweep
+      if ("touches" in e) e.preventDefault();
       const canvas = canvasRef.current; if (!canvas) return;
       const r = canvas.getBoundingClientRect();
       const raw = "touches" in e ? e.touches[0] : e;
@@ -480,8 +519,7 @@ function SpotDetailContent() {
       document.removeEventListener("mouseup", onUp);
       document.removeEventListener("touchend", onUp);
     };
-  }, [drawPie]); // stable dependency — drawPie uses useCallback with no deps
-
+  }, [drawPie]);
   function onCanvasDown(e: React.MouseEvent | React.TouchEvent) {
     if (mode !== "select") return;
     const a = angleFromEvent(e.nativeEvent); if (a === null) return;
@@ -489,21 +527,16 @@ function SpotDetailContent() {
     e.preventDefault(); e.stopPropagation();
   }
 
-  /* ── Save ── */
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   async function doSave(showFeedback = true) {
     if (!spot || !userId) return;
     const st = stateRef.current;
-
     const dirs: string[] = [];
     for (let i = 0; i < SEG; i++) if (st.userSegs[i]) dirs.push(DIRS[i]);
     if (!dirs.length && !st.hasEdits) for (let i = 0; i < SEG; i++) if (st.defaults[i]) dirs.push(DIRS[i]);
     const eDirs: string[] = [];
     if (st.epicEnabled) for (let i = 0; i < SEG; i++) if (st.epicSegs[i]) eDirs.push(DIRS[i]);
-
     const mapCenter = mapRef.current?.getCenter();
-
     try {
       await Promise.all([
         sbUpsert("user_spots", { user_id: userId, spot_id: spot.id }),
@@ -517,11 +550,8 @@ function SpotDetailContent() {
       ]);
       setIsSaved(true);
       if (showFeedback) showToast("✓ Saved");
-    } catch (e: any) {
-      if (showFeedback) showToast("Save failed");
-    }
+    } catch (e: any) { if (showFeedback) showToast("Save failed"); }
   }
-
   async function handleSave() {
     if (!spot || !userId) return;
     if (epicEnabled && !epicSegs.some(Boolean)) { showToast("Select epic wind directions first"); return; }
@@ -529,21 +559,16 @@ function SpotDetailContent() {
     await doSave(true);
     setSaving(false);
   }
-
-  // Auto-save after first manual save — debounce 1200ms
   useEffect(() => {
-    if (!isSaved || !userId || !spot) return; // Only auto-save after first save
+    if (!isSaved || !userId || !spot) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => { doSave(true); }, 1200);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [wMin, wMax, userSegs, epicSegs, epicEnabled, eMin, eMax, tideEnabled, tideRef, tideBefore, tideAfter]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Direction tags ── */
   const userDirNames = DIRS.filter((_, i) => userSegs[i]);
   const defaultDirNames = !isSaved ? DIRS.filter((_, i) => defaults[i] && !userSegs[i]) : [];
   const epicDirNames = DIRS.filter((_, i) => epicSegs[i]);
-
-  /* ── Compass label positions ── */
   const labelR = CTR - 8;
   const labels = DIRS.map((d, i) => {
     const a = i * SEG_A; const r = (a - 90) * Math.PI / 180;
@@ -565,7 +590,6 @@ function SpotDetailContent() {
   );
 
   const tc = typeColors[spot.spot_type] || C.sky;
-
   const TAB_ICONS: Record<string, React.ReactElement> = {
     prikbord: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
     info: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
@@ -579,7 +603,6 @@ function SpotDetailContent() {
 
   return (
     <>
-      {/* Back + Header */}
       <a href="/spots" style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: C.sky, textDecoration: "none", marginBottom: 16 }}>
         {Icons.arrowLeft({ color: C.sky, size: 16 })} Back to spots
       </a>
@@ -611,36 +634,16 @@ function SpotDetailContent() {
                 {prikbordPosts.length}
               </span>
             )}
+            {tab.key === "info" && enrichment?.categories?.news && (
+              <span style={{ background: "#3B82F6", color: "#fff", borderRadius: 10, fontSize: 9, fontWeight: 800, padding: "1px 5px" }}>!</span>
+            )}
           </button>
         ))}
       </div>
 
       {/* ── TAB: Spot info ── */}
       {activeTab === "info" && (
-        <div style={{ background: C.card, borderRadius: 12, padding: "18px", boxShadow: C.cardShadow }}>
-          {spot.tips && <p style={{ fontSize: 14, color: C.sub, lineHeight: 1.6, margin: "0 0 12px" }}>{spot.tips}</p>}
-          {spot.good_directions?.length > 0 && (
-            <div style={{ marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>Aanbevolen richtingen: </span>
-              <span style={{ fontSize: 12, color: C.sky, fontWeight: 600 }}>{spot.good_directions.join(", ")}</span>
-            </div>
-          )}
-          {spot.min_wind && (
-            <div style={{ marginBottom: 12 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>Windrange: </span>
-              <span style={{ fontSize: 12, color: C.sky, fontWeight: 600 }}>{spot.min_wind}–{spot.max_wind} kn</span>
-            </div>
-          )}
-          {spot.level && (
-            <div>
-              <span style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>Level: </span>
-              <span style={{ fontSize: 12, color: C.sub }}>{spot.level}</span>
-            </div>
-          )}
-          {!spot.tips && !spot.good_directions?.length && (
-            <p style={{ fontSize: 13, color: C.muted, fontStyle: "italic", margin: 0 }}>Nog geen beschrijving voor deze spot.</p>
-          )}
-        </div>
+        <EnrichmentInfoTab spot={spot} enrichment={enrichment} />
       )}
 
       {/* ── TAB: Prikbord ── */}
@@ -656,11 +659,8 @@ function SpotDetailContent() {
         />
       )}
 
-      {/* ── TAB: Voorkeuren — kaart altijd in DOM zodat Leaflet correct initialiseert ── */}
-      {/* Map container: altijd gerenderd, alleen zichtbaar op voorkeuren tab */}
+      {/* ── TAB: Voorkeuren ── */}
       <div style={{ display: activeTab === "voorkeuren" ? "block" : "none" }}>
-
-        {/* Map + Compass */}
         <div style={{ position: "relative", width: "100%", height: "min(500px, 70vh)", borderRadius: 16, overflow: "hidden", marginBottom: 16, border: `1px solid ${C.cardBorder}` }}>
           <div ref={mapElRef} style={{ width: "100%", height: "100%", zIndex: 1 }} />
           <button onClick={toggleMapLayer} style={{ position: "absolute", top: 12, right: 12, zIndex: 1001, background: "rgba(255,255,255,0.9)", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "#374151", cursor: "pointer", boxShadow: "0 2px 6px rgba(0,0,0,0.15)" }}>
@@ -693,8 +693,6 @@ function SpotDetailContent() {
             </div>
           </div>
         </div>
-
-        {/* Layer tabs (only when epic enabled) */}
         {epicEnabled && (
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
             {(["good", "epic"] as const).map((l) => (
@@ -705,16 +703,12 @@ function SpotDetailContent() {
             ))}
           </div>
         )}
-
-        {/* Actions */}
         {hasEdits && (
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <button onClick={() => { setUserSegs(new Array(16).fill(false)); setUserArc(null); setHasEdits(false); setIsSaved(false); }} style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Reset to default</button>
             <button onClick={() => { setUserSegs(new Array(16).fill(false)); setUserArc(null); setHasEdits(false); }} style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: `1px solid ${C.amber}40`, color: C.amber, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Clear selection</button>
           </div>
         )}
-
-        {/* Direction section */}
         <div style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 17, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Your Wind Directions</h2>
           <p style={{ fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 12 }}>You'll only get pinged when wind comes from these directions</p>
@@ -724,15 +718,11 @@ function SpotDetailContent() {
             {!userDirNames.length && !defaultDirNames.length && <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>Sweep over water on the compass above</span>}
           </div>
         </div>
-
-        {/* Wind range */}
         <div style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 17, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Your Wind Speed Range</h2>
           <p style={{ fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 12 }}>You'll only get pinged when wind speed falls within this range</p>
           <WindSlider min={wMin} max={wMax} onChange={(mn, mx) => { setWMin(mn); setWMax(mx); }} />
         </div>
-
-        {/* Epic toggle */}
         <div onClick={() => { const next = !epicEnabled; setEpicEnabled(next); if (next) setCompassLayer("epic"); else setCompassLayer("good"); }} style={{ background: epicEnabled ? C.epicBg : C.card, border: `2px solid ${epicEnabled ? "#E8A83E" : C.cardBorder}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: epicEnabled ? "#E8A83E" : C.navy, display: "flex", alignItems: "center", gap: 6 }}>🤙 Set Epic conditions</div>
@@ -742,8 +732,6 @@ function SpotDetailContent() {
             <div style={{ position: "absolute", top: 3, left: epicEnabled ? 25 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.3s" }} />
           </div>
         </div>
-
-        {/* Epic content */}
         {epicEnabled && (
           <div style={{ marginBottom: 24 }}>
             <h2 style={{ fontSize: 17, fontWeight: 700, color: "#E8A83E", marginBottom: 4 }}>Epic Wind Speed</h2>
@@ -760,8 +748,6 @@ function SpotDetailContent() {
             )}
           </div>
         )}
-
-        {/* Tide preferences (sea spots only) */}
         {spot.spot_type?.toLowerCase() === "zee" && (
           <>
             <div onClick={() => setTideEnabled(!tideEnabled)} style={{ background: tideEnabled ? C.oceanTint : C.card, border: `2px solid ${tideEnabled ? C.sky : C.cardBorder}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
@@ -804,14 +790,11 @@ function SpotDetailContent() {
             )}
           </>
         )}
-
-        {/* Save button */}
         <button onClick={handleSave} disabled={saving} style={{ width: "100%", padding: 14, background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1 }}>
           {saving ? "Saving..." : isSaved ? "Update preferences" : "Add to my spots"}
         </button>
       </div>
 
-      {/* Toast */}
       {toast && (
         <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: toast.includes("✓") ? C.green : C.amber, color: "#fff", padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: "0 4px 20px rgba(0,0,0,0.15)", zIndex: 10000 }}>{toast}</div>
       )}
@@ -819,7 +802,6 @@ function SpotDetailContent() {
   );
 }
 
-/* ── Page wrapper ── */
 export default function SpotDetailPage() {
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>

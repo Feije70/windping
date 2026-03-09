@@ -1,7 +1,6 @@
 /* ── app/api/admin/data/route.ts ───────────────────────────
    Admin Data Endpoint — reads data with service role key
    ──────────────────────────────────────────────────────────── */
-
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -14,18 +13,19 @@ export async function GET(req: Request) {
   if (!authHeader.startsWith("Bearer ")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
   try {
     const token = authHeader.replace("Bearer ", "");
     const payload = JSON.parse(atob(token.split(".")[1]));
     const adminIds = ADMIN_AUTH_IDS.filter(id => id.length > 0);
     if (!adminIds.length || !adminIds.includes(payload.sub)) {
-      return NextResponse.json({ 
-        error: "Not admin", 
-        debug: { 
-          tokenSub: payload.sub, 
+      return NextResponse.json({
+        error: "Not admin",
+        debug: {
+          tokenSub: payload.sub,
           adminIdsConfigured: adminIds.length,
           adminIdsPreview: adminIds.map(id => id.substring(0, 8) + "..."),
-        } 
+        }
       }, { status: 403 });
     }
   } catch (e: any) {
@@ -40,7 +40,7 @@ export async function GET(req: Request) {
 
   const [{ data: users }, { data: spots }, { data: alerts }] = await Promise.all([
     sb.from("users").select("id, email, name").order("id"),
-    sb.from("spots").select("id, display_name").order("display_name").limit(200),
+    sb.from("spots").select("id, display_name").order("display_name").limit(5000),
     sb.from("alert_history").select("*").order("created_at", { ascending: false }).limit(50),
   ]);
 
