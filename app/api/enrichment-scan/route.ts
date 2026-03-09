@@ -36,8 +36,8 @@ Geef je antwoord als JSON met deze structuur:
     "facilities": "Parkeren, toiletten, douches, horeca, kiteschool, materiaalverhuur, strand- of kadeomstandigheden",
     "hazards": "Gevaren: rotsen, stromingen, scheepvaart, kitezones, verboden gebieden, regels",
     "tips": "Praktische tips van ervaren surfers. Beste plek om te starten, lokale kennis",
-    "events": "Bekende kitesurf/windsurf wedstrijden of events die hier plaatsvinden",
-    "news": "Recent nieuws over de spot (laatste 1-2 jaar)"
+    "events": "Bekende kitesurf/windsurf wedstrijden of events die hier plaatsvinden. Maar ook andere events op of nabij de spot: festivals, sportevenementen, beachvolleybal, marathons, airshows, markten — alles wat invloed kan hebben op drukte of parkeren.",
+    "news": "Recent nieuws over de spot (laatste 1-2 jaar). Denk aan strandafsluitingen, natuurgebied wijzigingen, bouwprojecten, nieuwe regels, maar ook grote events die eraan komen."
   },
   "missing": ["categorieën waarvoor geen info gevonden is"]
 }
