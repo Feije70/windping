@@ -88,8 +88,10 @@ function stripCiteSpot(text: string): string {
 }
 
 /* ── Enrichment Info Tab Component ── */
-function EnrichmentInfoTab({ spot, enrichment }: { spot: any; enrichment: any }) {
-  const cats = enrichment?.categories || {};
+function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enrichment: any; userLanguage: string }) {
+  // Bepaal juiste taallaag: gebruikerstaal → Engels → root (oud formaat)
+  const rawCats = enrichment?.categories || {};
+  const cats = rawCats[userLanguage] || rawCats["en"] || rawCats || {};
   const hasEnrichment = enrichment && Object.values(cats).some(Boolean);
   const conf = enrichment?.confidence || 0;
   const scannedAt = enrichment?.scanned_at
@@ -222,6 +224,7 @@ function SpotDetailContent() {
   const [userId, setUserId] = useState<number | null>(null);
   const [userName, setUserName] = useState<string>("");
   const [enrichment, setEnrichment] = useState<any>(null); // ← NIEUW
+  const [userLanguage, setUserLanguage] = useState<string>("nl");
   const [wMin, setWMin] = useState(15);
   const [wMax, setWMax] = useState(25);
   const [userSegs, setUserSegs] = useState<boolean[]>(new Array(16).fill(false));
@@ -278,6 +281,7 @@ function SpotDetailContent() {
       if (!spots?.length) { setError("Spot not found"); setLoading(false); return; }
       if (!users?.length) { setError("User not found"); setLoading(false); return; }
       const sp = spots[0]; const user = users[0];
+      if (user.language) setUserLanguage(user.language);
       setSpot(sp); setUserId(user.id);
       if (user.name) setUserName(user.name);
       const existing = conds?.find((c: any) => c.user_id === user.id) || null;
@@ -643,7 +647,7 @@ function SpotDetailContent() {
 
       {/* ── TAB: Spot info ── */}
       {activeTab === "info" && (
-        <EnrichmentInfoTab spot={spot} enrichment={enrichment} />
+        <EnrichmentInfoTab spot={spot} enrichment={enrichment} userLanguage={userLanguage} />
       )}
 
       {/* ── TAB: Prikbord ── */}

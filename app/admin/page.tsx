@@ -1265,24 +1265,31 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
   const [deleting, setDeleting] = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  // Editable categories — initieel gevuld met gestrippte tekst
-  const [editCats, setEditCats] = useState<Record<string, string>>(() => {
-    const cats = data.categories || {};
+  // Editable categories — lees uit nl of en taallaag, of root als oud formaat
+  function extractCats(categories: any): Record<string, string> {
+    if (!categories) return {};
+    // Nieuw formaat: { nl: {...}, en: {...} }
+    const langCats = categories.nl || categories.en || null;
+    const source = langCats && typeof langCats === "object" && !Array.isArray(langCats) ? langCats : categories;
     const result: Record<string, string> = {};
-    Object.entries(cats).forEach(([k, v]) => {
-      result[k] = stripCite(String(v || ""));
+    Object.entries(source).forEach(([k, v]) => {
+      if (typeof v === "string") result[k] = stripCite(v);
     });
     return result;
+  }
+
+  const [editCats, setEditCats] = useState<Record<string, string>>(() => extractCats(data.categories));
+  const [editLang, setEditLang] = useState<string>(() => {
+    const cats = data.categories || {};
+    return cats.nl ? "nl" : cats.en ? "en" : "nl";
   });
 
   // Reset editCats als een andere spot geselecteerd wordt
   useEffect(() => {
     const cats = data.categories || {};
-    const result: Record<string, string> = {};
-    Object.entries(cats).forEach(([k, v]) => {
-      result[k] = stripCite(String(v || ""));
-    });
-    setEditCats(result);
+    const lang = cats.nl ? "nl" : cats.en ? "en" : "nl";
+    setEditLang(lang);
+    setEditCats(extractCats(cats));
     setSaved(false);
     setSaveError("");
   }, [spot.id]);
@@ -1302,7 +1309,16 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
           spot_id: spot.id,
           confidence: data.confidence || 0,
           sources: data.sources || [],
-          categories: editCats,
+          categories: (() => {
+            // Nieuw formaat: bewaar bestaande taallagen, update huidige
+            const existing = data.categories || {};
+            const isMultiLang = existing.nl || existing.en;
+            if (isMultiLang) {
+              return { ...existing, [editLang]: editCats };
+            }
+            // Oud formaat → migreer naar nl
+            return { nl: editCats };
+          })(),
           missing: data.missing || [],
           scanned_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -1388,6 +1404,26 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
 
       {data.sources?.length > 0 && (
         <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Bronnen: {data.sources.join(" · ")}</div>
+      )}
+
+      {/* Taalwissel als meerdere talen beschikbaar */}
+      {(data.categories?.nl || data.categories?.en) && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          {Object.keys(data.categories).filter(k => ["nl","en","de","fr","es","pt","it"].includes(k)).map(lang => (
+            <button key={lang} onClick={() => {
+              setEditLang(lang);
+              const cats = data.categories[lang] || {};
+              const result: Record<string, string> = {};
+              Object.entries(cats).forEach(([k, v]) => { if (typeof v === "string") result[k] = stripCite(v); });
+              setEditCats(result);
+            }} style={{
+              padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+              background: editLang === lang ? C.sky : C.creamDark,
+              color: editLang === lang ? "#fff" : C.muted,
+              border: `1px solid ${editLang === lang ? C.sky : C.cardBorder}`,
+            }}>{lang.toUpperCase()}</button>
+          ))}
+        </div>
       )}
 
       {/* Editable categorieën */}

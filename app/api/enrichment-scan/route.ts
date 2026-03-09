@@ -2,10 +2,38 @@ import { NextRequest, NextResponse } from "next/server";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 
-const SYSTEM = `Je bent een researcher voor een kitesurf/windsurf app genaamd WindPing. 
-Gebruik web_search om actuele informatie te vinden over de gegeven spot.
-Schrijf altijd in het Nederlands. Wees specifiek en feitelijk — verzin niets.
-Antwoord ALTIJD met alleen geldige JSON, geen markdown omheen, geen uitleg.`;
+// Landtaal mapping op basis van region suffix
+const REGION_LANG: Record<string, string> = {
+  Spain: "es", Germany: "de", France: "fr", Italy: "it",
+  Portugal: "pt", Greece: "el", Denmark: "da", Ireland: "en",
+  Croatia: "hr", Norway: "no", Sweden: "sv", Belgium: "nl",
+  Poland: "pl", Morocco: "ar", Bulgaria: "bg", Turkey: "tr",
+  Austria: "de", Switzerland: "de", Latvia: "lv", Romania: "ro",
+  Hungary: "hu", Montenegro: "sr", Azores: "pt", Wales: "en",
+  England: "en", Scotland: "en",
+};
+
+const LANG_NAME: Record<string, string> = {
+  nl: "Dutch", en: "English", de: "German", fr: "French",
+  es: "Spanish", pt: "Portuguese", it: "Italian", el: "Greek",
+  da: "Danish", hr: "Croatian", no: "Norwegian", sv: "Swedish",
+  pl: "Polish", ar: "Arabic", bg: "Bulgarian", tr: "Turkish",
+  lv: "Latvian", ro: "Romanian", hu: "Hungarian", sr: "Serbian",
+};
+
+function getLangForSpot(region: string | undefined): string {
+  if (!region) return "nl";
+  // NL regio's hebben geen land-suffix
+  const parts = region.split(", ");
+  if (parts.length < 2) return "nl";
+  const country = parts[parts.length - 1];
+  return REGION_LANG[country] || "en";
+}
+
+const SYSTEM = `You are a researcher for a kitesurfing/windsurfing app called WindPing.
+Use web_search to find current information about the given spot.
+Be specific and factual — never invent information.
+ALWAYS respond with valid JSON only, no markdown, no explanation.`;
 
 export async function POST(req: NextRequest) {
   if (!ANTHROPIC_API_KEY) {
@@ -18,33 +46,59 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Geen spot meegegeven" }, { status: 400 });
     }
 
+    const spotLang = getLangForSpot(spot.region);
+    const spotLangName = LANG_NAME[spotLang] || "English";
+    const needsBothLangs = spotLang !== "en";
+
     const locationHint = spot.region
       ? ` in ${spot.region}`
       : spot.latitude && spot.longitude
-        ? ` (coördinaten: ${spot.latitude.toFixed(3)}, ${spot.longitude.toFixed(3)})`
+        ? ` (coordinates: ${spot.latitude.toFixed(3)}, ${spot.longitude.toFixed(3)})`
         : "";
 
-    const prompt = `Zoek informatie over kitesurf/windsurf spot: "${spot.display_name}"${locationHint}.
+    const langInstruction = needsBothLangs
+      ? `Write all category values TWICE: once in ${spotLangName} (key: "${spotLang}") and once in English (key: "en").`
+      : `Write all category values in English (key: "en").`;
 
-Gebruik web_search om actuele info te vinden. Zoek bijvoorbeeld op:
-- "${spot.display_name} kitesurf" of "${spot.display_name} windsurf"
-- "${spot.display_name} strand faciliteiten"
-- "${spot.display_name} nieuws ${new Date().getFullYear()}"
+    const categoryFields = `{
+    "conditions": "Wind conditions, directions, best season, wave height, currents, water type. Null if unknown.",
+    "facilities": "Parking, toilets, showers, food, kite school, rental. Null if unknown.",
+    "hazards": "Hazards: rocks, currents, shipping, restricted zones, rules. Null if unknown.",
+    "tips": "Practical tips from experienced surfers, best launch spot, local knowledge. Null if unknown.",
+    "events": "Kite/windsurf competitions, festivals, markets, events affecting crowding. Null if unknown.",
+    "news": "Recent news: beach closures, new rules, construction, upcoming major events. Null if unknown."
+  }`;
 
-Geef je antwoord als JSON met exact deze structuur:
-{
+    const jsonStructure = needsBothLangs
+      ? `{
   "confidence": 0.0-1.0,
-  "sources": ["lijst van gebruikte URLs of sitenamen"],
+  "sources": ["list of URLs or site names used"],
   "categories": {
-    "conditions": "Windcondities, windrichtingen, beste seizoen, golfhoogte, stromingen, watertype. Null als onbekend.",
-    "facilities": "Parkeren, toiletten, douches, horeca, kiteschool, materiaalverhuur. Null als onbekend.",
-    "hazards": "Gevaren: rotsen, stromingen, scheepvaart, verboden zones, regels. Null als onbekend.",
-    "tips": "Praktische tips van ervaren surfers, beste startplek, lokale kennis. Null als onbekend.",
-    "events": "Kitesurf/windsurf wedstrijden, maar ook festivals, markten, sportevenementen die de drukte beïnvloeden. Null als onbekend.",
-    "news": "Recent nieuws: strandafsluitingen, nieuwe regels, bouwprojecten, komende grote events. Null als onbekend."
+    "${spotLang}": ${categoryFields},
+    "en": ${categoryFields}
   },
-  "missing": ["categorieën waarvoor echt niets gevonden is"]
+  "missing": ["categories where nothing was found"]
+}`
+      : `{
+  "confidence": 0.0-1.0,
+  "sources": ["list of URLs or site names used"],
+  "categories": {
+    "en": ${categoryFields}
+  },
+  "missing": ["categories where nothing was found"]
 }`;
+
+    const prompt = `Find information about the kitesurfing/windsurfing spot: "${spot.display_name}"${locationHint}.
+
+Use web_search to find current info. Search for example:
+- "${spot.display_name} kitesurf" or "${spot.display_name} windsurf"
+- "${spot.display_name} beach facilities"
+- "${spot.display_name} news ${new Date().getFullYear()}"
+
+${langInstruction}
+
+Respond with JSON in exactly this structure:
+${jsonStructure}`;
 
     const tools = [{ type: "web_search_20250305", name: "web_search" }];
     let messages: any[] = [{ role: "user", content: prompt }];
@@ -59,7 +113,7 @@ Geef je antwoord als JSON met exact deze structuur:
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 5000,
+        max_tokens: needsBothLangs ? 8000 : 5000,
         system: SYSTEM,
         tools,
         messages,
@@ -73,7 +127,6 @@ Geef je antwoord als JSON met exact deze structuur:
 
     const data1 = await res1.json();
 
-    // Als Claude tool_use doet, verwerk de zoekresultaten en vraag om JSON output
     if (data1.stop_reason === "tool_use") {
       const toolUseBlocks = data1.content.filter((b: any) => b.type === "tool_use");
 
@@ -85,12 +138,11 @@ Geef je antwoord als JSON met exact deze structuur:
           content: toolUseBlocks.map((b: any) => ({
             type: "tool_result",
             tool_use_id: b.id,
-            content: `Zoekresultaten voor "${b.input?.query || ""}" zijn verwerkt.`,
+            content: `Search results for "${b.input?.query || ""}" have been processed.`,
           })),
         },
       ];
 
-      // Ronde 2 — Claude verwerkt zoekresultaten tot JSON
       const res2 = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -100,7 +152,7 @@ Geef je antwoord als JSON met exact deze structuur:
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: 2000,
+          max_tokens: needsBothLangs ? 4000 : 2000,
           system: SYSTEM,
           tools,
           messages,
@@ -126,8 +178,6 @@ Geef je antwoord als JSON met exact deze structuur:
 function parseAndReturn(data: any) {
   const textBlocks = data.content?.filter((b: any) => b.type === "text") || [];
   const fullText = textBlocks.map((b: any) => b.text).join("");
-
-  // Strip markdown code fences if present
   const cleaned = fullText.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
 
