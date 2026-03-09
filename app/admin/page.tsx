@@ -379,13 +379,377 @@ function RedFlagsPanel({ flags }: { flags: HealthData["redFlags"] }) {
   );
 }
 
+
+
+
+/* ── Admin Dashboard ── */
+function AdminDashboard({ stats, health, onNavigate }: {
+  stats: { users: number; spots: number; alerts: number; alertsToday: number };
+  health: HealthData | null;
+  onNavigate: (section: string, tab?: string) => void;
+}) {
+  const criticals = health?.redFlags.filter(f => f.severity === "critical") || [];
+  const warnings = health?.redFlags.filter(f => f.severity === "warning") || [];
+  const systemOk = criticals.length === 0;
+
+  return (
+    <div>
+      {/* Systeem status banner */}
+      <div style={{
+        background: systemOk ? C.goBg : "#FEF2F2",
+        border: `1px solid ${systemOk ? `${C.green}30` : "#FECACA"}`,
+        borderRadius: 12, padding: "14px 18px", marginBottom: 20,
+        display: "flex", alignItems: "center", gap: 12,
+      }}>
+        <div style={{
+          width: 10, height: 10, borderRadius: "50%",
+          background: systemOk ? C.green : "#DC2626",
+          boxShadow: `0 0 8px ${systemOk ? C.green : "#DC2626"}`,
+        }} />
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: systemOk ? C.green : "#DC2626" }}>
+            {systemOk ? "Alle systemen operationeel" : `${criticals.length} kritieke problemen`}
+          </div>
+          {!systemOk && criticals.map((f, i) => (
+            <div key={i} style={{ fontSize: 12, color: "#991B1B", marginTop: 2 }}>{f.message}</div>
+          ))}
+          {systemOk && warnings.length > 0 && (
+            <div style={{ fontSize: 12, color: C.gold }}>{warnings.length} waarschuwing{warnings.length > 1 ? "en" : ""}</div>
+          )}
+        </div>
+        {!systemOk && (
+          <button onClick={() => onNavigate("alerts", "health")} style={{
+            marginLeft: "auto", padding: "6px 12px", borderRadius: 8, background: "#FEE2E2",
+            border: "1px solid #FECACA", color: "#DC2626", fontSize: 12, fontWeight: 700, cursor: "pointer",
+          }}>Bekijk →</button>
+        )}
+      </div>
+
+      {/* KPI kaartjes */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+        {[
+          { label: "Gebruikers", value: stats.users, sub: "totaal", color: C.sky, section: "gebruikers", tab: "users" },
+          { label: "Spots", value: stats.spots, sub: "in database", color: C.sky, section: "content", tab: "enrichment" },
+          { label: "Alerts 7d", value: health?.funnel.total || stats.alerts, sub: "verstuurd", color: C.green, section: "alerts", tab: "history" },
+          { label: "Vandaag", value: stats.alertsToday, sub: "alerts", color: C.gold, section: "alerts", tab: "history" },
+        ].map(k => (
+          <button key={k.label} onClick={() => onNavigate(k.section, k.tab)} style={{
+            background: C.card, borderRadius: 12, padding: "16px 14px", boxShadow: C.cardShadow,
+            border: `1px solid ${C.cardBorder}`, cursor: "pointer", textAlign: "left" as const,
+            transition: "transform 0.1s", display: "block", width: "100%",
+          }}
+            onMouseEnter={e => (e.currentTarget.style.transform = "translateY(-2px)")}
+            onMouseLeave={e => (e.currentTarget.style.transform = "")}
+          >
+            <div style={{ fontSize: 28, fontWeight: 800, color: k.color, lineHeight: 1 }}>{k.value}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginTop: 4 }}>{k.label}</div>
+            <div style={{ fontSize: 11, color: C.muted }}>{k.sub}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Alert funnel */}
+      {health?.funnel && (
+        <div style={{ background: C.card, borderRadius: 12, padding: "16px 18px", boxShadow: C.cardShadow, border: `1px solid ${C.cardBorder}`, marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: C.navy, marginBottom: 12 }}>Alert bezorging (7 dagen)</div>
+          <div style={{ display: "flex", gap: 16 }}>
+            {[
+              { label: "Aangemaakt", value: health.funnel.total, color: C.sky },
+              { label: "Email", value: health.funnel.emailSent, color: C.green },
+              { label: "Push", value: health.funnel.pushSent, color: C.purple },
+              { label: "Fouten", value: health.funnel.emailFailed + health.funnel.pushFailed, color: health.funnel.emailFailed + health.funnel.pushFailed > 0 ? "#DC2626" : C.muted },
+            ].map(f => (
+              <div key={f.label} style={{ flex: 1, textAlign: "center" as const }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: f.color }}>{f.value}</div>
+                <div style={{ fontSize: 11, color: C.muted }}>{f.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Snelkoppelingen */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 10 }}>Snelkoppelingen</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+        {[
+          { label: "Diagnose gebruiker", sub: "Waarom geen alert?", section: "alerts", tab: "diagnose", color: C.sky },
+          { label: "Moderatie", sub: "Gemelde posts bekijken", section: "content", tab: "moderation", color: C.gold },
+          { label: "Alert testen", sub: "Test email/push sturen", section: "alerts", tab: "test", color: C.green },
+          { label: "Gebruikers beheer", sub: "Aanpassen & resetten", section: "gebruikers", tab: "users", color: C.sky },
+          { label: "Spot enrichment", sub: "AI spot info scanner", section: "content", tab: "enrichment", color: C.purple },
+          { label: "Alert history", sub: "Verstuurde alerts", section: "alerts", tab: "history", color: C.green },
+        ].map(item => (
+          <button key={item.label} onClick={() => onNavigate(item.section, item.tab)} style={{
+            background: C.card, borderRadius: 10, padding: "12px 14px", boxShadow: C.cardShadow,
+            border: `1px solid ${C.cardBorder}`, cursor: "pointer", textAlign: "left" as const,
+            display: "block", width: "100%",
+          }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>{item.label}</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{item.sub}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Enrichment Scanner Tab ── */
+function EnrichmentTab() {
+  const [spots, setSpots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [selectedSpot, setSelectedSpot] = useState<any>(null);
+  const [result, setResult] = useState<any>(null);
+  const [scanProgress, setScanProgress] = useState("");
+  const [country, setCountry] = useState("NL");
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/spots?order=display_name.asc&select=id,display_name,spot_type,latitude,longitude,country`, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
+        });
+        const data = await res.json();
+        setSpots(data || []);
+      } catch {}
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  const filteredSpots = spots.filter((s: any) => !country || (s.country || "NL") === country);
+
+  async function scanSpot(spot: any) {
+    setScanning(true);
+    setResult(null);
+    setSelectedSpot(spot);
+    setScanProgress("Zoeken naar informatie...");
+    try {
+      const res = await fetch("/api/enrichment-scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spot }),
+      });
+      const data = await res.json();
+      setResult(data);
+    } catch { setResult({ error: "Scannen mislukt." }); }
+    setScanProgress("");
+    setScanning(false);
+  }
+
+  async function scanAll() {
+    setScanning(true);
+    setResult(null);
+    const toScan = filteredSpots.slice(0, 5);
+    const results: any[] = [];
+    for (let i = 0; i < toScan.length; i++) {
+      const spot = toScan[i];
+      setScanProgress(`${i + 1}/${toScan.length}: ${spot.display_name}...`);
+      try {
+        const res = await fetch("/api/enrichment-scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ spot }),
+        });
+        results.push({ spot, ...(await res.json()) });
+      } catch { results.push({ spot, error: "Mislukt" }); }
+      await new Promise(r => setTimeout(r, 800));
+    }
+    setResult({ batch: results });
+    setScanProgress("");
+    setScanning(false);
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: C.muted }}>Laden...</div>;
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: C.navy, marginBottom: 4 }}>Spot Enrichment Scanner</div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>Preview — niks wordt opgeslagen. Ontdek welke informatie beschikbaar is per spot.</div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" as const }}>
+          <select value={country} onChange={e => setCountry(e.target.value)} style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.cardBorder}`, fontSize: 13, color: C.navy, background: C.card, cursor: "pointer" }}>
+            <option value="NL">Nederland</option>
+            <option value="">Alle landen</option>
+          </select>
+          <button onClick={scanAll} disabled={scanning} style={{ padding: "7px 16px", borderRadius: 8, background: C.sky, color: "white", border: "none", fontSize: 13, fontWeight: 700, cursor: scanning ? "default" : "pointer", opacity: scanning ? 0.6 : 1 }}>
+            {scanning ? `Bezig: ${scanProgress}` : `Scan eerste 5 spots`}
+          </button>
+          <span style={{ fontSize: 12, color: C.muted }}>{filteredSpots.length} spots</span>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16 }}>
+        <div style={{ background: C.card, borderRadius: 12, padding: 10, boxShadow: C.cardShadow, maxHeight: 580, overflowY: "auto" as const }}>
+          {filteredSpots.map((spot: any) => (
+            <button key={spot.id} onClick={() => scanSpot(spot)} disabled={scanning} style={{
+              display: "block", width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8,
+              border: "none", marginBottom: 2, cursor: scanning ? "default" : "pointer",
+              background: selectedSpot?.id === spot.id ? `${C.sky}20` : "transparent",
+              borderLeft: `3px solid ${selectedSpot?.id === spot.id ? C.sky : "transparent"}`,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: C.navy }}>{spot.display_name}</div>
+              <div style={{ fontSize: 10, color: C.muted }}>{spot.spot_type || "—"}</div>
+            </button>
+          ))}
+        </div>
+
+        <div style={{ background: C.card, borderRadius: 12, padding: 16, boxShadow: C.cardShadow, maxHeight: 580, overflowY: "auto" as const }}>
+          {scanning && scanProgress && (
+            <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#1D4ED8" }}>
+              Bezig met: {scanProgress}
+            </div>
+          )}
+          {!result && !scanning && (
+            <div style={{ color: C.muted, fontSize: 13, padding: 20, textAlign: "center" }}>Selecteer een spot of klik Scan.</div>
+          )}
+          {result && !result.batch && selectedSpot && <EnrichmentResult spot={selectedSpot} data={result} />}
+          {result?.batch && (
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 12 }}>Batch resultaten ({result.batch.length} spots)</div>
+              {result.batch.map((item: any, i: number) => (
+                <div key={i}>
+                  <EnrichmentResult spot={item.spot} data={item} />
+                  {i < result.batch.length - 1 && <hr style={{ border: "none", borderTop: `1px solid ${C.cardBorder}`, margin: "16px 0" }} />}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EnrichmentResult({ spot, data }: { spot: any; data: any }) {
+  if (data.error) return <div style={{ color: "#DC2626", fontSize: 13 }}>Fout: {data.error}</div>;
+  const cats = data.categories || {};
+  const labels: Record<string, string> = {
+    history: "Geschiedenis",
+    conditions: "Windcondities & karakter",
+    facilities: "Faciliteiten",
+    hazards: "Gevaren",
+    tips: "Tips",
+    events: "Events & wedstrijden",
+    news: "Actueel nieuws",
+  };
+  const conf = data.confidence || 0;
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{spot.display_name}</div>
+          <div style={{ fontSize: 11, color: C.muted }}>{spot.spot_type}</div>
+        </div>
+        <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, fontWeight: 700, background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2", color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B" }}>
+          {conf > 0.7 ? "Hoge betrouwbaarheid" : conf > 0.4 ? "Matige betrouwbaarheid" : "Weinig gevonden"}
+        </span>
+      </div>
+      {data.sources?.length > 0 && <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Bronnen: {data.sources.join(" · ")}</div>}
+      {Object.entries(cats).map(([key, value]: [string, any]) => value ? (
+        <div key={key} style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 3, textTransform: "uppercase" as const, letterSpacing: 0.5 }}>{labels[key] || key}</div>
+          <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.6, background: "#F9FAFB", borderRadius: 8, padding: "8px 12px" }}>{value}</div>
+        </div>
+      ) : null)}
+      {data.missing?.length > 0 && <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Niet gevonden: {data.missing.join(", ")}</div>}
+    </div>
+  );
+}
+
+/* ── Moderation Tab ── */
+function ModerationTab() {
+  const [posts, setPosts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_posts?status=in.(flagged,blocked)&order=created_at.desc&select=id,type,content,author_name,status,created_at,spot_id`, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
+        });
+        const data = await res.json();
+        setPosts(data || []);
+      } catch {}
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  async function deletePost(id: number) {
+    if (!confirm("Post verwijderen?")) return;
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/spot_posts?id=eq.${id}`, {
+        method: "DELETE",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
+      });
+      setPosts(prev => prev.filter(p => p.id !== id));
+      setMsg("\u2713 Post verwijderd");
+      setTimeout(() => setMsg(""), 2000);
+    } catch { setMsg("\u274c Fout"); }
+  }
+
+  async function approvePost(id: number) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/spot_posts?id=eq.${id}`, {
+        method: "PATCH",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({ status: "ok" })
+      });
+      setPosts(prev => prev.filter(p => p.id !== id));
+      setMsg("\u2713 Post goedgekeurd");
+      setTimeout(() => setMsg(""), 2000);
+    } catch { setMsg("\u274c Fout"); }
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: C.muted }}>Laden...</div>;
+
+  return (
+    <div>
+      {msg && <div style={{ background: msg.includes("\u2713") ? C.green : "#DC2626", color: "#fff", padding: "8px 16px", borderRadius: 8, marginBottom: 12, fontSize: 13, fontWeight: 600 }}>{msg}</div>}
+      <div style={{ marginBottom: 16, fontSize: 13, color: C.muted }}>
+        {posts.length === 0 ? "Geen gemelde of geblokkeerde posts." : `${posts.length} post(s) vereisen aandacht.`}
+      </div>
+      {posts.map(post => (
+        <div key={post.id} style={{ background: C.card, borderRadius: 12, padding: "14px 16px", marginBottom: 10, boxShadow: C.cardShadow, border: `1px solid ${post.status === "blocked" ? "#FECACA" : "#FDE68A"}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: post.status === "blocked" ? "#FEE2E2" : "#FEF3C7", color: post.status === "blocked" ? "#DC2626" : "#D97706" }}>
+                {post.status === "blocked" ? "GEBLOKKEERD" : "GEMELD"}
+              </span>
+              <span style={{ fontSize: 11, color: C.muted }}>{post.type} · spot #{post.spot_id}</span>
+            </div>
+            <span style={{ fontSize: 11, color: C.muted }}>{new Date(post.created_at).toLocaleDateString("nl-NL")}</span>
+          </div>
+          <p style={{ margin: "0 0 8px", fontSize: 13, color: C.navy, lineHeight: 1.5 }}>"{post.content}"</p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: C.muted }}>{post.author_name}</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => approvePost(post.id)} style={{ padding: "5px 12px", borderRadius: 8, background: "#ECFDF5", border: "1px solid #A7F3D0", color: "#065F46", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                Goedkeuren
+              </button>
+              <button onClick={() => deletePost(post.id)} style={{ padding: "5px 12px", borderRadius: 8, background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                Verwijderen
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ══════════════════════════════════════════════════════════════
    MAIN ADMIN PAGE
    ══════════════════════════════════════════════════════════════ */
 
 export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
-  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator">("stats");
+  const [section, setSection] = useState<"dashboard" | "gebruikers" | "alerts" | "content" | "systeem">("dashboard");
+  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "moderation" | "enrichment">("stats");
+  const [flaggedPosts, setFlaggedPosts] = useState<any[]>([]);
+  const [flaggedLoading, setFlaggedLoading] = useState(false);
   const [stats, setStats] = useState({ users: 0, spots: 0, alerts: 0, alertsToday: 0 });
   const [history, setHistory] = useState<AlertHistoryItem[]>([]);
   const [users, setUsers] = useState<UserInfo[]>([]);
@@ -551,60 +915,168 @@ export default function AdminPage() {
     </div>
   );
 
+  // Sidebar nav items
+  const criticalCount = health?.redFlags.filter(f => f.severity === "critical").length || 0;
+
+  const NAV = [
+    { section: "dashboard" as const, icon: "🏠", label: "Dashboard", badge: 0 },
+    { section: "gebruikers" as const, icon: "👥", label: "Gebruikers", badge: 0 },
+    { section: "alerts" as const, icon: "🔔", label: "Alerts", badge: criticalCount },
+    { section: "content" as const, icon: "✏️", label: "Content & Spots", badge: 0 },
+    { section: "systeem" as const, icon: "⚙️", label: "Systeem", badge: 0 },
+  ];
+
+  // Sub-tabs per sectie
+  const SUBTABS: Record<string, { id: string; label: string; badge?: number }[]> = {
+    dashboard: [],
+    gebruikers: [
+      { id: "users", label: "Gebruikers" },
+      { id: "stats", label: "Statistieken" },
+    ],
+    alerts: [
+      { id: "health", label: "Health", badge: criticalCount },
+      { id: "history", label: "Geschiedenis" },
+      { id: "diagnose", label: "Diagnose" },
+      { id: "test", label: "Testen" },
+      { id: "simulator", label: "Simulator" },
+    ],
+    content: [
+      { id: "moderation", label: "Moderatie" },
+      { id: "enrichment", label: "Spot Enrichment" },
+    ],
+    systeem: [
+      { id: "health", label: "Health" },
+    ],
+  };
+
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes heartPulse { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.4); opacity: 0.1; } }`}</style>
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 16px 60px" }}>
 
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <div>
-            <h1 className="font-bebas" style={{ ...h, fontSize: 28, letterSpacing: 3, margin: 0 }}>WINDPING ADMIN</h1>
-            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>Alert Engine & Health Monitor</p>
+      {/* ── Sidebar layout ── */}
+      <div style={{ display: "flex", minHeight: "100vh" }}>
+
+        {/* Sidebar */}
+        <div style={{
+          width: 220, flexShrink: 0, background: C.navy,
+          display: "flex", flexDirection: "column",
+          padding: "0 0 24px", position: "sticky", top: 0, height: "100vh",
+        }}>
+          {/* Logo */}
+          <div style={{ padding: "24px 20px 20px", borderBottom: `1px solid rgba(255,255,255,0.08)` }}>
+            <div className="font-bebas" style={{ ...h, fontSize: 22, letterSpacing: 3, color: "#fff", margin: 0 }}>WINDPING</div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", letterSpacing: 1, textTransform: "uppercase" as const }}>Admin</div>
           </div>
-          <a href="/" style={{ fontSize: 12, color: C.sky, textDecoration: "none" }}>← Terug</a>
+
+          {/* KPI strip */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "rgba(255,255,255,0.05)", margin: "12px 0", padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            {[
+              { label: "Users", value: stats.users, color: C.sky },
+              { label: "Spots", value: stats.spots, color: C.sky },
+              { label: "Alerts 7d", value: health?.funnel.total || stats.alerts, color: C.green },
+              { label: "Vandaag", value: stats.alertsToday, color: C.gold },
+            ].map(k => (
+              <div key={k.label} style={{ padding: "6px 4px" }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: k.color, lineHeight: 1 }}>{k.value}</div>
+                <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", textTransform: "uppercase" as const, letterSpacing: 0.5 }}>{k.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Nav items */}
+          <nav style={{ flex: 1, padding: "4px 8px", overflowY: "auto" as const }}>
+            {NAV.map(item => (
+              <div key={item.section}>
+                <button onClick={() => {
+                  setSection(item.section);
+                  const subs = SUBTABS[item.section];
+                  if (subs.length > 0) setTab(subs[0].id as any);
+                }} style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 12px", borderRadius: 10, border: "none", cursor: "pointer",
+                  background: section === item.section ? "rgba(255,255,255,0.12)" : "transparent",
+                  color: section === item.section ? "#fff" : "rgba(255,255,255,0.5)",
+                  fontSize: 13, fontWeight: 700, textAlign: "left" as const,
+                  marginBottom: 2, transition: "all 0.15s",
+                  borderLeft: `3px solid ${section === item.section ? C.sky : "transparent"}`,
+                }}>
+                  <span style={{ opacity: section === item.section ? 1 : 0.6 }}>{item.icon}</span>
+                  {item.label}
+                  {item.badge > 0 && (
+                    <span style={{ marginLeft: "auto", background: "#DC2626", color: "#fff", borderRadius: "50%", width: 18, height: 18, fontSize: 10, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{item.badge}</span>
+                  )}
+                </button>
+
+                {/* Sub-tabs */}
+                {section === item.section && SUBTABS[item.section].length > 0 && (
+                  <div style={{ paddingLeft: 20, marginBottom: 4 }}>
+                    {SUBTABS[item.section].map(sub => (
+                      <button key={sub.id} onClick={() => setTab(sub.id as any)} style={{
+                        width: "100%", display: "flex", alignItems: "center", gap: 8,
+                        padding: "7px 10px", borderRadius: 8, border: "none", cursor: "pointer",
+                        background: tab === sub.id ? `${C.sky}25` : "transparent",
+                        color: tab === sub.id ? C.sky : "rgba(255,255,255,0.4)",
+                        fontSize: 12, fontWeight: tab === sub.id ? 700 : 400,
+                        textAlign: "left" as const, marginBottom: 1,
+                      }}>
+                        {sub.label}
+                        {sub.badge && sub.badge > 0 ? (
+                          <span style={{ marginLeft: "auto", background: "#DC2626", color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{sub.badge}</span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </nav>
+
+          {/* Footer */}
+          <div style={{ padding: "12px 20px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+            <a href="/" style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              Terug naar app
+            </a>
+          </div>
         </div>
 
-        {/* Tab navigation */}
-        <div style={{ display: "flex", gap: 4, marginBottom: 20, background: C.creamDark, padding: 4, borderRadius: 12, flexWrap: "wrap" }}>
-          {([
-            { id: "stats" as const,     label: "📊 Stats",      badge: 0 },
-            { id: "simulator" as const, label: "🎮 Simulator",  badge: 0 },
-            { id: "health" as const,    label: "🩺 Health",     badge: health?.redFlags.filter(f => f.severity === "critical").length || 0 },
-            { id: "test" as const,      label: "🧪 Test",       badge: 0 },
-            { id: "diagnose" as const,  label: "🔍 Diagnose",   badge: 0 },
-            { id: "history" as const,   label: "📜 History",    badge: 0 },
-            { id: "users" as const,     label: "👤 Gebruikers", badge: 0 },
-          ]).map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
-              flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 700,
-              cursor: "pointer", border: "none", position: "relative",
-              background: tab === t.id ? C.card : "transparent",
-              color: tab === t.id ? C.navy : C.muted,
-              boxShadow: tab === t.id ? C.cardShadow : "none",
-            }}>
-              {t.label}
-              {t.badge > 0 && (
-                <span style={{
-                  position: "absolute", top: 4, right: "20%", width: 16, height: 16, borderRadius: "50%",
-                  background: "#DC2626", color: "#fff", fontSize: 9, fontWeight: 800,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}>{t.badge}</span>
-              )}
-            </button>
-          ))}
-        </div>
+        {/* Main content */}
+        <div style={{ flex: 1, padding: "28px 28px 60px", overflowY: "auto" as const }}>
 
-        {/* Quick stats bar */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          <StatBox label="Users" value={stats.users} />
-          <StatBox label="Spots" value={stats.spots} />
-          <StatBox label="Alerts (7d)" value={health?.funnel.total || stats.alerts} color={C.green} />
-          <StatBox label="Vandaag" value={stats.alertsToday} color={C.gold} />
-        </div>
+          {/* Page title */}
+          <div style={{ marginBottom: 24 }}>
+            <h1 className="font-bebas" style={{ ...h, fontSize: 26, letterSpacing: 2, margin: "0 0 2px", color: C.navy }}>
+              {NAV.find(n => n.section === section)?.label || "Dashboard"}
+            </h1>
+            {SUBTABS[section].length > 0 && (
+              <div style={{ display: "flex", gap: 4, marginTop: 12, background: C.creamDark, padding: 4, borderRadius: 10, width: "fit-content" }}>
+                {SUBTABS[section].map(sub => (
+                  <button key={sub.id} onClick={() => setTab(sub.id as any)} style={{
+                    padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                    border: "none", cursor: "pointer",
+                    background: tab === sub.id ? C.card : "transparent",
+                    color: tab === sub.id ? C.navy : C.muted,
+                    boxShadow: tab === sub.id ? C.cardShadow : "none",
+                  }}>
+                    {sub.label}
+                    {sub.badge && sub.badge > 0 ? ` (${sub.badge})` : ""}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Dashboard sectie */}
+          {section === "dashboard" && (
+            <AdminDashboard
+              stats={stats}
+              health={health}
+              onNavigate={(sec, tabId) => { setSection(sec as any); if (tabId) setTab(tabId as any); }}
+            />
+          )}
 
         {/* ═══ HEALTH TAB ═══ */}
-        {tab === "health" && (
+        {(section === "alerts" || section === "systeem") && tab === "health" && (
           <>
             {/* Refresh bar */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -674,7 +1146,7 @@ export default function AdminPage() {
         )}
 
         {/* ═══ TEST TAB ═══ */}
-        {tab === "test" && (
+        {section === "alerts" && tab === "test" && (
           <Section title="🧪 Test Alerts">
             <Card>
               <div style={{ marginBottom: 14 }}>
@@ -762,7 +1234,7 @@ export default function AdminPage() {
         )}
 
         {/* ═══ HISTORY TAB ═══ */}
-        {tab === "diagnose" && (
+        {section === "alerts" && tab === "diagnose" && (
           <div>
             <Section title="🔍 Waarom geen alert?">
               <p style={{ fontSize: 13, color: C.sub, margin: "0 0 16px" }}>Kies een gebruiker om te zien waarom ze wel of geen alert hebben gekregen.</p>
@@ -929,7 +1401,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {tab === "history" && (
+        {section === "alerts" && tab === "history" && (
           <Section title="📜 Alert History">
             {history.length === 0 ? (
               <Card><span style={{ fontSize: 13, color: C.muted }}>Geen alerts</span></Card>
@@ -964,7 +1436,7 @@ export default function AdminPage() {
           </Section>
         )}
 
-        {tab === "users" && (
+        {section === "gebruikers" && tab === "users" && (
           <div>
             <Section title="👤 Gebruikersbeheer">
               {/* User list */}
@@ -1219,11 +1691,20 @@ export default function AdminPage() {
         )}
 
         {/* ═══ STATS TAB ═══ */}
-        {tab === "stats" && <StatsTab token={adminToken} />}
+        {section === "gebruikers" && tab === "stats" && <StatsTab token={adminToken} />}
 
         {/* ═══ SIMULATOR TAB ═══ */}
-        {tab === "simulator" && <SimulatorTab token={adminToken} />}
+        {section === "alerts" && tab === "simulator" && <SimulatorTab token={adminToken} />}
 
+        {section === "content" && tab === "moderation" && (
+          <ModerationTab />
+        )}
+
+        {section === "content" && tab === "enrichment" && (
+          <EnrichmentTab />
+        )}
+
+        </div>
       </div>
     </div>
   );
@@ -1400,6 +1881,8 @@ function StatsTab({ token }: { token: string | null }) {
           </div>
         </div>
       )}
+
+      </div>
     </div>
   );
 }
@@ -1868,6 +2351,8 @@ function SimulatorTab({ token }: { token: string | null }) {
           </div>
         </div>
       )}
+
+      </div>
     </div>
   );
 }
