@@ -1418,7 +1418,7 @@ function ModerationTab() {
 export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [section, setSection] = useState<"dashboard" | "gebruikers" | "alerts" | "content" | "systeem" | "financien">("dashboard");
-  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "moderation" | "enrichment" | "kosten" | "campagnes">("stats");
+  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "moderation" | "enrichment" | "beheer" | "kosten" | "campagnes">("stats");
   const [flaggedPosts, setFlaggedPosts] = useState<any[]>([]);
   const [flaggedLoading, setFlaggedLoading] = useState(false);
   const [stats, setStats] = useState({ users: 0, spots: 0, alerts: 0, alertsToday: 0 });
