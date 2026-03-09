@@ -826,7 +826,7 @@ function EnrichmentTab() {
 
 function stripCite(text: string): string {
   if (!text) return text;
-  return text.replace(/]*>([\s\S]*?)<\/antml:cite>/g, "$1").trim();
+  return text.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, '$1').trim();
 }
 
 function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSaved?: (spotId: number) => void }) {

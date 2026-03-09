@@ -84,7 +84,7 @@ function WindSlider({ min, max, onChange, color = C.sky }: { min: number; max: n
 /* ── Strip cite tags from enrichment text ── */
 function stripCiteSpot(text: string): string {
   if (!text) return text;
-  return text.replace(/]*>([\s\S]*?)<\/antml:cite>/g, "$1").trim();
+  return text.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, '$1').trim();
 }
 
 /* ── Enrichment Info Tab Component ── */
