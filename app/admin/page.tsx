@@ -824,6 +824,296 @@ function EnrichmentTab() {
   );
 }
 
+// ── SVG Iconen voor enrichment categorieën ──
+const EnrichmentIcons: Record<string, () => JSX.Element> = {
+  news: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>
+      <path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>
+    </svg>
+  ),
+  events: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+      <path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+    </svg>
+  ),
+  conditions: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/>
+      <path d="M9.6 4.6A2 2 0 1 1 11 8H2"/>
+      <path d="M12.6 19.4A2 2 0 1 0 14 16H2"/>
+    </svg>
+  ),
+  hazards: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+      <path d="M12 9v4"/><path d="M12 17h.01"/>
+    </svg>
+  ),
+  facilities: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  ),
+  tips: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7Z"/>
+      <path d="M10 21h4"/>
+    </svg>
+  ),
+};
+
+// ── Enrichment Beheer Tab ──
+function EnrichmentBeheerTab() {
+  const [saved, setSaved] = useState<any[]>([]);
+  const [spots, setSpots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editCats, setEditCats] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [searchQ, setSearchQ] = useState("");
+
+  const labels: Record<string, string> = {
+    conditions: "Windcondities & karakter",
+    facilities: "Faciliteiten",
+    hazards: "Gevaren",
+    tips: "Tips",
+    events: "Events & wedstrijden",
+    news: "Actueel nieuws",
+  };
+
+  useEffect(() => {
+    async function load() {
+      const [enrichRes, spotsRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?select=*&order=updated_at.desc`, {
+          headers: { apikey: SUPABASE_ANON_KEY }
+        }).then(r => r.json()),
+        fetch(`${SUPABASE_URL}/rest/v1/spots?select=id,display_name,region,spot_type&limit=5000`, {
+          headers: { apikey: SUPABASE_ANON_KEY }
+        }).then(r => r.json()),
+      ]);
+      setSaved(Array.isArray(enrichRes) ? enrichRes : []);
+      setSpots(Array.isArray(spotsRes) ? spotsRes : []);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  function getSpot(spot_id: number) {
+    return spots.find(s => s.id === spot_id);
+  }
+
+  function startEdit(row: any) {
+    setEditId(row.spot_id);
+    const cats: Record<string, string> = {};
+    Object.entries(row.categories || {}).forEach(([k, v]) => {
+      cats[k] = String(v || "");
+    });
+    setEditCats(cats);
+    setMsg("");
+  }
+
+  async function saveEdit(spot_id: number, row: any) {
+    setSaving(true);
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify({
+        spot_id,
+        confidence: row.confidence,
+        sources: row.sources,
+        categories: editCats,
+        missing: row.missing,
+        scanned_at: row.scanned_at,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    if (res.ok) {
+      setSaved(prev => prev.map(r => r.spot_id === spot_id ? { ...r, categories: editCats, updated_at: new Date().toISOString() } : r));
+      setMsg("✓ Opgeslagen");
+      setEditId(null);
+    } else {
+      setMsg("❌ Opslaan mislukt");
+    }
+    setSaving(false);
+  }
+
+  async function deleteRow(spot_id: number, spotName: string) {
+    if (!confirm(`Enrichment data voor ${spotName} verwijderen?`)) return;
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=eq.${spot_id}`, {
+      method: "DELETE",
+      headers: { apikey: SUPABASE_ANON_KEY },
+    });
+    if (res.ok) {
+      setSaved(prev => prev.filter(r => r.spot_id !== spot_id));
+      if (editId === spot_id) setEditId(null);
+      setMsg("✓ Verwijderd");
+    } else {
+      setMsg("❌ Verwijderen mislukt");
+    }
+  }
+
+  const filtered = saved.filter(r => {
+    const spot = getSpot(r.spot_id);
+    if (!spot) return true;
+    return spot.display_name.toLowerCase().includes(searchQ.toLowerCase());
+  });
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: C.muted }}>Laden...</div>;
+
+  return (
+    <div>
+      {/* Header stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+        {[
+          { label: "Opgeslagen spots", value: saved.length, color: C.sky },
+          { label: "Hoog betrouwbaar", value: saved.filter(r => (r.confidence || 0) > 0.7).length, color: C.green },
+          { label: "Laag betrouwbaar", value: saved.filter(r => (r.confidence || 0) <= 0.4).length, color: C.amber },
+        ].map(k => (
+          <div key={k.label} style={{ background: C.card, borderRadius: 12, padding: "14px 16px", boxShadow: C.cardShadow }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: k.color }}>{k.value}</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {msg && (
+        <div style={{ padding: "8px 14px", borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 700,
+          background: msg.startsWith("✓") ? "#DCFCE7" : "#FEF2F2",
+          color: msg.startsWith("✓") ? "#166534" : "#DC2626",
+        }}>{msg}</div>
+      )}
+
+      {/* Zoekbalk */}
+      <input
+        placeholder="Zoek op spotnaam..."
+        value={searchQ}
+        onChange={e => setSearchQ(e.target.value)}
+        style={{ width: "100%", padding: "9px 14px", borderRadius: 10, border: `1px solid ${C.cardBorder}`, fontSize: 13, color: C.navy, background: C.card, outline: "none", marginBottom: 14, boxSizing: "border-box" as const }}
+      />
+
+      {/* Lijst */}
+      {filtered.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px 20px", color: C.muted, fontSize: 13 }}>
+          Geen opgeslagen enrichment data gevonden.
+        </div>
+      ) : filtered.map(row => {
+        const spot = getSpot(row.spot_id);
+        const conf = row.confidence || 0;
+        const isEditing = editId === row.spot_id;
+        const catCount = Object.values(row.categories || {}).filter(Boolean).length;
+
+        return (
+          <div key={row.spot_id} style={{
+            background: C.card, borderRadius: 14, marginBottom: 10, boxShadow: C.cardShadow,
+            border: `1px solid ${isEditing ? C.sky : C.cardBorder}`,
+            transition: "border-color 0.2s",
+          }}>
+            {/* Row header */}
+            <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>{spot?.display_name || `Spot #${row.spot_id}`}</div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                  {spot?.region} · {catCount} categorie{catCount !== 1 ? "ën" : ""} · {new Date(row.updated_at).toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}
+                </div>
+              </div>
+
+              {/* Betrouwbaarheid badge */}
+              <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, fontWeight: 700, flexShrink: 0,
+                background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2",
+                color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B",
+              }}>
+                {Math.round(conf * 100)}%
+              </span>
+
+              {/* Acties */}
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <button onClick={() => isEditing ? setEditId(null) : startEdit(row)} style={{
+                  padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  background: isEditing ? C.creamDark : `${C.sky}15`,
+                  color: isEditing ? C.muted : C.sky,
+                  border: `1px solid ${isEditing ? C.cardBorder : `${C.sky}40`}`,
+                }}>
+                  {isEditing ? "Annuleer" : "✏️ Bewerken"}
+                </button>
+                <button onClick={() => deleteRow(row.spot_id, spot?.display_name || `Spot #${row.spot_id}`)} style={{
+                  padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA",
+                }}>🗑️</button>
+              </div>
+            </div>
+
+            {/* Edit mode */}
+            {isEditing && (
+              <div style={{ borderTop: `1px solid ${C.cardBorder}`, padding: "14px 16px" }}>
+                {Object.entries(editCats).map(([key, value]) => (
+                  <div key={key} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <span style={{ color: C.sky }}>{EnrichmentIcons[key]?.()}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: C.navy, textTransform: "uppercase" as const, letterSpacing: 0.5 }}>
+                        {labels[key] || key}
+                      </span>
+                    </div>
+                    <textarea
+                      value={value}
+                      onChange={e => setEditCats(prev => ({ ...prev, [key]: e.target.value }))}
+                      rows={3}
+                      style={{
+                        width: "100%", padding: "9px 12px", fontSize: 13, color: "#374151",
+                        lineHeight: 1.6, background: "#F9FAFB", borderRadius: 8,
+                        border: `1.5px solid ${C.cardBorder}`, outline: "none",
+                        resize: "vertical" as const, fontFamily: "inherit", boxSizing: "border-box" as const,
+                      }}
+                    />
+                  </div>
+                ))}
+                <button
+                  onClick={() => saveEdit(row.spot_id, row)}
+                  disabled={saving}
+                  style={{
+                    width: "100%", padding: "10px", borderRadius: 10, border: "none",
+                    fontSize: 13, fontWeight: 700, cursor: "pointer",
+                    background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`,
+                    color: "#fff", opacity: saving ? 0.7 : 1,
+                  }}
+                >
+                  {saving ? "⏳ Opslaan..." : "💾 Wijzigingen opslaan"}
+                </button>
+              </div>
+            )}
+
+            {/* Preview mode — categorie pills */}
+            {!isEditing && (
+              <div style={{ padding: "0 16px 12px", display: "flex", gap: 6, flexWrap: "wrap" as const }}>
+                {Object.entries(row.categories || {}).filter(([, v]) => v).map(([key]) => (
+                  <span key={key} style={{
+                    fontSize: 11, padding: "3px 8px", borderRadius: 6, fontWeight: 600,
+                    background: C.creamDark, color: C.muted,
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }}>
+                    <span style={{ color: C.sky, opacity: 0.8, display: "inline-flex" }}>{EnrichmentIcons[key]?.()}</span>
+                    {labels[key] || key}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
 function stripCite(text: string): string {
   if (!text) return text;
   return text.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, '$1').trim();
@@ -1325,6 +1615,7 @@ export default function AdminPage() {
     content: [
       { id: "moderation", label: "Moderatie" },
       { id: "enrichment", label: "Spot Enrichment" },
+      { id: "beheer", label: "Enrichment Beheer" },
     ],
     systeem: [
       { id: "health", label: "Health" },
@@ -2106,6 +2397,10 @@ export default function AdminPage() {
 
         {section === "content" && tab === "enrichment" && (
           <EnrichmentTab />
+        )}
+
+        {section === "content" && tab === "beheer" && (
+          <EnrichmentBeheerTab />
         )}
 
         {section === "financien" && (tab === "kosten" || tab === "campagnes") && (
