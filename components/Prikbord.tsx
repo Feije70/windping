@@ -20,7 +20,7 @@ export interface PrikbordPost {
 
 const T: Record<PostType, { label: string; emoji: string; color: string; bg: string; border: string; pin: string }> = {
   go:       { label: "Ik ga!",   emoji: "🤙", color: "#1E7A56", bg: "#D6F5E8", border: "#A8E4CA", pin: "#1E7A56" },
-  report:   { label: "Rapporteer", emoji: "",   color: "#1A6080", bg: "#D6EEF8", border: "#A0D4EE", pin: "#1A6080" },
+  report:   { label: "Spotcondities", emoji: "",   color: "#1A6080", bg: "#D6EEF8", border: "#A0D4EE", pin: "#1A6080" },
   tip:      { label: "Tip",      emoji: "📌", color: "#8A5C00", bg: "#FEF3CC", border: "#F0D878", pin: "#D4A000" },
   warning:  { label: "Let op",   emoji: "⚠️", color: "#B02000", bg: "#FDE8E2", border: "#F4AE9A", pin: "#B02000" },
   question: { label: "Vraag",    emoji: "❓", color: "#5A3888", bg: "#EDE6F8", border: "#C8B0E8", pin: "#5A3888" },
@@ -51,9 +51,9 @@ function Pin({ color }: { color: string }) {
   );
 }
 
-function FlagIcon() {
+function FlagIcon({ filled }: { filled: boolean }) {
   return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="11" height="11" viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
       <line x1="4" y1="22" x2="4" y2="15"/>
     </svg>
@@ -93,12 +93,12 @@ function PostCard({ post, compact, userId, userName, onReport, onDelete }: {
         }}>✕</button>
       )}
       {!ph && userId && (
-        <button onClick={handleReport} title={reported ? "Gemeld" : "Meld dit bericht"} style={{
+        <button onClick={handleReport} title={reported ? "Gerapporteerd" : "Rapporteer dit bericht"} style={{
           position: "absolute", top: 6, right: 4, background: "none", border: "none",
           cursor: reported ? "default" : "pointer", color: reported ? "#B02000" : "rgba(0,0,0,0.2)",
           padding: 3, borderRadius: 4, lineHeight: 1, transition: "color 0.15s",
         }}>
-          <FlagIcon />
+          <FlagIcon filled={reported} />
         </button>
       )}
       <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
