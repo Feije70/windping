@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getValidToken } from "@/lib/supabase";
+import { useI18n } from "@/lib/i18n";
 
 export type PostType = "go" | "report" | "tip" | "warning" | "question";
 
@@ -18,12 +19,13 @@ export interface PrikbordPost {
   isPlaceholder?: boolean;
 }
 
-const T: Record<PostType, { label: string; emoji: string; color: string; bg: string; border: string; pin: string }> = {
-  go:       { label: "Ik ga!",   emoji: "🤙", color: "#1E7A56", bg: "#D6F5E8", border: "#A8E4CA", pin: "#1E7A56" },
-  report:   { label: "Spotcondities", emoji: "",   color: "#1A6080", bg: "#D6EEF8", border: "#A0D4EE", pin: "#1A6080" },
-  tip:      { label: "Tip",      emoji: "📌", color: "#8A5C00", bg: "#FEF3CC", border: "#F0D878", pin: "#D4A000" },
-  warning:  { label: "Let op",   emoji: "⚠️", color: "#B02000", bg: "#FDE8E2", border: "#F4AE9A", pin: "#B02000" },
-  question: { label: "Vraag",    emoji: "❓", color: "#5A3888", bg: "#EDE6F8", border: "#C8B0E8", pin: "#5A3888" },
+// Stijl per type — labels komen via i18n
+const T_STYLE: Record<PostType, { emoji: string; color: string; bg: string; border: string; pin: string }> = {
+  go:       { emoji: "🤙", color: "#1E7A56", bg: "#D6F5E8", border: "#A8E4CA", pin: "#1E7A56" },
+  report:   { emoji: "",   color: "#1A6080", bg: "#D6EEF8", border: "#A0D4EE", pin: "#1A6080" },
+  tip:      { emoji: "📌", color: "#8A5C00", bg: "#FEF3CC", border: "#F0D878", pin: "#D4A000" },
+  warning:  { emoji: "⚠️", color: "#B02000", bg: "#FDE8E2", border: "#F4AE9A", pin: "#B02000" },
+  question: { emoji: "❓", color: "#5A3888", bg: "#EDE6F8", border: "#C8B0E8", pin: "#5A3888" },
 };
 
 const PLACEHOLDERS: PrikbordPost[] = [
@@ -63,7 +65,8 @@ function FlagIcon({ filled }: { filled: boolean }) {
 function PostCard({ post, compact, userId, userName, onReport, onDelete }: {
   post: PrikbordPost; compact: boolean; userId: number | null; userName: string; onReport: (postId: number) => void; onDelete: (postId: number) => void;
 }) {
-  const t = T[post.type];
+  const { t: i18n } = useI18n();
+  const t = T_STYLE[post.type];
   const ph = post.isPlaceholder;
   const [reported, setReported] = useState(false);
 
@@ -86,14 +89,14 @@ function PostCard({ post, compact, userId, userName, onReport, onDelete }: {
     >
       <Pin color={t.pin} />
       {!ph && userId && (post.user_id === userId || post.author_name === userName) && (
-        <button onClick={e => { e.stopPropagation(); onDelete(post.id); }} title="Verwijder bericht" style={{
+        <button onClick={e => { e.stopPropagation(); onDelete(post.id); }} title={i18n("prikbord.delete_title")} style={{
           position: "absolute", top: 6, right: 22, background: "none", border: "none",
           cursor: "pointer", color: "rgba(0,0,0,0.2)", padding: 3, borderRadius: 4, lineHeight: 1,
           transition: "color 0.15s", fontSize: 11,
         }}>✕</button>
       )}
       {!ph && userId && (
-        <button onClick={handleReport} title={reported ? "Gerapporteerd" : "Rapporteer dit bericht"} style={{
+        <button onClick={handleReport} title={reported ? i18n("prikbord.reported_title") : i18n("prikbord.report_title")} style={{
           position: "absolute", top: 6, right: 4, background: "none", border: "none",
           cursor: reported ? "default" : "pointer", color: reported ? "#B02000" : "rgba(0,0,0,0.2)",
           padding: 3, borderRadius: 4, lineHeight: 1, transition: "color 0.15s",
@@ -103,7 +106,7 @@ function PostCard({ post, compact, userId, userName, onReport, onDelete }: {
       )}
       <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
         {t.emoji && <span style={{ fontSize: 12 }}>{t.emoji}</span>}
-        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" as const, color: t.color, fontFamily: "system-ui" }}>{t.label}</span>
+        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" as const, color: t.color, fontFamily: "system-ui" }}>{i18n(`prikbord.types.${post.type}`)}</span>
         {post.wind_speed && !ph && (
           <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: t.color, fontFamily: "system-ui" }}>{post.wind_speed}kn {post.wind_dir}</span>
         )}
@@ -123,20 +126,21 @@ function PostModal({ spotId, userId, userName, onClose, onPosted }: {
 }) {
   const [type, setType] = useState<PostType>("report");
   const [content, setContent] = useState("");
+  const { t: i18n } = useI18n();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const t = T[type];
+  const t = T_STYLE[type];
 
   const placeholders: Record<PostType, string> = {
-    go:       "Bijv: Morgen 10u bij de uitrit. Wie mee?",
-    report:   "Bijv: 19kn NW, strand breed, weinig mensen.",
-    tip:      "Bijv: Bij laagwater uitkijken voor stenen links van de vlaggen.",
-    warning:  "Bijv: Parkeerplaats noord afgesloten t/m 12 maart.",
-    question: "Bijv: Kent iemand een goeie foilrepair in de buurt?",
+    go:       i18n("prikbord.placeholders.go"),
+    report:   i18n("prikbord.placeholders.report"),
+    tip:      i18n("prikbord.placeholders.tip"),
+    warning:  i18n("prikbord.placeholders.warning"),
+    question: i18n("prikbord.placeholders.question"),
   };
 
   async function submit() {
-    if (!content.trim()) { setError("Schrijf eerst iets."); return; }
+    if (!content.trim()) { setError(i18n("prikbord.error_empty")); return; }
     setSaving(true); setError("");
     try {
       const token = await getValidToken();
@@ -146,11 +150,11 @@ function PostModal({ spotId, userId, userName, onClose, onPosted }: {
         body: JSON.stringify({ spot_id: spotId, user_id: userId, author_name: userName, type, content: content.trim() }),
       });
       const data = await res.json();
-      if (data.blocked) { setError("Je bericht kon niet worden geplaatst vanwege ongepaste inhoud."); setSaving(false); return; }
+      if (data.blocked) { setError(i18n("prikbord.error_blocked")); setSaving(false); return; }
       if (!res.ok) throw new Error();
       onPosted(data.post);
       onClose();
-    } catch { setError("Kon niet opslaan. Probeer opnieuw."); }
+    } catch { setError(i18n("prikbord.error_save")); }
     setSaving(false);
   }
 
@@ -158,16 +162,16 @@ function PostModal({ spotId, userId, userName, onClose, onPosted }: {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
       <div style={{ background: "#FBF7F0", borderRadius: "20px 20px 0 0", padding: "20px 20px 40px", width: "100%", maxWidth: 480, boxShadow: "0 -4px 30px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
         <div style={{ width: 32, height: 4, background: "#D8CECC", borderRadius: 2, margin: "0 auto 18px" }} />
-        <div style={{ fontSize: 15, fontWeight: 800, color: "#2A1F14", marginBottom: 14, fontFamily: "system-ui" }}>📌 Prik iets op het bord</div>
+        <div style={{ fontSize: 15, fontWeight: 800, color: "#2A1F14", marginBottom: 14, fontFamily: "system-ui" }}>📌 {i18n("prikbord.modal_title")}</div>
         <div style={{ display: "flex", gap: 7, marginBottom: 14, overflowX: "auto" as const, paddingBottom: 2 }}>
-          {(Object.entries(T) as [PostType, typeof T[PostType]][]).map(([k, v]) => (
+          {(Object.entries(T_STYLE) as [PostType, typeof T_STYLE[PostType]][]).map(([k, v]) => (
             <button key={k} onClick={() => setType(k)} style={{
               flexShrink: 0, padding: "6px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700,
               border: `1.5px solid ${type === k ? v.color : "#E0D4C8"}`,
               background: type === k ? v.bg : "white",
               color: type === k ? v.color : "#9B8878",
               cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: "system-ui",
-            }}>{v.emoji} {v.label}</button>
+            }}>{v.emoji} {i18n(`prikbord.types.${k}`)}</button>
           ))}
         </div>
         <textarea value={content} onChange={e => setContent(e.target.value)} placeholder={placeholders[type]} rows={4}
@@ -181,7 +185,7 @@ function PostModal({ spotId, userId, userName, onClose, onPosted }: {
           color: !content.trim() ? "#B0A898" : "white",
           fontSize: 14, fontWeight: 800, border: "none", cursor: !content.trim() ? "default" : "pointer", fontFamily: "system-ui",
         }}>
-          {saving ? "Wordt gemodereerd..." : "📌 Prik op het bord"}
+          {saving ? i18n("prikbord.submitting") : i18n("prikbord.submit_button")}
         </button>
       </div>
     </div>
@@ -195,6 +199,7 @@ interface PrikbordProps {
 }
 
 export default function Prikbord({ spotId, spotName, userId, userName, posts, onPostAdded, compact = false, showAll = false }: PrikbordProps) {
+  const { t: i18n } = useI18n();
   const [showModal, setShowModal] = useState(false);
   const [localPosts, setLocalPosts] = useState<PrikbordPost[]>(posts);
 
@@ -211,7 +216,7 @@ export default function Prikbord({ spotId, spotName, userId, userName, posts, on
 
   async function handleDelete(postId: number) {
     if (!userId) return;
-    if (!confirm("Bericht verwijderen?")) return;
+    if (!confirm(i18n("common.delete") + "?")) return;
     try {
       const token = await getValidToken();
       await fetch(`/api/prikbord?id=${postId}&user_id=${userId}`, {
@@ -243,12 +248,12 @@ export default function Prikbord({ spotId, spotName, userId, userName, posts, on
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 10px", borderBottom: "1px solid #D0C4B0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 14, fontWeight: 800, color: "#7A5C38", fontFamily: "system-ui" }}>Prikbord</span>
-            {!hasReal && <span style={{ fontSize: 9, fontWeight: 700, color: "#A08878", background: "rgba(0,0,0,0.06)", borderRadius: 10, padding: "2px 7px", fontFamily: "system-ui" }}>voorbeeldberichten</span>}
+            <span style={{ fontSize: 14, fontWeight: 800, color: "#7A5C38", fontFamily: "system-ui" }}>{i18n("prikbord.title")}</span>
+            {!hasReal && <span style={{ fontSize: 9, fontWeight: 700, color: "#A08878", background: "rgba(0,0,0,0.06)", borderRadius: 10, padding: "2px 7px", fontFamily: "system-ui" }}>{i18n("prikbord.placeholder_badge")}</span>}
           </div>
           {userId && (
             <button onClick={() => setShowModal(true)} style={{ background: "linear-gradient(135deg, #0D4A63, #2E8FAE)", border: "none", borderRadius: 20, padding: "6px 14px", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontFamily: "system-ui", boxShadow: "0 2px 8px rgba(46,143,174,0.3)" }}>
-              📌 Prik iets
+              {i18n("prikbord.post_button")}
             </button>
           )}
         </div>
@@ -259,7 +264,7 @@ export default function Prikbord({ spotId, spotName, userId, userName, posts, on
           </div>
           {extra > 0 && (
             <a href={`/spot?id=${spotId}`} style={{ display: "block", marginTop: 14, padding: "8px", background: "rgba(0,0,0,0.08)", borderRadius: 8, textAlign: "center", fontSize: 12, fontWeight: 700, color: "#7A5C38", textDecoration: "none", fontFamily: "system-ui" }}>
-              +{extra} meer berichten
+              {i18n("prikbord.more_posts", { count: extra })}
             </a>
           )}
         </div>

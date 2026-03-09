@@ -1,0 +1,56 @@
+{
+  "common": {
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "delete": "Excluir",
+    "loading": "Carregando...",
+    "error": "Algo deu errado. Por favor, tente novamente.",
+    "back": "Voltar"
+  },
+  "prikbord": {
+    "title": "Mural de avisos",
+    "placeholder_badge": "mensagens de exemplo",
+    "post_button": "Publicar algo",
+    "modal_title": "Publicar algo no mural",
+    "submit_button": "Publicar no mural",
+    "submitting": "Moderando...",
+    "error_empty": "Escreva algo primeiro.",
+    "error_save": "Não foi possível salvar. Por favor, tente novamente.",
+    "error_blocked": "Sua mensagem não pôde ser publicada devido a conteúdo impróprio.",
+    "report_title": "Denunciar esta mensagem",
+    "reported_title": "Denunciado",
+    "delete_title": "Excluir mensagem",
+    "more_posts": "+{count} mensagens",
+    "types": {
+      "go": "Vou!",
+      "report": "Condições do spot",
+      "tip": "Dica",
+      "warning": "Atenção",
+      "question": "Pergunta"
+    },
+    "placeholders": {
+      "go": "Ex: Amanhã às 10h no ponto de lançamento. Quem vem?",
+      "report": "Ex: 19nós NW, praia larga, poucas pessoas.",
+      "tip": "Ex: Cuidado com as pedras à esquerda das bandeiras na maré baixa.",
+      "warning": "Ex: Estacionamento norte fechado até 12 de março.",
+      "question": "Ex: Alguém conhece um bom conserto perto daqui?"
+    }
+  },
+  "spot": {
+    "tab_prikbord": "Mural de avisos",
+    "tab_info": "Info do spot",
+    "tab_voorkeuren": "Preferências",
+    "wind_range": "Vento",
+    "all_levels": "Todos os níveis",
+    "saved": "Salvo",
+    "not_saved": "Salvar spot",
+    "view_spot": "Ver spot"
+  },
+  "nav": {
+    "home": "Início",
+    "spots": "Spots",
+    "sessions": "Sessões",
+    "friends": "Amigos",
+    "profile": "Perfil"
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "delete": "Löschen",
+    "loading": "Laden...",
+    "error": "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
+    "back": "Zurück"
+  },
+  "prikbord": {
+    "title": "Pinnwand",
+    "placeholder_badge": "Beispielnachrichten",
+    "post_button": "Etwas pinnen",
+    "modal_title": "Etwas an die Pinnwand pinnen",
+    "submit_button": "An die Pinnwand pinnen",
+    "submitting": "Wird moderiert...",
+    "error_empty": "Schreib zuerst etwas.",
+    "error_save": "Konnte nicht gespeichert werden. Bitte erneut versuchen.",
+    "error_blocked": "Deine Nachricht konnte wegen unangemessener Inhalte nicht gepostet werden.",
+    "report_title": "Diese Nachricht melden",
+    "reported_title": "Gemeldet",
+    "delete_title": "Nachricht löschen",
+    "more_posts": "+{count} weitere Nachrichten",
+    "types": {
+      "go": "Ich fahre!",
+      "report": "Spotbedingungen",
+      "tip": "Tipp",
+      "warning": "Achtung",
+      "question": "Frage"
+    },
+    "placeholders": {
+      "go": "z.B.: Morgen 10 Uhr am Startplatz. Wer ist dabei?",
+      "report": "z.B.: 19kn NW, breiter Strand, wenig Leute.",
+      "tip": "z.B.: Bei Ebbe auf Steine links der Flaggen achten.",
+      "warning": "z.B.: Nördlicher Parkplatz bis 12. März gesperrt.",
+      "question": "z.B.: Kennt jemand eine gute Reparaturwerkstatt in der Nähe?"
+    }
+  },
+  "spot": {
+    "tab_prikbord": "Pinnwand",
+    "tab_info": "Spot-Info",
+    "tab_voorkeuren": "Einstellungen",
+    "wind_range": "Wind",
+    "all_levels": "Alle Niveaus",
+    "saved": "Gespeichert",
+    "not_saved": "Spot speichern",
+    "view_spot": "Spot ansehen"
+  },
+  "nav": {
+    "home": "Home",
+    "spots": "Spots",
+    "sessions": "Sessions",
+    "friends": "Freunde",
+    "profile": "Profil"
+  }
+}

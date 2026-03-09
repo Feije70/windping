@@ -1,0 +1,56 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "loading": "Loading...",
+    "error": "Something went wrong. Please try again.",
+    "back": "Back"
+  },
+  "prikbord": {
+    "title": "Notice board",
+    "placeholder_badge": "example messages",
+    "post_button": "Post something",
+    "modal_title": "Post something on the board",
+    "submit_button": "Post to the board",
+    "submitting": "Moderating...",
+    "error_empty": "Write something first.",
+    "error_save": "Could not save. Please try again.",
+    "error_blocked": "Your message could not be posted due to inappropriate content.",
+    "report_title": "Report this message",
+    "reported_title": "Reported",
+    "delete_title": "Delete message",
+    "more_posts": "+{count} more messages",
+    "types": {
+      "go": "I'm going!",
+      "report": "Spot conditions",
+      "tip": "Tip",
+      "warning": "Warning",
+      "question": "Question"
+    },
+    "placeholders": {
+      "go": "E.g: Tomorrow 10am at the launch. Who's in?",
+      "report": "E.g: 19kn NW, wide beach, not busy.",
+      "tip": "E.g: Watch out for rocks on the left at low tide.",
+      "warning": "E.g: North car park closed until March 12.",
+      "question": "E.g: Anyone know a good repair shop nearby?"
+    }
+  },
+  "spot": {
+    "tab_prikbord": "Notice board",
+    "tab_info": "Spot info",
+    "tab_voorkeuren": "Preferences",
+    "wind_range": "Wind",
+    "all_levels": "All levels",
+    "saved": "Saved",
+    "not_saved": "Save spot",
+    "view_spot": "View spot"
+  },
+  "nav": {
+    "home": "Home",
+    "spots": "Spots",
+    "sessions": "Sessions",
+    "friends": "Friends",
+    "profile": "Profile"
+  }
+}

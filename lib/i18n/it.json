@@ -1,0 +1,56 @@
+{
+  "common": {
+    "save": "Salva",
+    "cancel": "Annulla",
+    "delete": "Elimina",
+    "loading": "Caricamento...",
+    "error": "Qualcosa è andato storto. Riprova.",
+    "back": "Indietro"
+  },
+  "prikbord": {
+    "title": "Bacheca",
+    "placeholder_badge": "messaggi di esempio",
+    "post_button": "Pubblica qualcosa",
+    "modal_title": "Pubblica qualcosa sulla bacheca",
+    "submit_button": "Pubblica sulla bacheca",
+    "submitting": "In moderazione...",
+    "error_empty": "Scrivi prima qualcosa.",
+    "error_save": "Impossibile salvare. Riprova.",
+    "error_blocked": "Il tuo messaggio non è stato pubblicato a causa di contenuti inappropriati.",
+    "report_title": "Segnala questo messaggio",
+    "reported_title": "Segnalato",
+    "delete_title": "Elimina messaggio",
+    "more_posts": "+{count} altri messaggi",
+    "types": {
+      "go": "Ci vado!",
+      "report": "Condizioni dello spot",
+      "tip": "Consiglio",
+      "warning": "Attenzione",
+      "question": "Domanda"
+    },
+    "placeholders": {
+      "go": "Es: Domani alle 10 al punto di lancio. Chi viene?",
+      "report": "Es: 19nodi NW, spiaggia larga, poca gente.",
+      "tip": "Es: Attenzione alle rocce a sinistra delle bandiere con bassa marea.",
+      "warning": "Es: Parcheggio nord chiuso fino al 12 marzo.",
+      "question": "Es: Qualcuno conosce un buon negozio di riparazioni qui vicino?"
+    }
+  },
+  "spot": {
+    "tab_prikbord": "Bacheca",
+    "tab_info": "Info spot",
+    "tab_voorkeuren": "Preferenze",
+    "wind_range": "Vento",
+    "all_levels": "Tutti i livelli",
+    "saved": "Salvato",
+    "not_saved": "Salva spot",
+    "view_spot": "Vedi spot"
+  },
+  "nav": {
+    "home": "Home",
+    "spots": "Spot",
+    "sessions": "Sessioni",
+    "friends": "Amici",
+    "profile": "Profilo"
+  }
+}

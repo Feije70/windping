@@ -1,0 +1,56 @@
+{
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "loading": "Chargement...",
+    "error": "Une erreur s'est produite. Veuillez réessayer.",
+    "back": "Retour"
+  },
+  "prikbord": {
+    "title": "Tableau d'affichage",
+    "placeholder_badge": "messages d'exemple",
+    "post_button": "Épingler quelque chose",
+    "modal_title": "Épingler quelque chose sur le tableau",
+    "submit_button": "Épingler sur le tableau",
+    "submitting": "En cours de modération...",
+    "error_empty": "Écris d'abord quelque chose.",
+    "error_save": "Impossible de sauvegarder. Veuillez réessayer.",
+    "error_blocked": "Ton message n'a pas pu être publié en raison d'un contenu inapproprié.",
+    "report_title": "Signaler ce message",
+    "reported_title": "Signalé",
+    "delete_title": "Supprimer le message",
+    "more_posts": "+{count} messages supplémentaires",
+    "types": {
+      "go": "J'y vais !",
+      "report": "Conditions du spot",
+      "tip": "Conseil",
+      "warning": "Attention",
+      "question": "Question"
+    },
+    "placeholders": {
+      "go": "Ex : Demain 10h au point de lancement. Qui vient ?",
+      "report": "Ex : 19 nœuds NW, plage large, peu de monde.",
+      "tip": "Ex : Attention aux rochers à gauche des drapeaux à marée basse.",
+      "warning": "Ex : Parking nord fermé jusqu'au 12 mars.",
+      "question": "Ex : Quelqu'un connaît un bon réparateur dans le coin ?"
+    }
+  },
+  "spot": {
+    "tab_prikbord": "Tableau d'affichage",
+    "tab_info": "Info spot",
+    "tab_voorkeuren": "Préférences",
+    "wind_range": "Vent",
+    "all_levels": "Tous niveaux",
+    "saved": "Enregistré",
+    "not_saved": "Enregistrer le spot",
+    "view_spot": "Voir le spot"
+  },
+  "nav": {
+    "home": "Accueil",
+    "spots": "Spots",
+    "sessions": "Sessions",
+    "friends": "Amis",
+    "profile": "Profil"
+  }
+}

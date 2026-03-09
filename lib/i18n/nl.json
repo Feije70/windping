@@ -1,0 +1,56 @@
+{
+  "common": {
+    "save": "Opslaan",
+    "cancel": "Annuleren",
+    "delete": "Verwijderen",
+    "loading": "Laden...",
+    "error": "Er ging iets mis. Probeer opnieuw.",
+    "back": "Terug"
+  },
+  "prikbord": {
+    "title": "Prikbord",
+    "placeholder_badge": "voorbeeldberichten",
+    "post_button": "Prik iets",
+    "modal_title": "Prik iets op het bord",
+    "submit_button": "Prik op het bord",
+    "submitting": "Wordt gemodereerd...",
+    "error_empty": "Schrijf eerst iets.",
+    "error_save": "Kon niet opslaan. Probeer opnieuw.",
+    "error_blocked": "Je bericht kon niet worden geplaatst vanwege ongepaste inhoud.",
+    "report_title": "Rapporteer dit bericht",
+    "reported_title": "Gerapporteerd",
+    "delete_title": "Verwijder bericht",
+    "more_posts": "+{count} meer berichten",
+    "types": {
+      "go": "Ik ga!",
+      "report": "Spotcondities",
+      "tip": "Tip",
+      "warning": "Let op",
+      "question": "Vraag"
+    },
+    "placeholders": {
+      "go": "Bijv: Morgen 10u bij de uitrit. Wie mee?",
+      "report": "Bijv: 19kn NW, strand breed, weinig mensen.",
+      "tip": "Bijv: Bij laagwater uitkijken voor stenen links van de vlaggen.",
+      "warning": "Bijv: Parkeerplaats noord afgesloten t/m 12 maart.",
+      "question": "Bijv: Kent iemand een goeie foilrepair in de buurt?"
+    }
+  },
+  "spot": {
+    "tab_prikbord": "Prikbord",
+    "tab_info": "Spot info",
+    "tab_voorkeuren": "Voorkeuren",
+    "wind_range": "Wind",
+    "all_levels": "Alle niveaus",
+    "saved": "Opgeslagen",
+    "not_saved": "Sla op",
+    "view_spot": "Bekijk spot"
+  },
+  "nav": {
+    "home": "Home",
+    "spots": "Spots",
+    "sessions": "Sessies",
+    "friends": "Vrienden",
+    "profile": "Profiel"
+  }
+}

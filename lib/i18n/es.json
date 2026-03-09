@@ -1,0 +1,56 @@
+{
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "delete": "Eliminar",
+    "loading": "Cargando...",
+    "error": "Algo salió mal. Por favor, inténtalo de nuevo.",
+    "back": "Volver"
+  },
+  "prikbord": {
+    "title": "Tablón de anuncios",
+    "placeholder_badge": "mensajes de ejemplo",
+    "post_button": "Publicar algo",
+    "modal_title": "Publicar algo en el tablón",
+    "submit_button": "Publicar en el tablón",
+    "submitting": "Moderando...",
+    "error_empty": "Escribe algo primero.",
+    "error_save": "No se pudo guardar. Por favor, inténtalo de nuevo.",
+    "error_blocked": "Tu mensaje no pudo publicarse debido a contenido inapropiado.",
+    "report_title": "Reportar este mensaje",
+    "reported_title": "Reportado",
+    "delete_title": "Eliminar mensaje",
+    "more_posts": "+{count} mensajes más",
+    "types": {
+      "go": "¡Voy!",
+      "report": "Condiciones del spot",
+      "tip": "Consejo",
+      "warning": "Atención",
+      "question": "Pregunta"
+    },
+    "placeholders": {
+      "go": "Ej: Mañana a las 10h en el punto de lanzamiento. ¿Quién se apunta?",
+      "report": "Ej: 19 nudos NW, playa ancha, poca gente.",
+      "tip": "Ej: Cuidado con las rocas a la izquierda de las banderas con marea baja.",
+      "warning": "Ej: Aparcamiento norte cerrado hasta el 12 de marzo.",
+      "question": "Ej: ¿Alguien conoce un buen taller de reparación cerca?"
+    }
+  },
+  "spot": {
+    "tab_prikbord": "Tablón de anuncios",
+    "tab_info": "Info del spot",
+    "tab_voorkeuren": "Preferencias",
+    "wind_range": "Viento",
+    "all_levels": "Todos los niveles",
+    "saved": "Guardado",
+    "not_saved": "Guardar spot",
+    "view_spot": "Ver spot"
+  },
+  "nav": {
+    "home": "Inicio",
+    "spots": "Spots",
+    "sessions": "Sesiones",
+    "friends": "Amigos",
+    "profile": "Perfil"
+  }
+}
