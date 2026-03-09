@@ -22,8 +22,32 @@ async function sbAdmin(path: string, method = "GET", body?: any) {
   return null;
 }
 
+const BLOCKED_WORDS = [
+  // Nederlands
+  "kut", "lul", "pik", "neuken", "neuk", "fikken", "flikken", "hoer", "slet", "teef",
+  "klootzak", "eikel", "godverdomme", "godver", "verdomme", "kanker", "kankerlijer",
+  "tyfus", "tering", "pest", "cholera", "aids", "mongool", "idioot", "debiel", "sukkel",
+  "stomkop", "donder op", "rot op", "lazer op", "opzouten", "likken", "pijpen", "tieten",
+  "kont", "reet", "kak", "stront", "schijt", "poepen",
+  // Engels
+  "fuck", "shit", "ass", "bitch", "cunt", "cock", "dick", "pussy", "bastard", "whore",
+  "nigger", "faggot", "retard",
+];
+
+function containsBlockedWord(text: string): boolean {
+  const lower = text.toLowerCase();
+  return BLOCKED_WORDS.some(word => {
+    // Hele woord match (niet als onderdeel van een ander woord)
+    const regex = new RegExp(`(^|\\s|[^a-z])${word}($|\\s|[^a-z])`, "i");
+    return regex.test(lower);
+  });
+}
+
 async function moderateContent(content: string, type: string): Promise<"ok" | "flagged" | "blocked"> {
   if (!ANTHROPIC_API_KEY) return "ok"; // geen key → altijd ok (dev mode)
+
+  // Harde woordenlijst filter — altijd geblokkeerd ongeacht AI
+  if (containsBlockedWord(content)) return "blocked";
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -38,15 +62,28 @@ async function moderateContent(content: string, type: string): Promise<"ok" | "f
         max_tokens: 50,
         messages: [{
           role: "user",
-          content: `Je bent een moderator voor een kitesurf/windsurf community app. Beoordeel deze post op het prikbord van een spot.
+          content: `Je bent een strenge moderator voor een kitesurf/windsurf community app voor alle leeftijden. Beoordeel deze prikbord post.
 
 Type: ${type}
 Inhoud: "${content}"
 
-Regels:
-- BLOCKED: pornografische inhoud, expliciete seksuele content, grove beledigingen, haatzaaien, spam/reclame
-- FLAGGED: lichte scheldwoorden, mogelijk aanstootgevende inhoud, onduidelijke intentie
-- OK: normale community berichten, tips, rapporten, vragen, planningen
+BLOCKED (niet plaatsen):
+- Scheldwoorden, vloeken, grove taal (ook licht: kut, godverdomme, klootzak etc.)
+- Seksuele of pornografische inhoud
+- Beledigingen of haatzaaien
+- Spam of reclame
+- Zinloze of testberichten zonder betekenis
+
+FLAGGED (twijfelgeval, admin bekijkt):
+- Twijfelachtige intentie
+- Mogelijk beledigend voor sommigen
+
+OK (gewoon plaatsen):
+- Windrapport, spotcondities, weersomstandigheden
+- Tips over de spot, gevaren, parkeren
+- Planningen ("wie gaat er mee?")
+- Vragen over materiaal of de spot
+- Positieve community berichten
 
 Antwoord met ALLEEN één woord: OK, FLAGGED, of BLOCKED`,
         }],
