@@ -617,7 +617,7 @@ function EnrichmentTab() {
       }
       // 4s tussen spots om binnen 30k tokens/min te blijven (~15 spots/min max)
       if (i < toScan.length - 1) {
-        for (let s = 4; s > 0; s--) {
+        for (let s = 15; s > 0; s--) {
           setScanProgress(`${i + 1}/${toScan.length}: ${spot.display_name} ✓ — volgende over ${s}s`);
           await new Promise(r => setTimeout(r, 1000));
         }
@@ -832,7 +832,18 @@ function stripCite(text: string): string {
 function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSaved?: (spotId: number) => void }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [saveError, setSaveError] = useState("");
+
+  // Editable categories — initieel gevuld met gestrippte tekst
+  const [editCats, setEditCats] = useState<Record<string, string>>(() => {
+    const cats = data.categories || {};
+    const result: Record<string, string> = {};
+    Object.entries(cats).forEach(([k, v]) => {
+      result[k] = stripCite(String(v || ""));
+    });
+    return result;
+  });
 
   async function saveToDb() {
     setSaving(true);
@@ -850,7 +861,7 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
           spot_id: spot.id,
           confidence: data.confidence || 0,
           sources: data.sources || [],
-          categories: data.categories || {},
+          categories: editCats,
           missing: data.missing || [],
           scanned_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -869,6 +880,30 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
     setSaving(false);
   }
 
+  async function deleteFromDb() {
+    if (!confirm(`Opgeslagen data voor ${spot.display_name} verwijderen?`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=eq.${spot.id}`, {
+        method: "DELETE",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      });
+      if (res.ok) {
+        setSaved(false);
+        setSaveError("");
+        alert(`✓ Data voor ${spot.display_name} verwijderd`);
+      } else {
+        setSaveError(`Verwijderen mislukt: ${res.status}`);
+      }
+    } catch (e: any) {
+      setSaveError(e.message);
+    }
+    setDeleting(false);
+  }
+
   if (data.error) {
     const isCredits = data.error === "insufficient_credits" || String(data.error).includes("credit") || String(data.error).includes("billing");
     return (
@@ -885,7 +920,6 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
     );
   }
 
-  const cats = data.categories || {};
   const labels: Record<string, string> = {
     conditions: "Windcondities & karakter",
     facilities: "Faciliteiten",
@@ -898,57 +932,100 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
 
   return (
     <div>
+      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{spot.display_name}</div>
           <div style={{ fontSize: 11, color: C.muted }}>{spot.spot_type}</div>
         </div>
-        <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, fontWeight: 700, background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2", color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B" }}>
+        <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, fontWeight: 700,
+          background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2",
+          color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B" }}>
           {conf > 0.7 ? "Hoge betrouwbaarheid" : conf > 0.4 ? "Matige betrouwbaarheid" : "Weinig gevonden"}
         </span>
       </div>
 
-      {data.sources?.length > 0 && <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Bronnen: {data.sources.join(" · ")}</div>}
+      {data.sources?.length > 0 && (
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Bronnen: {data.sources.join(" · ")}</div>
+      )}
 
-      {Object.entries(cats).map(([key, value]: [string, any]) => value ? (
-        <div key={key} style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 3, textTransform: "uppercase" as const, letterSpacing: 0.5 }}>{labels[key] || key}</div>
-          <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.6, background: "#F9FAFB", borderRadius: 8, padding: "8px 12px" }}>{stripCite(value)}</div>
+      {/* Editable categorieën */}
+      {Object.entries(editCats).map(([key, value]) => (
+        <div key={key} style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 4,
+            textTransform: "uppercase" as const, letterSpacing: 0.5 }}>
+            {labels[key] || key}
+          </div>
+          <textarea
+            value={value}
+            onChange={e => setEditCats(prev => ({ ...prev, [key]: e.target.value }))}
+            rows={4}
+            style={{
+              width: "100%", padding: "10px 12px", fontSize: 13, color: "#374151",
+              lineHeight: 1.6, background: "#F9FAFB", borderRadius: 8,
+              border: `1.5px solid ${C.cardBorder}`, outline: "none",
+              resize: "vertical" as const, fontFamily: "inherit", boxSizing: "border-box" as const,
+            }}
+          />
         </div>
-      ) : null)}
+      ))}
 
-      {data.missing?.length > 0 && <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Niet gevonden: {data.missing.join(", ")}</div>}
+      {data.missing?.length > 0 && (
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 12 }}>
+          Niet gevonden: {data.missing.join(", ")}
+        </div>
+      )}
 
-      {/* Opslaan knop */}
+      {/* Acties */}
       <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.cardBorder}` }}>
         {saveError && (
           <div style={{ fontSize: 12, color: "#DC2626", marginBottom: 8, padding: "6px 10px", background: "#FEF2F2", borderRadius: 8 }}>
             ❌ {saveError}
           </div>
         )}
-        <button
-          onClick={saveToDb}
-          disabled={saving || saved}
-          style={{
-            width: "100%", padding: "11px 16px", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 700,
-            cursor: saved ? "default" : "pointer",
-            background: saved ? "#DCFCE7" : `linear-gradient(135deg, ${C.sky}, #4DB8C9)`,
-            color: saved ? "#166534" : "#fff",
-            opacity: saving ? 0.7 : 1,
-            transition: "all 0.2s",
-          }}
-        >
-          {saving ? "⏳ Opslaan..." : saved ? "✓ Opgeslagen in database" : "💾 Opslaan in database"}
-        </button>
+
+        <div style={{ display: "flex", gap: 8 }}>
+          {/* Opslaan */}
+          <button
+            onClick={saveToDb}
+            disabled={saving || saved}
+            style={{
+              flex: 1, padding: "11px 16px", borderRadius: 10, border: "none",
+              fontSize: 13, fontWeight: 700, cursor: saved ? "default" : "pointer",
+              background: saved ? "#DCFCE7" : `linear-gradient(135deg, ${C.sky}, #4DB8C9)`,
+              color: saved ? "#166534" : "#fff",
+              opacity: saving ? 0.7 : 1, transition: "all 0.2s",
+            }}
+          >
+            {saving ? "⏳ Opslaan..." : saved ? "✓ Opgeslagen" : "💾 Opslaan in database"}
+          </button>
+
+          {/* Verwijderen uit db */}
+          <button
+            onClick={deleteFromDb}
+            disabled={deleting}
+            style={{
+              padding: "11px 14px", borderRadius: 10, border: "1px solid #FECACA",
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              background: "#FEF2F2", color: "#DC2626",
+              opacity: deleting ? 0.6 : 1,
+            }}
+            title="Verwijder opgeslagen data uit database"
+          >
+            {deleting ? "⏳" : "🗑️"}
+          </button>
+        </div>
+
         {!saved && (
           <div style={{ fontSize: 11, color: C.muted, marginTop: 6, textAlign: "center" as const }}>
-            Slaat op in spot_enrichment — direct zichtbaar op de spot Info tab
+            Pas tekst aan waar nodig · Sluit zonder opslaan om te annuleren
           </div>
         )}
       </div>
     </div>
   );
 }
+
 
 /* ── Moderation Tab ── */
 function ModerationTab() {
