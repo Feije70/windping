@@ -146,7 +146,7 @@ function EnrichmentInfoTab({ spot, enrichment }: { spot: any; enrichment: any })
               background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2",
               color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B",
             }}>
-              {conf > 0.7 ? "✓ Betrouwbaar" : conf > 0.4 ? "~ Gedeeltelijk" : "! Weinig info"}
+              {conf > 0.7 ? "✓ Betrouwbaar" : conf > 0.4 ? "~ Redelijk betrouwbaar" : "! Weinig info"}
             </span>
             {scannedAt && <span style={{ fontSize: 11, color: C.muted }}>Gescand {scannedAt}</span>}
           </div>
