@@ -845,6 +845,18 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
     return result;
   });
 
+  // Reset editCats als een andere spot geselecteerd wordt
+  useEffect(() => {
+    const cats = data.categories || {};
+    const result: Record<string, string> = {};
+    Object.entries(cats).forEach(([k, v]) => {
+      result[k] = stripCite(String(v || ""));
+    });
+    setEditCats(result);
+    setSaved(false);
+    setSaveError("");
+  }, [spot.id]);
+
   async function saveToDb() {
     setSaving(true);
     setSaveError("");
