@@ -494,125 +494,328 @@ function AdminDashboard({ stats, health, onNavigate }: {
 }
 
 /* ── Enrichment Scanner Tab ── */
+/* Tooltip helper */
+function Tip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+      <span
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        style={{ width: 16, height: 16, borderRadius: "50%", background: C.creamDark, border: `1px solid ${C.cardBorder}`, fontSize: 10, fontWeight: 700, color: C.muted, display: "inline-flex", alignItems: "center", justifyContent: "center", cursor: "help", flexShrink: 0 }}
+      >?</span>
+      {show && (
+        <span style={{ position: "absolute", left: 22, top: "50%", transform: "translateY(-50%)", background: C.navy, color: "#fff", fontSize: 11, padding: "6px 10px", borderRadius: 8, zIndex: 100, maxWidth: 260, whiteSpace: "normal" as const, lineHeight: 1.5, boxShadow: "0 4px 12px rgba(0,0,0,0.2)" }}>
+          {text}
+        </span>
+      )}
+    </span>
+  );
+}
+
+const NL_REGIONS = ["Noord-Holland", "Zuid-Holland", "Zeeland", "Friesland", "Zeeland, Netherlands", "Groningen", "Drenthe", "Overijssel", "Gelderland", "Utrecht", "Noord-Brabant", "Limburg", "Flevoland"];
+
+function getLand(region: string): string {
+  if (!region) return "Overig";
+  if (NL_REGIONS.includes(region)) return "Nederland";
+  const parts = region.split(", ");
+  return parts.length > 1 ? parts[parts.length - 1] : region;
+}
+
+const LAND_VLAG: Record<string, string> = {
+  Nederland: "🇳🇱", Spain: "🇪🇸", Germany: "🇩🇪", France: "🇫🇷", Italy: "🇮🇹",
+  Portugal: "🇵🇹", Greece: "🇬🇷", Denmark: "🇩🇰", Ireland: "🇮🇪", England: "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+  Croatia: "🇭🇷", Norway: "🇳🇴", Scotland: "🏴󠁧󠁢󠁳󠁣󠁴󠁿", Belgium: "🇧🇪", Poland: "🇵🇱",
+  Morocco: "🇲🇦", Bulgaria: "🇧🇬", Sweden: "🇸🇪", Wales: "🏴󠁧󠁢󠁷󠁬󠁳󠁿", Turkey: "🇹🇷",
+  Austria: "🇦🇹", Switzerland: "🇨🇭", Latvia: "🇱🇻", Romania: "🇷🇴", Hungary: "🇭🇺",
+  Montenegro: "🇲🇪", Azores: "🇵🇹",
+};
+
 function EnrichmentTab() {
   const [spots, setSpots] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
-  const [selectedSpot, setSelectedSpot] = useState<any>(null);
-  const [result, setResult] = useState<any>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
+  const [resultMap, setResultMap] = useState<Record<number, any>>({});
+  const [viewId, setViewId] = useState<number | null>(null);
   const [scanProgress, setScanProgress] = useState("");
-  const [country, setCountry] = useState("NL");
+  const [spotSearch, setSpotSearch] = useState("");
+  const [selectedLand, setSelectedLand] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/spots?order=display_name.asc&select=id,display_name,spot_type,latitude,longitude,country`, {
-          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/spots?order=display_name.asc&select=id,display_name,spot_type,region,latitude,longitude&limit=5000`, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Range-Unit": "items", "Range": "0-4999" }
         });
         const data = await res.json();
-        setSpots(data || []);
+        setSpots(Array.isArray(data) ? data : []);
       } catch {}
       setLoading(false);
     }
     load();
   }, []);
 
-  const filteredSpots = spots.filter((s: any) => !country || (s.country || "NL") === country);
+  const filteredSpots = spots.filter(s => {
+    const matchSearch = spotSearch.length >= 2 ? s.display_name.toLowerCase().includes(spotSearch.toLowerCase()) : true;
+    const matchLand = selectedLand ? getLand(s.region) === selectedLand : true;
+    return matchSearch && matchLand;
+  });
 
-  async function scanSpot(spot: any) {
-    setScanning(true);
-    setResult(null);
-    setSelectedSpot(spot);
-    setScanProgress("Zoeken naar informatie...");
-    try {
-      const res = await fetch("/api/enrichment-scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spot }),
-      });
-      const data = await res.json();
-      setResult(data);
-    } catch { setResult({ error: "Scannen mislukt." }); }
-    setScanProgress("");
-    setScanning(false);
+  function toggleCheck(id: number) {
+    setCheckedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
 
-  async function scanAll() {
+  function toggleAll() {
+    if (checkedIds.size === filteredSpots.length) {
+      setCheckedIds(new Set());
+    } else {
+      setCheckedIds(new Set(filteredSpots.map((s: any) => s.id)));
+    }
+  }
+
+  async function scanChecked() {
+    const toScan = spots.filter(s => checkedIds.has(s.id));
+    if (toScan.length === 0) return;
     setScanning(true);
-    setResult(null);
-    const toScan = filteredSpots.slice(0, 5);
-    const results: any[] = [];
     for (let i = 0; i < toScan.length; i++) {
       const spot = toScan[i];
-      setScanProgress(`${i + 1}/${toScan.length}: ${spot.display_name}...`);
-      try {
-        const res = await fetch("/api/enrichment-scan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ spot }),
-        });
-        results.push({ spot, ...(await res.json()) });
-      } catch { results.push({ spot, error: "Mislukt" }); }
-      await new Promise(r => setTimeout(r, 800));
+      setScanProgress(`${i + 1}/${toScan.length}: ${spot.display_name}`);
+      let retries = 0;
+      while (retries < 3) {
+        try {
+          const res = await fetch("/api/enrichment-scan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ spot }),
+          });
+          const data = await res.json();
+
+          if (res.status === 429 || JSON.stringify(data).includes("rate_limit")) {
+            retries++;
+            const wait = 15 * retries;
+            for (let s = wait; s > 0; s--) {
+              setScanProgress(`⏳ Rate limit — wacht ${s}s (${i + 1}/${toScan.length})`);
+              await new Promise(r => setTimeout(r, 1000));
+            }
+            continue;
+          }
+
+          const hasCreditsError = JSON.stringify(data).toLowerCase().includes("credit") || JSON.stringify(data).toLowerCase().includes("billing") || JSON.stringify(data).toLowerCase().includes("low");
+          const spotResult = hasCreditsError ? { error: "insufficient_credits" } : data;
+          setResultMap(prev => ({ ...prev, [spot.id]: spotResult }));
+          setViewId(spot.id);
+          break;
+        } catch {
+          setResultMap(prev => ({ ...prev, [spot.id]: { error: "Scannen mislukt" } }));
+          break;
+        }
+      }
+      // 4s tussen spots om binnen 30k tokens/min te blijven (~15 spots/min max)
+      if (i < toScan.length - 1) {
+        for (let s = 15; s > 0; s--) {
+          setScanProgress(`${i + 1}/${toScan.length}: ${spot.display_name} ✓ — volgende over ${s}s`);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
     }
-    setResult({ batch: results });
     setScanProgress("");
     setScanning(false);
   }
 
   if (loading) return <div style={{ padding: 40, textAlign: "center", color: C.muted }}>Laden...</div>;
 
+  const checkedCount = checkedIds.size;
+  const scannedSpots = spots.filter(s => resultMap[s.id]);
+
+  const landenMap: Record<string, any[]> = {};
+  spots.forEach(s => {
+    const land = getLand(s.region);
+    if (!landenMap[land]) landenMap[land] = [];
+    landenMap[land].push(s);
+  });
+  const landenSorted = Object.entries(landenMap)
+    .filter(([land]) => land !== "Overig")
+    .sort((a, b) => b[1].length - a[1].length);
+
+  const nlCount = (landenMap["Nederland"] || []).length;
+
+
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 15, fontWeight: 800, color: C.navy, marginBottom: 4 }}>Spot Enrichment Scanner</div>
-        <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>Preview — niks wordt opgeslagen. Ontdek welke informatie beschikbaar is per spot.</div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" as const }}>
-          <select value={country} onChange={e => setCountry(e.target.value)} style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.cardBorder}`, fontSize: 13, color: C.navy, background: C.card, cursor: "pointer" }}>
-            <option value="NL">Nederland</option>
-            <option value="">Alle landen</option>
-          </select>
-          <button onClick={scanAll} disabled={scanning} style={{ padding: "7px 16px", borderRadius: 8, background: C.sky, color: "white", border: "none", fontSize: 13, fontWeight: 700, cursor: scanning ? "default" : "pointer", opacity: scanning ? 0.6 : 1 }}>
-            {scanning ? `Bezig: ${scanProgress}` : `Scan eerste 5 spots`}
-          </button>
-          <span style={{ fontSize: 12, color: C.muted }}>{filteredSpots.length} spots</span>
+      {/* Header */}
+      <div style={{ background: C.card, borderRadius: 12, padding: "14px 18px", marginBottom: 14, boxShadow: C.cardShadow, border: `1px solid ${C.cardBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: C.navy, marginBottom: 4 }}>Spot Enrichment Scanner</div>
+          <div style={{ fontSize: 13, color: C.muted }}>
+            Scant publieke informatie via AI per spot. Scan spots en sla de resultaten op in de database.
+          </div>
+        </div>
+        <span style={{ fontSize: 13, fontWeight: 700, color: C.sky, whiteSpace: "nowrap" as const, marginLeft: 16 }}>{spots.length} spots</span>
+      </div>
+
+      {/* Snelkeuze landen */}
+      <div style={{ background: C.card, borderRadius: 10, padding: "10px 14px", marginBottom: 12, boxShadow: C.cardShadow }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.sub, whiteSpace: "nowrap" as const }}>FILTER OP LAND</span>
+          {selectedLand && (
+            <button onClick={() => setSelectedLand(null)} style={{
+              padding: "2px 8px", borderRadius: 5, fontSize: 11, fontWeight: 700,
+              border: "1px solid #FECACA", background: "#FEF2F2", color: "#DC2626", cursor: "pointer",
+            }}>✕ {selectedLand}</button>
+          )}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
+          {landenSorted.map(([land, ls]) => {
+            const isActive = selectedLand === land;
+            return (
+              <button key={land} disabled={scanning} onClick={() => setSelectedLand(isActive ? null : land)} style={{
+                padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: isActive ? 700 : 600,
+                border: `1px solid ${isActive ? C.sky : C.cardBorder}`,
+                background: isActive ? C.sky : C.creamDark,
+                color: isActive ? "#fff" : C.navy,
+                cursor: scanning ? "default" : "pointer",
+              }}>{LAND_VLAG[land] || "🌍"} {land} ({ls.length})</button>
+            );
+          })}
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16 }}>
-        <div style={{ background: C.card, borderRadius: 12, padding: 10, boxShadow: C.cardShadow, maxHeight: 580, overflowY: "auto" as const }}>
-          {filteredSpots.map((spot: any) => (
-            <button key={spot.id} onClick={() => scanSpot(spot)} disabled={scanning} style={{
-              display: "block", width: "100%", textAlign: "left", padding: "8px 10px", borderRadius: 8,
-              border: "none", marginBottom: 2, cursor: scanning ? "default" : "pointer",
-              background: selectedSpot?.id === spot.id ? `${C.sky}20` : "transparent",
-              borderLeft: `3px solid ${selectedSpot?.id === spot.id ? C.sky : "transparent"}`,
-            }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: C.navy }}>{spot.display_name}</div>
-              <div style={{ fontSize: 10, color: C.muted }}>{spot.spot_type || "—"}</div>
-            </button>
+      {/* Geselecteerde spots strip */}
+      {checkedCount > 0 && (
+        <div style={{ background: `${C.sky}08`, border: `1px solid ${C.sky}20`, borderRadius: 10, padding: "8px 14px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.sky, flexShrink: 0 }}>{checkedCount} geselecteerd:</span>
+          {spots.filter(s => checkedIds.has(s.id)).slice(0, 15).map(s => (
+            <span key={s.id} onClick={() => toggleCheck(s.id)} style={{
+              fontSize: 11, padding: "2px 8px", borderRadius: 4, background: C.sky, color: "#fff",
+              cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4,
+            }}>{s.display_name} <span style={{ opacity: 0.7 }}>×</span></span>
           ))}
+          {checkedCount > 15 && <span style={{ fontSize: 11, color: C.muted }}>+{checkedCount - 15} meer</span>}
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14, flexWrap: "wrap" as const }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button
+            onClick={scanChecked}
+            disabled={scanning || checkedCount === 0}
+            style={{
+              padding: "8px 18px", borderRadius: 8, fontSize: 13, fontWeight: 700, border: "none",
+              background: checkedCount > 0 ? C.sky : C.creamDark,
+              color: checkedCount > 0 ? "#fff" : C.muted,
+              cursor: (scanning || checkedCount === 0) ? "default" : "pointer",
+              opacity: scanning ? 0.6 : 1,
+            }}
+          >
+            {scanning ? `⏳ ${scanProgress}` : `🔍 Scan ${checkedCount > 0 ? `${checkedCount} geselecteerde spot${checkedCount > 1 ? "s" : ""}` : "geselecteerde spots"}`}
+          </button>
+          <Tip text="Vink spots aan in de lijst, dan hier op scannen klikken. Je kunt meerdere spots tegelijk selecteren en in één keer scannen." />
         </div>
 
-        <div style={{ background: C.card, borderRadius: 12, padding: 16, boxShadow: C.cardShadow, maxHeight: 580, overflowY: "auto" as const }}>
-          {scanning && scanProgress && (
-            <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#1D4ED8" }}>
-              Bezig met: {scanProgress}
+        {checkedCount > 0 && !scanning && (
+          <button onClick={() => { setCheckedIds(new Set()); setResultMap({}); setViewId(null); }} style={{ padding: "8px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: C.creamDark, border: `1px solid ${C.cardBorder}`, color: C.muted, cursor: "pointer" }}>
+            Wis selectie
+          </button>
+        )}
+
+        <span style={{ fontSize: 12, color: C.muted, marginLeft: "auto" }}>{spots.length} spots totaal</span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16 }}>
+        {/* Spot lijst met checkboxes */}
+        <div style={{ background: C.card, borderRadius: 12, boxShadow: C.cardShadow, display: "flex", flexDirection: "column", maxHeight: 640 }}>
+          {/* Zoek + selecteer alle */}
+          <div style={{ padding: "10px 10px 6px", borderBottom: `1px solid ${C.cardBorder}` }}>
+            <input
+              placeholder="Zoek spot..."
+              value={spotSearch}
+              onChange={e => setSpotSearch(e.target.value)}
+              style={{ width: "100%", padding: "7px 10px", borderRadius: 8, border: `1px solid ${C.cardBorder}`, fontSize: 12, color: C.navy, background: C.creamDark, boxSizing: "border-box" as const, outline: "none", marginBottom: 6 }}
+            />
+            <button onClick={toggleAll} style={{ fontSize: 11, color: C.sky, background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 600 }}>
+              {checkedIds.size === filteredSpots.length && filteredSpots.length > 0 ? "✓ Alles deselecteren" : `Selecteer alle ${filteredSpots.length > 0 ? `(${filteredSpots.length})` : ""}`}
+            </button>
+          </div>
+
+          <div style={{ overflowY: "auto" as const, flex: 1, padding: "4px 6px 8px" }}>
+            {filteredSpots.map((spot: any) => {
+              const checked = checkedIds.has(spot.id);
+              const isScanning = scanning && scanProgress.includes(spot.display_name);
+              return (
+                <div
+                  key={spot.id}
+                  onClick={() => !scanning && toggleCheck(spot.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 8,
+                    marginBottom: 2, cursor: scanning ? "default" : "pointer",
+                    background: checked ? `${C.sky}12` : "transparent",
+                    transition: "background 0.1s",
+                  }}
+                >
+                  <div style={{
+                    width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                    border: `2px solid ${checked ? C.sky : C.cardBorder}`,
+                    background: checked ? C.sky : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {checked && <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: checked ? 700 : 500, color: checked ? C.sky : C.navy, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{spot.display_name}</div>
+                    <div style={{ fontSize: 10, color: C.muted }}>{spot.region ? `${spot.region} · ` : ""}{spot.spot_type || "—"}</div>
+                  </div>
+                  {isScanning && <div style={{ width: 12, height: 12, border: `2px solid ${C.sky}40`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite", flexShrink: 0 }} />}
+                </div>
+              );
+            })}
+            {filteredSpots.length === 0 && (
+              <div style={{ fontSize: 12, color: C.muted, padding: "12px 10px" }}>Geen spots gevonden</div>
+            )}
+          </div>
+        </div>
+
+        {/* Resultaten */}
+        <div style={{ background: C.card, borderRadius: 12, padding: 16, boxShadow: C.cardShadow, maxHeight: 640, overflowY: "auto" as const }}>
+          {scanning && (
+            <div style={{ background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10, padding: "12px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 16, height: 16, border: `2px solid #93C5FD`, borderTopColor: "#2563EB", borderRadius: "50%", animation: "spin 0.6s linear infinite", flexShrink: 0 }} />
+              <span style={{ fontSize: 13, color: "#1D4ED8" }}>{scanProgress}</span>
             </div>
           )}
-          {!result && !scanning && (
-            <div style={{ color: C.muted, fontSize: 13, padding: 20, textAlign: "center" }}>Selecteer een spot of klik Scan.</div>
-          )}
-          {result && !result.batch && selectedSpot && <EnrichmentResult spot={selectedSpot} data={result} />}
-          {result?.batch && (
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 12 }}>Batch resultaten ({result.batch.length} spots)</div>
-              {result.batch.map((item: any, i: number) => (
-                <div key={i}>
-                  <EnrichmentResult spot={item.spot} data={item} />
-                  {i < result.batch.length - 1 && <hr style={{ border: "none", borderTop: `1px solid ${C.cardBorder}`, margin: "16px 0" }} />}
-                </div>
+
+          {/* Resultaten navigatie tabs als meerdere gescand */}
+          {scannedSpots.length > 1 && (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 14 }}>
+              {scannedSpots.map(spot => (
+                <button key={spot.id} onClick={() => setViewId(spot.id)} style={{
+                  padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, border: "none", cursor: "pointer",
+                  background: viewId === spot.id ? C.sky : C.creamDark,
+                  color: viewId === spot.id ? "#fff" : C.muted,
+                }}>
+                  {resultMap[spot.id]?.error ? "⚠️ " : "✅ "}{spot.display_name}
+                </button>
               ))}
+            </div>
+          )}
+
+          {viewId && resultMap[viewId] && (() => {
+            const spot = spots.find(s => s.id === viewId);
+            return spot ? <EnrichmentResult spot={spot} data={resultMap[viewId]} /> : null;
+          })()}
+
+          {scannedSpots.length === 0 && !scanning && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px", color: C.muted }}>
+              <div style={{ fontSize: 32, marginBottom: 12 }}>☑️</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.navy, marginBottom: 4 }}>Vink spots aan</div>
+              <div style={{ fontSize: 12, textAlign: "center" as const, lineHeight: 1.7 }}>
+                Selecteer één of meerdere spots via de checkboxes links,<br />klik dan op de scan knop hierboven.
+              </div>
             </div>
           )}
         </div>
@@ -621,11 +824,560 @@ function EnrichmentTab() {
   );
 }
 
-function EnrichmentResult({ spot, data }: { spot: any; data: any }) {
-  if (data.error) return <div style={{ color: "#DC2626", fontSize: 13 }}>Fout: {data.error}</div>;
-  const cats = data.categories || {};
+// ── SVG Iconen voor enrichment categorieën ──
+const EnrichmentIcons: Record<string, () => React.ReactElement> = {
+  news: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>
+      <path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>
+    </svg>
+  ),
+  events: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+      <path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+    </svg>
+  ),
+  conditions: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/>
+      <path d="M9.6 4.6A2 2 0 1 1 11 8H2"/>
+      <path d="M12.6 19.4A2 2 0 1 0 14 16H2"/>
+    </svg>
+  ),
+  hazards: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
+      <path d="M12 9v4"/><path d="M12 17h.01"/>
+    </svg>
+  ),
+  facilities: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+      <polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+  ),
+  tips: () => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7Z"/>
+      <path d="M10 21h4"/>
+    </svg>
+  ),
+};
+
+// ── Enrichment Beheer Tab ──
+function EnrichmentBeheerTab() {
+  const [saved, setSaved] = useState<any[]>([]);
+  const [spots, setSpots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editCats, setEditCats] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [searchQ, setSearchQ] = useState("");
+
   const labels: Record<string, string> = {
-    history: "Geschiedenis",
+    conditions: "Windcondities & karakter",
+    facilities: "Faciliteiten",
+    hazards: "Gevaren",
+    tips: "Tips",
+    events: "Events & wedstrijden",
+    news: "Actueel nieuws",
+  };
+
+  useEffect(() => {
+    async function load() {
+      const [enrichRes, spotsRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?select=*&order=updated_at.desc`, {
+          headers: { apikey: SUPABASE_ANON_KEY }
+        }).then(r => r.json()),
+        fetch(`${SUPABASE_URL}/rest/v1/spots?select=id,display_name,region,spot_type&limit=5000`, {
+          headers: { apikey: SUPABASE_ANON_KEY }
+        }).then(r => r.json()),
+      ]);
+      setSaved(Array.isArray(enrichRes) ? enrichRes : []);
+      setSpots(Array.isArray(spotsRes) ? spotsRes : []);
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  function getSpot(spot_id: number) {
+    return spots.find(s => s.id === spot_id);
+  }
+
+  function startEdit(row: any) {
+    setEditId(row.spot_id);
+    const cats: Record<string, string> = {};
+    Object.entries(row.categories || {}).forEach(([k, v]) => {
+      cats[k] = String(v || "");
+    });
+    setEditCats(cats);
+    setMsg("");
+  }
+
+  async function saveEdit(spot_id: number, row: any) {
+    setSaving(true);
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify({
+        spot_id,
+        confidence: row.confidence,
+        sources: row.sources,
+        categories: editCats,
+        missing: row.missing,
+        scanned_at: row.scanned_at,
+        updated_at: new Date().toISOString(),
+      }),
+    });
+    if (res.ok) {
+      setSaved(prev => prev.map(r => r.spot_id === spot_id ? { ...r, categories: editCats, updated_at: new Date().toISOString() } : r));
+      setMsg("✓ Opgeslagen");
+      setEditId(null);
+    } else {
+      setMsg("❌ Opslaan mislukt");
+    }
+    setSaving(false);
+  }
+
+  async function deleteRow(spot_id: number, spotName: string) {
+    if (!confirm(`Enrichment data voor ${spotName} verwijderen?`)) return;
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=eq.${spot_id}`, {
+      method: "DELETE",
+      headers: { apikey: SUPABASE_ANON_KEY },
+    });
+    if (res.ok) {
+      setSaved(prev => prev.filter(r => r.spot_id !== spot_id));
+      if (editId === spot_id) setEditId(null);
+      setMsg("✓ Verwijderd");
+    } else {
+      setMsg("❌ Verwijderen mislukt");
+    }
+  }
+
+  const filtered = saved.filter(r => {
+    const spot = getSpot(r.spot_id);
+    if (!spot) return true;
+    return spot.display_name.toLowerCase().includes(searchQ.toLowerCase());
+  });
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: C.muted }}>Laden...</div>;
+
+  return (
+    <div>
+      {/* Header stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+        {[
+          { label: "Opgeslagen spots", value: saved.length, color: C.sky },
+          { label: "Hoog betrouwbaar", value: saved.filter(r => (r.confidence || 0) > 0.7).length, color: C.green },
+          { label: "Laag betrouwbaar", value: saved.filter(r => (r.confidence || 0) <= 0.4).length, color: C.amber },
+        ].map(k => (
+          <div key={k.label} style={{ background: C.card, borderRadius: 12, padding: "14px 16px", boxShadow: C.cardShadow }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: k.color }}>{k.value}</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {msg && (
+        <div style={{ padding: "8px 14px", borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 700,
+          background: msg.startsWith("✓") ? "#DCFCE7" : "#FEF2F2",
+          color: msg.startsWith("✓") ? "#166534" : "#DC2626",
+        }}>{msg}</div>
+      )}
+
+      {/* Zoekbalk */}
+      <input
+        placeholder="Zoek op spotnaam..."
+        value={searchQ}
+        onChange={e => setSearchQ(e.target.value)}
+        style={{ width: "100%", padding: "9px 14px", borderRadius: 10, border: `1px solid ${C.cardBorder}`, fontSize: 13, color: C.navy, background: C.card, outline: "none", marginBottom: 14, boxSizing: "border-box" as const }}
+      />
+
+      {/* Lijst */}
+      {filtered.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px 20px", color: C.muted, fontSize: 13 }}>
+          Geen opgeslagen enrichment data gevonden.
+        </div>
+      ) : filtered.map(row => {
+        const spot = getSpot(row.spot_id);
+        const conf = row.confidence || 0;
+        const isEditing = editId === row.spot_id;
+        const catCount = Object.values(row.categories || {}).filter(Boolean).length;
+
+        return (
+          <div key={row.spot_id} style={{
+            background: C.card, borderRadius: 14, marginBottom: 10, boxShadow: C.cardShadow,
+            border: `1px solid ${isEditing ? C.sky : C.cardBorder}`,
+            transition: "border-color 0.2s",
+          }}>
+            {/* Row header */}
+            <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>{spot?.display_name || `Spot #${row.spot_id}`}</div>
+                <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>
+                  {spot?.region} · {catCount} categorie{catCount !== 1 ? "ën" : ""} · {new Date(row.updated_at).toLocaleDateString("nl-NL", { day: "numeric", month: "short", year: "numeric" })}
+                </div>
+              </div>
+
+              {/* Betrouwbaarheid badge */}
+              <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, fontWeight: 700, flexShrink: 0,
+                background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2",
+                color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B",
+              }}>
+                {Math.round(conf * 100)}%
+              </span>
+
+              {/* Acties */}
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <button onClick={() => isEditing ? setEditId(null) : startEdit(row)} style={{
+                  padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  background: isEditing ? C.creamDark : `${C.sky}15`,
+                  color: isEditing ? C.muted : C.sky,
+                  border: `1px solid ${isEditing ? C.cardBorder : `${C.sky}40`}`,
+                }}>
+                  {isEditing ? "Annuleer" : "✏️ Bewerken"}
+                </button>
+                <button onClick={() => deleteRow(row.spot_id, spot?.display_name || `Spot #${row.spot_id}`)} style={{
+                  padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                  background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA",
+                }}>🗑️</button>
+              </div>
+            </div>
+
+            {/* Edit mode */}
+            {isEditing && (
+              <div style={{ borderTop: `1px solid ${C.cardBorder}`, padding: "14px 16px" }}>
+                {Object.entries(editCats).map(([key, value]) => (
+                  <div key={key} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <span style={{ color: C.sky }}>{EnrichmentIcons[key]?.()}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: C.navy, textTransform: "uppercase" as const, letterSpacing: 0.5 }}>
+                        {labels[key] || key}
+                      </span>
+                    </div>
+                    <textarea
+                      value={value}
+                      onChange={e => setEditCats(prev => ({ ...prev, [key]: e.target.value }))}
+                      rows={3}
+                      style={{
+                        width: "100%", padding: "9px 12px", fontSize: 13, color: "#374151",
+                        lineHeight: 1.6, background: "#F9FAFB", borderRadius: 8,
+                        border: `1.5px solid ${C.cardBorder}`, outline: "none",
+                        resize: "vertical" as const, fontFamily: "inherit", boxSizing: "border-box" as const,
+                      }}
+                    />
+                  </div>
+                ))}
+                <button
+                  onClick={() => saveEdit(row.spot_id, row)}
+                  disabled={saving}
+                  style={{
+                    width: "100%", padding: "10px", borderRadius: 10, border: "none",
+                    fontSize: 13, fontWeight: 700, cursor: "pointer",
+                    background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`,
+                    color: "#fff", opacity: saving ? 0.7 : 1,
+                  }}
+                >
+                  {saving ? "⏳ Opslaan..." : "💾 Wijzigingen opslaan"}
+                </button>
+              </div>
+            )}
+
+            {/* Preview mode — categorie pills */}
+            {!isEditing && (
+              <div style={{ padding: "0 16px 12px", display: "flex", gap: 6, flexWrap: "wrap" as const }}>
+                {Object.entries(row.categories || {}).filter(([, v]) => v).map(([key]) => (
+                  <span key={key} style={{
+                    fontSize: 11, padding: "3px 8px", borderRadius: 6, fontWeight: 600,
+                    background: C.creamDark, color: C.muted,
+                    display: "inline-flex", alignItems: "center", gap: 4,
+                  }}>
+                    <span style={{ color: C.sky, opacity: 0.8, display: "inline-flex" }}>{EnrichmentIcons[key]?.()}</span>
+                    {labels[key] || key}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+// ── Content → Spots Tab ──
+function SpotsTab() {
+  const [spots, setSpots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [deleting, setDeleting] = useState<number | null>(null);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    fetch(`${SUPABASE_URL}/rest/v1/spots?select=id,display_name,spot_type,region,latitude,longitude&order=display_name.asc&limit=5000`, {
+      headers: { apikey: SUPABASE_ANON_KEY }
+    }).then(r => r.json()).then(data => {
+      setSpots(Array.isArray(data) ? data : []);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, []);
+
+  async function deleteSpot(spot: any) {
+    if (!confirm(`Spot "${spot.display_name}" permanent verwijderen?\n\nDit verwijdert ook alle gekoppelde user_spots, ideal_conditions en enrichment data.`)) return;
+    setDeleting(spot.id);
+    try {
+      // Delete in juiste volgorde vanwege foreign keys
+      await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=eq.${spot.id}`, { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }),
+        fetch(`${SUPABASE_URL}/rest/v1/ideal_conditions?spot_id=eq.${spot.id}`, { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }),
+        fetch(`${SUPABASE_URL}/rest/v1/user_spots?spot_id=eq.${spot.id}`, { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }),
+        fetch(`${SUPABASE_URL}/rest/v1/spot_posts?spot_id=eq.${spot.id}`, { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }),
+      ]);
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/spots?id=eq.${spot.id}`, {
+        method: "DELETE",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
+      });
+      if (res.ok) {
+        setSpots(prev => prev.filter(s => s.id !== spot.id));
+        setMsg(`✓ ${spot.display_name} verwijderd`);
+        setTimeout(() => setMsg(""), 3000);
+      } else {
+        setMsg(`❌ Verwijderen mislukt (${res.status})`);
+      }
+    } catch (e: any) {
+      setMsg(`❌ ${e.message}`);
+    }
+    setDeleting(null);
+  }
+
+  const filtered = spots.filter(s =>
+    search.length < 2 || s.display_name.toLowerCase().includes(search.toLowerCase()) ||
+    (s.region || "").toLowerCase().includes(search.toLowerCase())
+  );
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: C.muted }}>Laden...</div>;
+
+  return (
+    <div>
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16 }}>
+        {[
+          { label: "Totaal spots", value: spots.length, color: C.sky },
+          { label: "Nederland", value: spots.filter(s => s.region && !s.region.includes(",")).length, color: C.green },
+          { label: "Internationaal", value: spots.filter(s => s.region && s.region.includes(",")).length, color: C.navy },
+        ].map(k => (
+          <div key={k.label} style={{ background: C.card, borderRadius: 12, padding: "14px 16px", boxShadow: C.cardShadow }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: k.color }}>{k.value}</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {msg && (
+        <div style={{ padding: "8px 14px", borderRadius: 8, marginBottom: 12, fontSize: 12, fontWeight: 700,
+          background: msg.startsWith("✓") ? "#DCFCE7" : "#FEF2F2",
+          color: msg.startsWith("✓") ? "#166534" : "#DC2626",
+        }}>{msg}</div>
+      )}
+
+      <input
+        placeholder={`Zoek in ${spots.length} spots...`}
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ width: "100%", padding: "9px 14px", borderRadius: 10, border: `1px solid ${C.cardBorder}`, fontSize: 13, color: C.navy, background: C.card, outline: "none", marginBottom: 12, boxSizing: "border-box" as const }}
+      />
+
+      <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>
+        {filtered.length} spot{filtered.length !== 1 ? "s" : ""} {search.length >= 2 ? "gevonden" : "totaal"}
+      </div>
+
+      <div style={{ background: C.card, borderRadius: 12, boxShadow: C.cardShadow, overflow: "hidden" }}>
+        {filtered.slice(0, 200).map((spot, i) => (
+          <div key={spot.id} style={{
+            display: "flex", alignItems: "center", gap: 12, padding: "11px 16px",
+            borderBottom: i < filtered.length - 1 ? `1px solid ${C.cardBorder}` : "none",
+          }}>
+            {/* Spot type badge */}
+            <span style={{
+              fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, flexShrink: 0,
+              background: spot.spot_type === "Zee" ? "#DBEAFE" : spot.spot_type === "Meer" ? "#DCFCE7" : "#FEF3C7",
+              color: spot.spot_type === "Zee" ? "#1D4ED8" : spot.spot_type === "Meer" ? "#166534" : "#92400E",
+            }}>{spot.spot_type || "?"}</span>
+
+            {/* Naam + regio */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.navy, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {spot.display_name}
+              </div>
+              {spot.region && <div style={{ fontSize: 11, color: C.muted }}>{spot.region}</div>}
+            </div>
+
+            {/* Spot ID */}
+            <span style={{ fontSize: 10, color: C.muted, flexShrink: 0 }}>#{spot.id}</span>
+
+            {/* Verwijder knop */}
+            <button
+              onClick={() => deleteSpot(spot)}
+              disabled={deleting === spot.id}
+              style={{
+                padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA",
+                opacity: deleting === spot.id ? 0.5 : 1, flexShrink: 0,
+              }}
+            >
+              {deleting === spot.id ? "⏳" : "🗑️"}
+            </button>
+          </div>
+        ))}
+        {filtered.length > 200 && (
+          <div style={{ padding: "10px 16px", fontSize: 12, color: C.muted, textAlign: "center" as const }}>
+            Verfijn de zoekopdracht om meer te zien — {filtered.length - 200} spots verborgen
+          </div>
+        )}
+        {filtered.length === 0 && (
+          <div style={{ padding: "32px 20px", fontSize: 13, color: C.muted, textAlign: "center" as const }}>
+            Geen spots gevonden
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function stripCite(text: string): string {
+  if (!text) return text;
+  return text.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, '$1').trim();
+}
+
+function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSaved?: (spotId: number) => void }) {
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  // Editable categories — lees uit nl of en taallaag, of root als oud formaat
+  function extractCats(categories: any): Record<string, string> {
+    if (!categories) return {};
+    // Nieuw formaat: { nl: {...}, en: {...} }
+    const langCats = categories.nl || categories.en || null;
+    const source = langCats && typeof langCats === "object" && !Array.isArray(langCats) ? langCats : categories;
+    const result: Record<string, string> = {};
+    Object.entries(source).forEach(([k, v]) => {
+      if (typeof v === "string") result[k] = stripCite(v);
+    });
+    return result;
+  }
+
+  const [editCats, setEditCats] = useState<Record<string, string>>(() => extractCats(data.categories));
+  const [editLang, setEditLang] = useState<string>(() => {
+    const cats = data.categories || {};
+    return cats.nl ? "nl" : cats.en ? "en" : "nl";
+  });
+
+  // Reset editCats als een andere spot geselecteerd wordt
+  useEffect(() => {
+    const cats = data.categories || {};
+    const lang = cats.nl ? "nl" : cats.en ? "en" : "nl";
+    setEditLang(lang);
+    setEditCats(extractCats(cats));
+    setSaved(false);
+    setSaveError("");
+  }, [spot.id]);
+
+  async function saveToDb() {
+    setSaving(true);
+    setSaveError("");
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          "Content-Type": "application/json",
+          Prefer: "resolution=merge-duplicates,return=minimal",
+        },
+        body: JSON.stringify({
+          spot_id: spot.id,
+          confidence: data.confidence || 0,
+          sources: data.sources || [],
+          categories: (() => {
+            // Nieuw formaat: bewaar bestaande taallagen, update huidige
+            const existing = data.categories || {};
+            const isMultiLang = existing.nl || existing.en;
+            if (isMultiLang) {
+              return { ...existing, [editLang]: editCats };
+            }
+            // Oud formaat → migreer naar nl
+            return { nl: editCats };
+          })(),
+          missing: data.missing || [],
+          scanned_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        setSaveError(`Fout ${res.status}: ${text}`);
+      } else {
+        setSaved(true);
+        onSaved?.(spot.id);
+      }
+    } catch (e: any) {
+      setSaveError(e.message);
+    }
+    setSaving(false);
+  }
+
+  async function deleteFromDb() {
+    if (!confirm(`Opgeslagen data voor ${spot.display_name} verwijderen?`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=eq.${spot.id}`, {
+        method: "DELETE",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      });
+      if (res.ok) {
+        setSaved(false);
+        setSaveError("");
+        alert(`✓ Data voor ${spot.display_name} verwijderd`);
+      } else {
+        setSaveError(`Verwijderen mislukt: ${res.status}`);
+      }
+    } catch (e: any) {
+      setSaveError(e.message);
+    }
+    setDeleting(false);
+  }
+
+  if (data.error) {
+    const isCredits = data.error === "insufficient_credits" || String(data.error).includes("credit") || String(data.error).includes("billing");
+    return (
+      <div style={{ padding: "14px 16px", background: isCredits ? "#FEF3C7" : "#FEF2F2", borderRadius: 10, border: `1px solid ${isCredits ? "#FDE68A" : "#FECACA"}` }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: isCredits ? "#92400E" : "#DC2626", marginBottom: 4 }}>
+          {isCredits ? "⚠️ Onvoldoende API credits" : "❌ Scan mislukt"}
+        </div>
+        <div style={{ fontSize: 12, color: isCredits ? "#92400E" : "#991B1B", lineHeight: 1.6 }}>
+          {isCredits
+            ? <><span>Voeg credits toe via </span><a href="https://console.anthropic.com/billing" target="_blank" rel="noreferrer" style={{ color: "#92400E", fontWeight: 700 }}>console.anthropic.com/billing</a><span>. De scan API verbruikt Anthropic credits per aanvraag.</span></>
+            : String(data.error)}
+        </div>
+      </div>
+    );
+  }
+
+  const labels: Record<string, string> = {
     conditions: "Windcondities & karakter",
     facilities: "Faciliteiten",
     hazards: "Gevaren",
@@ -634,28 +1386,123 @@ function EnrichmentResult({ spot, data }: { spot: any; data: any }) {
     news: "Actueel nieuws",
   };
   const conf = data.confidence || 0;
+
   return (
     <div>
+      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 800, color: C.navy }}>{spot.display_name}</div>
           <div style={{ fontSize: 11, color: C.muted }}>{spot.spot_type}</div>
         </div>
-        <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, fontWeight: 700, background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2", color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B" }}>
-          {conf > 0.7 ? "Hoge betrouwbaarheid" : conf > 0.4 ? "Matige betrouwbaarheid" : "Weinig gevonden"}
+        <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, fontWeight: 700,
+          background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2",
+          color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B" }}>
+          {conf > 0.7 ? "Hoge betrouwbaarheid" : conf > 0.4 ? "Redelijk betrouwbaar" : "Weinig gevonden"}
         </span>
       </div>
-      {data.sources?.length > 0 && <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Bronnen: {data.sources.join(" · ")}</div>}
-      {Object.entries(cats).map(([key, value]: [string, any]) => value ? (
-        <div key={key} style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 3, textTransform: "uppercase" as const, letterSpacing: 0.5 }}>{labels[key] || key}</div>
-          <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.6, background: "#F9FAFB", borderRadius: 8, padding: "8px 12px" }}>{value}</div>
+
+      {data.sources?.length > 0 && (
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Bronnen: {data.sources.join(" · ")}</div>
+      )}
+
+      {/* Taalwissel als meerdere talen beschikbaar */}
+      {(data.categories?.nl || data.categories?.en) && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+          {Object.keys(data.categories).filter(k => ["nl","en","de","fr","es","pt","it"].includes(k)).map(lang => (
+            <button key={lang} onClick={() => {
+              setEditLang(lang);
+              const cats = data.categories[lang] || {};
+              const result: Record<string, string> = {};
+              Object.entries(cats).forEach(([k, v]) => { if (typeof v === "string") result[k] = stripCite(v); });
+              setEditCats(result);
+            }} style={{
+              padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer",
+              background: editLang === lang ? C.sky : C.creamDark,
+              color: editLang === lang ? "#fff" : C.muted,
+              border: `1px solid ${editLang === lang ? C.sky : C.cardBorder}`,
+            }}>{lang.toUpperCase()}</button>
+          ))}
         </div>
-      ) : null)}
-      {data.missing?.length > 0 && <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Niet gevonden: {data.missing.join(", ")}</div>}
+      )}
+
+      {/* Editable categorieën */}
+      {Object.entries(editCats).map(([key, value]) => (
+        <div key={key} style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.navy, marginBottom: 4,
+            textTransform: "uppercase" as const, letterSpacing: 0.5 }}>
+            {labels[key] || key}
+          </div>
+          <textarea
+            value={value}
+            onChange={e => setEditCats(prev => ({ ...prev, [key]: e.target.value }))}
+            rows={4}
+            style={{
+              width: "100%", padding: "10px 12px", fontSize: 13, color: "#374151",
+              lineHeight: 1.6, background: "#F9FAFB", borderRadius: 8,
+              border: `1.5px solid ${C.cardBorder}`, outline: "none",
+              resize: "vertical" as const, fontFamily: "inherit", boxSizing: "border-box" as const,
+            }}
+          />
+        </div>
+      ))}
+
+      {data.missing?.length > 0 && (
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 12 }}>
+          Niet gevonden: {data.missing.join(", ")}
+        </div>
+      )}
+
+      {/* Acties */}
+      <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${C.cardBorder}` }}>
+        {saveError && (
+          <div style={{ fontSize: 12, color: "#DC2626", marginBottom: 8, padding: "6px 10px", background: "#FEF2F2", borderRadius: 8 }}>
+            ❌ {saveError}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8 }}>
+          {/* Opslaan */}
+          <button
+            onClick={saveToDb}
+            disabled={saving || saved}
+            style={{
+              flex: 1, padding: "11px 16px", borderRadius: 10, border: "none",
+              fontSize: 13, fontWeight: 700, cursor: saved ? "default" : "pointer",
+              background: saved ? "#DCFCE7" : `linear-gradient(135deg, ${C.sky}, #4DB8C9)`,
+              color: saved ? "#166534" : "#fff",
+              opacity: saving ? 0.7 : 1, transition: "all 0.2s",
+            }}
+          >
+            {saving ? "⏳ Opslaan..." : saved ? "✓ Opgeslagen" : "💾 Opslaan in database"}
+          </button>
+
+          {/* Verwijderen uit db */}
+          <button
+            onClick={deleteFromDb}
+            disabled={deleting}
+            style={{
+              padding: "11px 14px", borderRadius: 10, border: "1px solid #FECACA",
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+              background: "#FEF2F2", color: "#DC2626",
+              opacity: deleting ? 0.6 : 1,
+            }}
+            title="Verwijder opgeslagen data uit database"
+          >
+            {deleting ? "⏳" : "🗑️"}
+          </button>
+        </div>
+
+        {!saved && (
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 6, textAlign: "center" as const }}>
+            Pas tekst aan waar nodig · Sluit zonder opslaan om te annuleren
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
 
 /* ── Moderation Tab ── */
 function ModerationTab() {
@@ -746,8 +1593,8 @@ function ModerationTab() {
 
 export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
-  const [section, setSection] = useState<"dashboard" | "gebruikers" | "alerts" | "content" | "systeem">("dashboard");
-  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "moderation" | "enrichment">("stats");
+  const [section, setSection] = useState<"dashboard" | "gebruikers" | "alerts" | "content" | "systeem" | "financien">("dashboard");
+  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "spots" | "moderation" | "enrichment" | "beheer" | "kosten" | "campagnes">("stats");
   const [flaggedPosts, setFlaggedPosts] = useState<any[]>([]);
   const [flaggedLoading, setFlaggedLoading] = useState(false);
   const [stats, setStats] = useState({ users: 0, spots: 0, alerts: 0, alertsToday: 0 });
@@ -923,6 +1770,7 @@ export default function AdminPage() {
     { section: "gebruikers" as const, icon: "👥", label: "Gebruikers", badge: 0 },
     { section: "alerts" as const, icon: "🔔", label: "Alerts", badge: criticalCount },
     { section: "content" as const, icon: "✏️", label: "Content & Spots", badge: 0 },
+    { section: "financien" as const, icon: "💰", label: "Financiën", badge: 0 },
     { section: "systeem" as const, icon: "⚙️", label: "Systeem", badge: 0 },
   ];
 
@@ -941,11 +1789,17 @@ export default function AdminPage() {
       { id: "simulator", label: "Simulator" },
     ],
     content: [
+      { id: "spots", label: "Spots" },
       { id: "moderation", label: "Moderatie" },
       { id: "enrichment", label: "Spot Enrichment" },
+      { id: "beheer", label: "Enrichment Beheer" },
     ],
     systeem: [
       { id: "health", label: "Health" },
+    ],
+    financien: [
+      { id: "kosten", label: "Vaste kosten" },
+      { id: "campagnes", label: "Campagnes" },
     ],
   };
 
@@ -1084,13 +1938,16 @@ export default function AdminPage() {
                 Bijgewerkt: {lastRefresh.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}
                 {" · "}Auto-refresh: 5 min
               </span>
-              <button onClick={loadHealth} disabled={healthLoading} style={{
-                padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 600,
-                background: C.card, border: `1px solid ${C.cardBorder}`, color: C.sky,
-                cursor: "pointer", opacity: healthLoading ? 0.5 : 1,
-              }}>
-                {healthLoading ? "⏳" : "🔄"} Ververs
-              </button>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button onClick={loadHealth} disabled={healthLoading} style={{
+                  padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 600,
+                  background: C.card, border: `1px solid ${C.cardBorder}`, color: C.sky,
+                  cursor: "pointer", opacity: healthLoading ? 0.5 : 1,
+                }}>
+                  {healthLoading ? "⏳" : "🔄"} Ververs
+                </button>
+                <Tip text="Herlaadt alle health data: heartbeat, delivery funnel en gebruikersstatus. Gebeurt ook automatisch elke 5 minuten." />
+              </div>
             </div>
 
             {/* Quick guide */}
@@ -1183,23 +2040,38 @@ export default function AdminPage() {
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button onClick={sendTestEmail} disabled={loading} style={{ padding: "11px 20px", background: C.sky, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
-                  {loading ? "Sending..." : "📧 Send Test Email"}
-                </button>
-                <button onClick={runPreview} disabled={loading} style={{ padding: "11px 20px", background: C.creamDark, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.sub, fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
-                  {loading ? "Running..." : "👁️ Preview"}
-                </button>
-                <button onClick={runLive} disabled={loading} style={{ padding: "11px 20px", background: C.green, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
-                  {loading ? "Running..." : "🚀 Run Live"}
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button onClick={sendTestEmail} disabled={loading} style={{ padding: "11px 20px", background: C.sky, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
+                    {loading ? "Sending..." : "📧 Send Test Email"}
+                  </button>
+                  <Tip text="Stuurt een nep-alert email naar de geselecteerde gebruiker. Geen echte forecast, alleen om de email layout te testen." />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button onClick={runPreview} disabled={loading} style={{ padding: "11px 20px", background: C.creamDark, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.sub, fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
+                    {loading ? "Running..." : "👁️ Preview"}
+                  </button>
+                  <Tip text="Evalueert de echte weersverwachting voor deze gebruiker en toont het resultaat — maar stuurt geen email of push." />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button onClick={runLive} disabled={loading} style={{ padding: "11px 20px", background: C.green, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
+                    {loading ? "Running..." : "🚀 Run Live"}
+                  </button>
+                  <Tip text="Voert een echte alert evaluatie uit én stuurt email + push notificatie als de condities kloppen. Gebruik alleen voor testen!" />
+                </div>
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <button onClick={testPush} disabled={loading} style={{ padding: "8px 14px", background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.3)", borderRadius: 8, color: "#8B5CF6", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
-                  🔔 Test Push
-                </button>
-                <button onClick={clearTestAlerts} disabled={loading} style={{ padding: "8px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, color: C.muted, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
-                  🗑️ Clear Test Alerts
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button onClick={testPush} disabled={loading} style={{ padding: "8px 14px", background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.3)", borderRadius: 8, color: "#8B5CF6", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                    🔔 Test Push
+                  </button>
+                  <Tip text="Stuurt een test push notificatie naar het apparaat van de gebruiker. Handig om te checken of push werkt." />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button onClick={clearTestAlerts} disabled={loading} style={{ padding: "8px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, color: C.muted, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                    🗑️ Clear Test Alerts
+                  </button>
+                  <Tip text="Verwijdert alle test-alerts uit de database. Gebruik dit na het testen om de alert history schoon te houden." />
+                </div>
               </div>
               <div style={{ marginTop: 10, fontSize: 10, color: C.muted, lineHeight: 1.6 }}>
                 <strong>Send Test Email</strong> — nep-alert, stuurt alleen email<br/>
@@ -1700,8 +2572,20 @@ export default function AdminPage() {
           <ModerationTab />
         )}
 
+        {section === "content" && tab === "spots" && (
+          <SpotsTab />
+        )}
+
         {section === "content" && tab === "enrichment" && (
           <EnrichmentTab />
+        )}
+
+        {section === "content" && tab === "beheer" && (
+          <EnrichmentBeheerTab />
+        )}
+
+        {section === "financien" && (tab === "kosten" || tab === "campagnes") && (
+          <FinancienTab tab={tab} token={adminToken} />
         )}
 
         </div>
@@ -1882,7 +2766,300 @@ function StatsTab({ token }: { token: string | null }) {
         </div>
       )}
 
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FINANCIËN TAB
+   ══════════════════════════════════════════════════════════════ */
+
+// Vaste maandelijkse kosten — gebaseerd op bekende services
+const VASTE_KOSTEN_DEFAULTS = [
+  { id: "claude_max",    label: "Claude Max",           categorie: "AI",          bedrag: 100,   eenheid: "mnd", actief: true,  toelichting: "Claude Pro/Max abonnement voor development" },
+  { id: "claude_api",    label: "Claude API credits",   categorie: "AI",          bedrag: 0,     eenheid: "mnd", actief: true,  toelichting: "Variabel — bijhouden op console.anthropic.com" },
+  { id: "meteo_api",     label: "Meteo API",            categorie: "API",         bedrag: 0,     eenheid: "mnd", actief: true,  toelichting: "Weerdata API voor windverwachting" },
+  { id: "getijde_api",   label: "Getijde API",          categorie: "API",         bedrag: 0,     eenheid: "mnd", actief: true,  toelichting: "Getijdendata API" },
+  { id: "vercel",        label: "Vercel",               categorie: "Hosting",     bedrag: 0,     eenheid: "mnd", actief: true,  toelichting: "Hosting & deployment (gratis tier)" },
+  { id: "supabase",      label: "Supabase",             categorie: "Database",    bedrag: 0,     eenheid: "mnd", actief: true,  toelichting: "Database & auth (gratis tier)" },
+  { id: "bird_whatsapp", label: "Bird / WhatsApp",      categorie: "Messaging",   bedrag: 0,     eenheid: "per bericht", actief: false, toelichting: "WhatsApp Business API via Bird — kosten per bericht" },
+  { id: "bird_vast",     label: "Bird vast tarief",     categorie: "Messaging",   bedrag: 0,     eenheid: "mnd", actief: false, toelichting: "Eventueel vast maandtarief Bird platform" },
+  { id: "domein",        label: "Domein (windping.com)", categorie: "Overig",     bedrag: 15,    eenheid: "jaar", actief: true, toelichting: "Jaarlijkse domeinkosten" },
+];
+
+function FinancienTab({ tab, token }: { tab: string; token: string | null }) {
+  const SK = "wp_fin_kosten";
+  const SC = "wp_fin_campagnes";
+
+  const [kosten, setKosten] = useState<any[]>([]);
+  const [campagnes, setCampagnes] = useState<any[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [editKosten, setEditKosten] = useState<any>(null);
+
+  // Nieuw campagne form
+  const [newCamp, setNewCamp] = useState({ naam: "", type: "online", kanaal: "", bedrag: "", datum: new Date().toISOString().split("T")[0], notitie: "" });
+  const [showNewCamp, setShowNewCamp] = useState(false);
+
+  // Load from localStorage (client-side persistence, no backend needed)
+  useEffect(() => {
+    try {
+      const savedKosten = localStorage.getItem(SK);
+      setKosten(savedKosten ? JSON.parse(savedKosten) : VASTE_KOSTEN_DEFAULTS.map(k => ({ ...k })));
+      const savedCamp = localStorage.getItem(SC);
+      setCampagnes(savedCamp ? JSON.parse(savedCamp) : []);
+    } catch {
+      setKosten(VASTE_KOSTEN_DEFAULTS.map(k => ({ ...k })));
+    }
+  }, []);
+
+  function saveKosten(updated: any[]) {
+    setKosten(updated);
+    localStorage.setItem(SK, JSON.stringify(updated));
+  }
+
+  function saveCampagnes(updated: any[]) {
+    setCampagnes(updated);
+    localStorage.setItem(SC, JSON.stringify(updated));
+  }
+
+  function updateKost(id: string, field: string, value: any) {
+    const updated = kosten.map(k => k.id === id ? { ...k, [field]: value } : k);
+    saveKosten(updated);
+  }
+
+  function addCampagne() {
+    if (!newCamp.naam || !newCamp.bedrag) return;
+    const updated = [...campagnes, { ...newCamp, id: Date.now().toString(), bedrag: parseFloat(newCamp.bedrag) }];
+    saveCampagnes(updated);
+    setNewCamp({ naam: "", type: "online", kanaal: "", bedrag: "", datum: new Date().toISOString().split("T")[0], notitie: "" });
+    setShowNewCamp(false);
+  }
+
+  function deleteCampagne(id: string) {
+    saveCampagnes(campagnes.filter(c => c.id !== id));
+  }
+
+  // Berekeningen
+  const actieveKosten = kosten.filter(k => k.actief);
+  const maandTotaal = actieveKosten
+    .filter(k => k.eenheid === "mnd")
+    .reduce((s, k) => s + (parseFloat(k.bedrag) || 0), 0);
+  const jaarVaste = actieveKosten
+    .filter(k => k.eenheid === "jaar")
+    .reduce((s, k) => s + (parseFloat(k.bedrag) || 0), 0);
+  const jaarTotaalVast = maandTotaal * 12 + jaarVaste;
+  const campagneTotaal = campagnes.reduce((s, c) => s + (parseFloat(c.bedrag) || 0), 0);
+
+  const categorieën = Array.from(new Set(kosten.map(k => k.categorie)));
+
+  const inputStyle = { padding: "6px 10px", borderRadius: 8, border: `1px solid ${C.cardBorder}`, fontSize: 12, color: C.navy, background: C.card, outline: "none" };
+
+  if (tab === "kosten") return (
+    <div>
+      {/* Samenvatting */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 20 }}>
+        {[
+          { label: "Maandkosten (vast)", value: `€${maandTotaal.toFixed(2)}`, sub: "actieve maandabonnementen", color: C.sky },
+          { label: "Jaarkosten totaal", value: `€${jaarTotaalVast.toFixed(2)}`, sub: "incl. jaarlijkse posten ×12", color: C.navy },
+          { label: "Campagnes totaal", value: `€${campagneTotaal.toFixed(2)}`, sub: `${campagnes.length} campagne${campagnes.length !== 1 ? "s" : ""}`, color: C.gold },
+        ].map(k => (
+          <div key={k.label} style={{ background: C.card, borderRadius: 14, padding: "16px 18px", boxShadow: C.cardShadow }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: k.color }}>{k.value}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginTop: 4 }}>{k.label}</div>
+            <div style={{ fontSize: 11, color: C.muted }}>{k.sub}</div>
+          </div>
+        ))}
       </div>
+
+      <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
+        💡 Bedragen worden lokaal opgeslagen in je browser. Vul de API-kosten in zodra je de facturen hebt.
+      </div>
+
+      {/* Per categorie */}
+      {categorieën.map(cat => (
+        <div key={cat} style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, letterSpacing: 1, marginBottom: 8, textTransform: "uppercase" as const }}>{cat}</div>
+          <div style={{ background: C.card, borderRadius: 12, boxShadow: C.cardShadow, overflow: "hidden" }}>
+            {kosten.filter(k => k.categorie === cat).map((k, i, arr) => (
+              <div key={k.id} style={{
+                display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
+                borderBottom: i < arr.length - 1 ? `1px solid ${C.cardBorder}` : "none",
+                opacity: k.actief ? 1 : 0.5,
+              }}>
+                {/* Toggle actief */}
+                <div onClick={() => updateKost(k.id, "actief", !k.actief)} style={{
+                  width: 32, height: 18, borderRadius: 9, background: k.actief ? C.sky : C.creamDark,
+                  border: `1px solid ${k.actief ? C.sky : C.cardBorder}`,
+                  position: "relative", cursor: "pointer", flexShrink: 0, transition: "background 0.2s",
+                }}>
+                  <div style={{
+                    width: 14, height: 14, borderRadius: "50%", background: "#fff",
+                    position: "absolute", top: 1, left: k.actief ? 16 : 2, transition: "left 0.2s",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                  }} />
+                </div>
+
+                {/* Label + toelichting */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>{k.label}</div>
+                  <div style={{ fontSize: 11, color: C.muted }}>{k.toelichting}</div>
+                </div>
+
+                {/* Bedrag input */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <span style={{ fontSize: 12, color: C.muted }}>€</span>
+                  <input
+                    type="number"
+                    value={k.bedrag}
+                    onChange={e => updateKost(k.id, "bedrag", e.target.value)}
+                    style={{ ...inputStyle, width: 80, textAlign: "right" as const }}
+                    min={0}
+                    step="0.01"
+                  />
+                  <span style={{ fontSize: 11, color: C.muted, width: 70 }}>/{k.eenheid}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Bird/WhatsApp uitleg */}
+      <div style={{ background: "#FEF3C7", border: "1px solid #FDE68A", borderRadius: 10, padding: "12px 16px", marginTop: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E", marginBottom: 4 }}>💬 WhatsApp via Bird</div>
+        <div style={{ fontSize: 12, color: "#92400E", lineHeight: 1.6 }}>
+          Bird rekent per WhatsApp bericht. Tarieven variëren per type bericht (template vs. sessie) en land.
+          Vul hierboven de geschatte kosten in zodra Bird de prijzen bevestigt.
+          Meta berekent daarnaast <strong>per 24-uurs conversatie</strong> (~€0.05–0.08 voor NL).
+          Stel de waarden in zodra Bird/Meta template goedgekeurd is.
+        </div>
+      </div>
+    </div>
+  );
+
+  // CAMPAGNES TAB
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>Campagnes & marketing</div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>Online en offline uitgaven handmatig bijhouden</div>
+        </div>
+        <button onClick={() => setShowNewCamp(true)} style={{
+          padding: "8px 16px", background: C.sky, color: "#fff", border: "none", borderRadius: 10,
+          fontSize: 13, fontWeight: 700, cursor: "pointer",
+        }}>+ Campagne toevoegen</button>
+      </div>
+
+      {/* Samenvatting */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 20 }}>
+        {[
+          { label: "Totaal uitgegeven", value: `€${campagneTotaal.toFixed(2)}`, color: C.navy },
+          { label: "Online", value: `€${campagnes.filter(c => c.type === "online").reduce((s, c) => s + c.bedrag, 0).toFixed(2)}`, color: C.sky },
+          { label: "Offline", value: `€${campagnes.filter(c => c.type === "offline").reduce((s, c) => s + c.bedrag, 0).toFixed(2)}`, color: C.gold },
+        ].map(k => (
+          <div key={k.label} style={{ background: C.card, borderRadius: 12, padding: "14px 16px", boxShadow: C.cardShadow }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: k.color }}>{k.value}</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Nieuw campagne formulier */}
+      {showNewCamp && (
+        <div style={{ background: C.card, borderRadius: 12, padding: 16, boxShadow: C.cardShadow, marginBottom: 16, border: `1.5px solid ${C.sky}30` }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 12 }}>Nieuwe campagne</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>NAAM</label>
+              <input value={newCamp.naam} onChange={e => setNewCamp(p => ({ ...p, naam: e.target.value }))}
+                placeholder="bijv. Instagram campagne april"
+                style={{ ...inputStyle, width: "100%", boxSizing: "border-box" as const }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>TYPE</label>
+              <select value={newCamp.type} onChange={e => setNewCamp(p => ({ ...p, type: e.target.value }))}
+                style={{ ...inputStyle, width: "100%" }}>
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+                <option value="overig">Overig</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>KANAAL</label>
+              <input value={newCamp.kanaal} onChange={e => setNewCamp(p => ({ ...p, kanaal: e.target.value }))}
+                placeholder="bijv. Instagram, Flyers, Google Ads"
+                style={{ ...inputStyle, width: "100%", boxSizing: "border-box" as const }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>BEDRAG (€)</label>
+              <input type="number" value={newCamp.bedrag} onChange={e => setNewCamp(p => ({ ...p, bedrag: e.target.value }))}
+                placeholder="0.00" min={0} step="0.01"
+                style={{ ...inputStyle, width: "100%", boxSizing: "border-box" as const }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>DATUM</label>
+              <input type="date" value={newCamp.datum} onChange={e => setNewCamp(p => ({ ...p, datum: e.target.value }))}
+                style={{ ...inputStyle, width: "100%", boxSizing: "border-box" as const }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>NOTITIE</label>
+              <input value={newCamp.notitie} onChange={e => setNewCamp(p => ({ ...p, notitie: e.target.value }))}
+                placeholder="optioneel"
+                style={{ ...inputStyle, width: "100%", boxSizing: "border-box" as const }} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={addCampagne} style={{ padding: "8px 18px", background: C.sky, color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              Opslaan
+            </button>
+            <button onClick={() => setShowNewCamp(false)} style={{ padding: "8px 14px", background: C.creamDark, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.muted, cursor: "pointer" }}>
+              Annuleer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Campagne lijst */}
+      {campagnes.length === 0 ? (
+        <div style={{ background: C.card, borderRadius: 12, padding: "32px 20px", boxShadow: C.cardShadow, textAlign: "center" as const }}>
+          <div style={{ fontSize: 24, marginBottom: 8 }}>📊</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.navy, marginBottom: 4 }}>Nog geen campagnes</div>
+          <div style={{ fontSize: 12, color: C.muted }}>Voeg je eerste campagne toe via de knop hierboven.</div>
+        </div>
+      ) : (
+        <div style={{ background: C.card, borderRadius: 12, boxShadow: C.cardShadow, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 100px 90px 28px", gap: 8, padding: "8px 16px", background: C.creamDark, fontSize: 10, fontWeight: 700, color: C.sub, textTransform: "uppercase" as const, letterSpacing: 0.5 }}>
+            <span>Campagne</span><span>Type</span><span>Kanaal</span><span style={{ textAlign: "right" as const }}>Bedrag</span><span />
+          </div>
+          {campagnes.sort((a, b) => b.datum.localeCompare(a.datum)).map((c, i, arr) => (
+            <div key={c.id} style={{
+              display: "grid", gridTemplateColumns: "1fr 80px 100px 90px 28px", gap: 8,
+              padding: "12px 16px", alignItems: "center",
+              borderBottom: i < arr.length - 1 ? `1px solid ${C.cardBorder}` : "none",
+            }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>{c.naam}</div>
+                <div style={{ fontSize: 11, color: C.muted }}>{c.datum}{c.notitie ? ` · ${c.notitie}` : ""}</div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                background: c.type === "online" ? `${C.sky}15` : c.type === "offline" ? `${C.gold}15` : C.creamDark,
+                color: c.type === "online" ? C.sky : c.type === "offline" ? C.gold : C.muted,
+              }}>{c.type}</span>
+              <span style={{ fontSize: 12, color: C.muted }}>{c.kanaal || "—"}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.navy, textAlign: "right" as const }}>€{parseFloat(c.bedrag).toFixed(2)}</span>
+              <button onClick={() => deleteCampagne(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 16, padding: 0, lineHeight: 1 }}>×</button>
+            </div>
+          ))}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 80px 100px 90px 28px", gap: 8, padding: "10px 16px", borderTop: `2px solid ${C.cardBorder}`, background: C.creamDark }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.navy }}>Totaal</span>
+            <span /><span />
+            <span style={{ fontSize: 14, fontWeight: 800, color: C.navy, textAlign: "right" as const }}>€{campagneTotaal.toFixed(2)}</span>
+            <span />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2352,7 +3529,6 @@ function SimulatorTab({ token }: { token: string | null }) {
         </div>
       )}
 
-      </div>
     </div>
   );
 }
