@@ -118,12 +118,60 @@ export async function PUT(req: NextRequest) {
       body: JSON.stringify({ status: "flagged" }),
     });
 
+    // Haal post op voor email context
+    const posts = await sbAdmin(`spot_posts?id=eq.${post_id}&select=content,author_name,type,spot_id`);
+    const post = posts?.[0];
+
+    // Email notificatie naar admin
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey && post) {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${resendKey}` },
+        body: JSON.stringify({
+          from: "WindPing <noreply@windping.com>",
+          to: "feije@windping.com",
+          subject: "🚩 Prikbord melding",
+          html: `<p>Een bericht is gemeld op het prikbord.</p>
+                 <p><strong>Type:</strong> ${post.type}<br>
+                 <strong>Door:</strong> ${post.author_name}<br>
+                 <strong>Spot ID:</strong> ${post.spot_id}<br>
+                 <strong>Inhoud:</strong> "${post.content}"</p>
+                 <p><a href="https://www.windping.com/admin">Bekijk in admin → 🚩 Moderatie</a></p>`,
+        }),
+      });
+    }
+
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     // Duplicate report (al gemeld door deze user) → gewoon ok teruggeven
     if (e.message?.includes("409") || e.message?.includes("unique")) {
       return NextResponse.json({ ok: true, already_reported: true });
     }
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
+// DELETE /api/prikbord?id=X&user_id=Y — eigen post verwijderen
+export async function DELETE(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    const userId = searchParams.get("user_id");
+
+    if (!id || !userId) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
+
+    // Alleen eigen post verwijderen
+    await fetch(`${SUPABASE_URL}/rest/v1/spot_posts?id=eq.${id}&user_id=eq.${userId}`, {
+      method: "DELETE",
+      headers: {
+        apikey: SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+      },
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
