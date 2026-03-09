@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, getValidToken } from "@/lib/supabase";
 
+// ── Types ──────────────────────────────────────────────────────────────────
 export type PostType = "go" | "report" | "tip" | "warning" | "question";
 
 export interface PrikbordPost {
@@ -16,149 +17,195 @@ export interface PrikbordPost {
   isPlaceholder?: boolean;
 }
 
-const T: Record<PostType, { label: string; emoji: string; color: string; bg: string; border: string; pin: string }> = {
-  go:       { label: "Ik ga!",   emoji: "🤙", color: "#1E7A56", bg: "#D6F5E8", border: "#A8E4CA", pin: "#1E7A56" },
-  report:   { label: "Rapport",  emoji: "🌊", color: "#1A6080", bg: "#D6EEF8", border: "#A0D4EE", pin: "#1A6080" },
-  tip:      { label: "Tip",      emoji: "📌", color: "#8A5C00", bg: "#FEF3CC", border: "#F0D878", pin: "#D4A000" },
-  warning:  { label: "Let op",   emoji: "⚠️", color: "#B02000", bg: "#FDE8E2", border: "#F4AE9A", pin: "#B02000" },
-  question: { label: "Vraag",    emoji: "❓", color: "#5A3888", bg: "#EDE6F8", border: "#C8B0E8", pin: "#5A3888" },
+// ── Design tokens ──────────────────────────────────────────────────────────
+const WOOD = {
+  dark:   "#6B4226",
+  mid:    "#8B5E3C",
+  light:  "#A0714F",
+  grain:  "rgba(0,0,0,0.06)",
+  cork:   "#C9A96E",
+  corkDark: "#B8934A",
 };
 
+const TYPE_STYLE: Record<PostType, { label: string; emoji: string; color: string; bg: string; border: string }> = {
+  go:       { label: "IK GA!",   emoji: "🤙", color: "#2A7A5C", bg: "#D4F0E4", border: "#A8DFC8" },
+  report:   { label: "RAPPORT",  emoji: "🌊", color: "#1A5F7A", bg: "#D6EEF7", border: "#A8D8EE" },
+  tip:      { label: "TIP",      emoji: "📌", color: "#8B5E10", bg: "#FEF3D0", border: "#F0D898" },
+  warning:  { label: "LET OP",   emoji: "⚠️", color: "#A0290A", bg: "#FDE8E4", border: "#F4B8AA" },
+  question: { label: "VRAAG",    emoji: "❓", color: "#5B3D8A", bg: "#EDE6F7", border: "#C8B4E8" },
+};
+
+// ── Placeholder posts (lichtgrijs, uitgevaagd) ─────────────────────────────
 const PLACEHOLDERS: PrikbordPost[] = [
-  { id: -1, type: "tip",      content: "Skeg gevonden op het strand, afgegeven bij de surfschool.", author_name: "Marieke",    created_at: new Date(Date.now() - 2*3600000).toISOString(),   isPlaceholder: true },
-  { id: -2, type: "warning",  content: "Parkeerplaats noord afgesloten t/m 12 maart i.v.m. wegwerkzaamheden.", author_name: "SpotBeheer", created_at: new Date(Date.now() - 26*3600000).toISOString(), isPlaceholder: true },
-  { id: -3, type: "go",       content: "Morgenochtend 10u bij de uitrit noord. Wie mee?",           author_name: "Feije",      created_at: new Date(Date.now() - 3*3600000).toISOString(),   isPlaceholder: true },
-  { id: -4, type: "report",   content: "Windstil dit weekend helaas. Volgende week beter.",         author_name: "Tsjerk",     created_at: new Date(Date.now() - 5*3600000).toISOString(),   isPlaceholder: true },
-  { id: -5, type: "question", content: "BBQ bij paal 8 vanavond? Wie doet mee?",                   author_name: "Sanne",      created_at: new Date(Date.now() - 6*3600000).toISOString(),   isPlaceholder: true },
+  { id: -1, type: "tip",      content: "Skeg gevonden op het strand, afgegeven bij de surfschool.",        author_name: "Marieke",      created_at: new Date(Date.now() - 2*3600000).toISOString(),  isPlaceholder: true },
+  { id: -2, type: "warning",  content: "Parkeerplaats noord afgesloten t/m 12 maart i.v.m. wegwerkzaamheden.", author_name: "SpotBeheer", created_at: new Date(Date.now() - 24*3600000).toISOString(), isPlaceholder: true },
+  { id: -3, type: "go",       content: "Morgenochtend 10u bij de uitrit noord. Wie mee?",                   author_name: "Feije",        created_at: new Date(Date.now() - 3*3600000).toISOString(),  isPlaceholder: true },
+  { id: -4, type: "report",   content: "Het is windstil dit weekend helaas. Volgende week beter.",          author_name: "Tsjerk",       created_at: new Date(Date.now() - 5*3600000).toISOString(),  isPlaceholder: true },
+  { id: -5, type: "question", content: "BBQ bij paal 8 vanavond? Wie doet mee?",                           author_name: "Sanne",        created_at: new Date(Date.now() - 6*3600000).toISOString(),  isPlaceholder: true },
 ];
 
-function timeAgo(d: string) {
-  const m = Math.floor((Date.now() - new Date(d).getTime()) / 60000);
-  if (m < 60) return `${m}m`;
-  if (m < 1440) return `${Math.floor(m/60)}u`;
-  return `${Math.floor(m/1440)}d`;
+// ── Helpers ────────────────────────────────────────────────────────────────
+function timeAgo(dateStr: string) {
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+  if (diff < 60) return `${diff}m geleden`;
+  if (diff < 1440) return `${Math.floor(diff / 60)}u geleden`;
+  return `${Math.floor(diff / 1440)}d geleden`;
 }
 
-function Pin({ color }: { color: string }) {
+// ── PrikPin (decorative pushpin) ──────────────────────────────────────────
+function PrikPin({ color = "#C0392B" }: { color?: string }) {
   return (
-    <svg width="11" height="16" viewBox="0 0 16 22" fill="none" style={{ position: "absolute", top: -7, left: "50%", transform: "translateX(-50%)", zIndex: 3, filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.2))" }}>
-      <circle cx="8" cy="7" r="6" fill={color} />
-      <circle cx="6" cy="5" r="2" fill="rgba(255,255,255,0.35)" />
-      <line x1="8" y1="13" x2="8" y2="22" stroke="#9B8B7A" strokeWidth="1.5" strokeLinecap="round" />
+    <svg width="14" height="20" viewBox="0 0 14 20" style={{ position: "absolute", top: -8, left: "50%", transform: "translateX(-50%)", zIndex: 3, filter: "drop-shadow(0 2px 2px rgba(0,0,0,0.3))" }}>
+      <circle cx="7" cy="6" r="5.5" fill={color} />
+      <circle cx="5.5" cy="4.5" r="1.5" fill="rgba(255,255,255,0.4)" />
+      <line x1="7" y1="11" x2="7" y2="20" stroke="#888" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
 
-function PostCard({ post, compact }: { post: PrikbordPost; compact: boolean }) {
-  const t = T[post.type];
-  const ph = post.isPlaceholder;
+// ── PostCard ───────────────────────────────────────────────────────────────
+function PostCard({ post, compact = false }: { post: PrikbordPost; compact?: boolean }) {
+  const t = TYPE_STYLE[post.type];
+  const isPlaceholder = post.isPlaceholder;
+
+  // Subtiele rotatie per post (deterministisch op basis van id)
+  const rot = isPlaceholder ? ((Math.abs(post.id) * 7) % 5) - 2.5 : ((post.id * 3) % 5) - 2;
 
   return (
     <div style={{
       position: "relative",
-      background: t.bg,
-      border: `1.5px solid ${t.border}`,
-      borderRadius: 10,
-      padding: compact ? "16px 12px 11px" : "18px 14px 12px",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-      opacity: ph ? 0.72 : 1,
-      transition: "transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s",
-      cursor: ph ? "default" : "pointer",
-      minHeight: compact ? 88 : 105,
+      background: isPlaceholder ? "#F5F5F5" : t.bg,
+      border: `1.5px solid ${isPlaceholder ? "#E0E0E0" : t.border}`,
+      borderRadius: 4,
+      padding: compact ? "18px 12px 12px" : "20px 14px 14px",
+      transform: `rotate(${rot}deg)`,
+      boxShadow: isPlaceholder
+        ? "2px 3px 8px rgba(0,0,0,0.08)"
+        : "2px 3px 10px rgba(0,0,0,0.14)",
+      opacity: isPlaceholder ? 0.55 : 1,
+      transition: "transform 0.15s, box-shadow 0.15s",
+      cursor: isPlaceholder ? "default" : "pointer",
+      fontFamily: "'Georgia', serif",
+      minHeight: compact ? 100 : 120,
     }}
-      onMouseEnter={e => { if (!ph) { const el = e.currentTarget as HTMLElement; el.style.transform = "translateY(-2px)"; el.style.boxShadow = "0 6px 18px rgba(0,0,0,0.14)"; } }}
-      onMouseLeave={e => { if (!ph) { const el = e.currentTarget as HTMLElement; el.style.transform = ""; el.style.boxShadow = "0 2px 8px rgba(0,0,0,0.08)"; } }}
+      onMouseEnter={e => { if (!isPlaceholder) { (e.currentTarget as HTMLElement).style.transform = `rotate(${rot * 0.3}deg) scale(1.03)`; (e.currentTarget as HTMLElement).style.boxShadow = "4px 6px 16px rgba(0,0,0,0.2)"; } }}
+      onMouseLeave={e => { if (!isPlaceholder) { (e.currentTarget as HTMLElement).style.transform = `rotate(${rot}deg)`; (e.currentTarget as HTMLElement).style.boxShadow = "2px 3px 10px rgba(0,0,0,0.14)"; } }}
     >
-      <Pin color={t.pin} />
+      {/* Punaise */}
+      <PrikPin color={isPlaceholder ? "#BDBDBD" : t.color} />
 
-      {/* Label */}
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 6 }}>
-        <span style={{ fontSize: 12 }}>{t.emoji}</span>
-        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase" as const, color: t.color, fontFamily: "system-ui" }}>
+      {/* Type label */}
+      <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 6 }}>
+        <span style={{ fontSize: 11 }}>{post.emoji || t.emoji}</span>
+        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: isPlaceholder ? "#BDBDBD" : t.color, fontFamily: "system-ui" }}>
           {t.label}
         </span>
-        {post.wind_speed && !ph && (
-          <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: t.color, fontFamily: "system-ui" }}>{post.wind_speed}kn {post.wind_dir}</span>
+        {post.wind_speed && !isPlaceholder && (
+          <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: t.color }}>{post.wind_speed}kn {post.wind_dir}</span>
         )}
       </div>
 
       {/* Content */}
-      <p style={{ margin: "0 0 9px", fontSize: compact ? 12 : 13, lineHeight: 1.45, color: "#2A1F14", fontFamily: "'Georgia', serif" }}>
+      <p style={{ fontSize: compact ? 12 : 13, color: isPlaceholder ? "#C0C0C0" : "#2C1810", margin: "0 0 10px", lineHeight: 1.45, fontFamily: "'Georgia', serif" }}>
         {post.content}
       </p>
 
       {/* Footer */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 10, fontWeight: 700, color: t.color, fontFamily: "system-ui" }}>{post.author_name}</span>
-        <span style={{ fontSize: 10, color: "#9B8878", fontFamily: "system-ui" }}>{timeAgo(post.created_at)}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: isPlaceholder ? "#CCCCCC" : t.color, fontFamily: "system-ui" }}>{post.author_name}</span>
+        <span style={{ fontSize: 10, color: isPlaceholder ? "#CCCCCC" : "#9B8B7A", fontFamily: "system-ui" }}>{timeAgo(post.created_at)}</span>
       </div>
     </div>
   );
 }
 
+// ── Post Modal ─────────────────────────────────────────────────────────────
 function PostModal({ spotId, userId, userName, onClose, onPosted }: {
   spotId: number; userId: number; userName: string;
-  onClose: () => void; onPosted: (p: PrikbordPost) => void;
+  onClose: () => void; onPosted: (post: PrikbordPost) => void;
 }) {
   const [type, setType] = useState<PostType>("report");
   const [content, setContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const t = T[type];
 
-  const placeholders: Record<PostType, string> = {
-    go:       "Bijv: Morgen 10u bij de uitrit. Wie mee?",
-    report:   "Bijv: 19kn NW, strand breed, weinig mensen.",
-    tip:      "Bijv: Bij laagwater uitkijken voor stenen links van de vlaggen.",
-    warning:  "Bijv: Parkeerplaats noord afgesloten t/m 12 maart.",
-    question: "Bijv: Kent iemand een goeie foilrepair in de buurt?",
-  };
-
-  async function submit() {
+  async function handlePost() {
     if (!content.trim()) { setError("Schrijf eerst iets."); return; }
-    setSaving(true); setError("");
+    setSaving(true);
+    setError("");
     try {
       const token = await getValidToken();
       const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_posts`, {
         method: "POST",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
         body: JSON.stringify({ spot_id: spotId, user_id: userId, author_name: userName, type, content: content.trim() }),
       });
-      if (!res.ok) throw new Error();
-      const [p] = await res.json();
-      onPosted(p); onClose();
-    } catch { setError("Kon niet opslaan. Probeer opnieuw."); }
+      if (!res.ok) throw new Error(await res.text());
+      const [newPost] = await res.json();
+      onPosted(newPost);
+      onClose();
+    } catch (e) {
+      setError("Kon niet opslaan. Probeer opnieuw.");
+    }
     setSaving(false);
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
-      <div style={{ background: "#FBF7F0", borderRadius: "20px 20px 0 0", padding: "20px 20px 40px", width: "100%", maxWidth: 480, boxShadow: "0 -4px 30px rgba(0,0,0,0.15)" }} onClick={e => e.stopPropagation()}>
-        <div style={{ width: 32, height: 4, background: "#D8CECC", borderRadius: 2, margin: "0 auto 18px" }} />
-        <div style={{ fontSize: 15, fontWeight: 800, color: "#2A1F14", marginBottom: 14, fontFamily: "system-ui" }}>📌 Prik iets op het bord</div>
-        <div style={{ display: "flex", gap: 7, marginBottom: 14, overflowX: "auto" as const, paddingBottom: 2 }}>
-          {(Object.entries(T) as [PostType, typeof T[PostType]][]).map(([k, v]) => (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "flex-end", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ background: "#FBF7F0", borderRadius: "20px 20px 0 0", padding: "24px 20px 36px", width: "100%", maxWidth: 480, boxShadow: "0 -8px 40px rgba(0,0,0,0.2)" }} onClick={e => e.stopPropagation()}>
+        {/* Handle */}
+        <div style={{ width: 36, height: 4, background: "#D4C4B0", borderRadius: 2, margin: "0 auto 20px" }} />
+
+        <div style={{ fontSize: 16, fontWeight: 800, color: "#2C1810", marginBottom: 16, fontFamily: "system-ui" }}>📌 Prik iets op het bord</div>
+
+        {/* Type keuze */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 4 }}>
+          {(Object.entries(TYPE_STYLE) as [PostType, typeof TYPE_STYLE[PostType]][]).map(([k, v]) => (
             <button key={k} onClick={() => setType(k)} style={{
               flexShrink: 0, padding: "6px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700,
-              border: `1.5px solid ${type === k ? v.color : "#E0D4C8"}`,
+              border: `1.5px solid ${type === k ? v.color : "#E0D8CE"}`,
               background: type === k ? v.bg : "white",
-              color: type === k ? v.color : "#9B8878",
-              cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontFamily: "system-ui",
+              color: type === k ? v.color : "#9B8B7A",
+              cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
             }}>
-              {v.emoji} {v.label}
+              <span>{v.emoji}</span> {v.label}
             </button>
           ))}
         </div>
-        <textarea value={content} onChange={e => setContent(e.target.value)} placeholder={placeholders[type]} rows={4}
-          style={{ width: "100%", borderRadius: 12, border: `1.5px solid ${t.border}`, background: t.bg, padding: "12px 14px", fontSize: 14, color: "#2A1F14", fontFamily: "'Georgia', serif", resize: "none" as const, outline: "none", lineHeight: 1.5, boxSizing: "border-box" as const }}
+
+        {/* Textarea */}
+        <textarea
+          value={content}
+          onChange={e => setContent(e.target.value)}
+          placeholder={
+            type === "go" ? "Bijv: Morgen 10u bij de uitrit. Wie mee?" :
+            type === "report" ? "Bijv: 19kn NW, strand breed, weinig mensen." :
+            type === "tip" ? "Bijv: Bij laagwater uitkijken voor stenen links van de vlaggen." :
+            type === "warning" ? "Bijv: Parkeerplaats noord afgesloten t/m 12 maart." :
+            "Bijv: Kent iemand een goeie foilrepair in de buurt?"
+          }
+          rows={4}
+          style={{
+            width: "100%", borderRadius: 12, border: `1.5px solid ${TYPE_STYLE[type].border}`,
+            background: TYPE_STYLE[type].bg, padding: "12px 14px", fontSize: 14,
+            color: "#2C1810", fontFamily: "'Georgia', serif", resize: "none",
+            outline: "none", lineHeight: 1.5, boxSizing: "border-box",
+          }}
           autoFocus
         />
-        {error && <div style={{ fontSize: 12, color: "#B02000", marginTop: 5, fontFamily: "system-ui" }}>{error}</div>}
-        <button onClick={submit} disabled={saving || !content.trim()} style={{
-          marginTop: 12, width: "100%", padding: 14, borderRadius: 14,
-          background: !content.trim() ? "#E8E0D8" : t.color,
-          color: !content.trim() ? "#B0A898" : "white",
-          fontSize: 14, fontWeight: 800, border: "none", cursor: !content.trim() ? "default" : "pointer", fontFamily: "system-ui",
+
+        {error && <div style={{ fontSize: 12, color: "#C0392B", marginTop: 6 }}>{error}</div>}
+
+        <button onClick={handlePost} disabled={saving || !content.trim()} style={{
+          marginTop: 14, width: "100%", padding: "14px", borderRadius: 14,
+          background: saving || !content.trim() ? "#D4C4B0" : `linear-gradient(135deg, ${TYPE_STYLE[type].color}, ${TYPE_STYLE[type].color}BB)`,
+          color: "white", fontSize: 14, fontWeight: 800, border: "none", cursor: saving || !content.trim() ? "default" : "pointer",
+          fontFamily: "system-ui",
         }}>
           {saving ? "Wordt gepind..." : "📌 Prik op het bord"}
         </button>
@@ -167,68 +214,145 @@ function PostModal({ spotId, userId, userName, onClose, onPosted }: {
   );
 }
 
+// ── Main Prikbord Component ────────────────────────────────────────────────
 interface PrikbordProps {
   spotId: number;
   spotName: string;
   userId: number | null;
   userName: string;
   posts: PrikbordPost[];
-  onPostAdded?: (p: PrikbordPost) => void;
-  compact?: boolean;
-  showAll?: boolean;
+  onPostAdded?: (post: PrikbordPost) => void;
+  compact?: boolean;        // homepage preview mode
+  showAll?: boolean;        // spot page: toon alles
 }
 
 export default function Prikbord({ spotId, spotName, userId, userName, posts, onPostAdded, compact = false, showAll = false }: PrikbordProps) {
   const [showModal, setShowModal] = useState(false);
   const [localPosts, setLocalPosts] = useState<PrikbordPost[]>(posts);
 
-  const hasReal = localPosts.length > 0;
-  const display = hasReal ? localPosts : PLACEHOLDERS;
-  const visible = compact ? display.slice(0, 4) : display;
-  const extra = hasReal && !showAll && display.length > 4 ? display.length - 4 : 0;
+  // Gebruik echte posts als die er zijn, anders placeholders
+  const hasRealPosts = localPosts.length > 0;
+  const displayPosts = hasRealPosts ? localPosts : PLACEHOLDERS;
+  const visiblePosts = compact ? displayPosts.slice(0, 4) : displayPosts;
+  const extraCount = hasRealPosts && !showAll ? displayPosts.length - 4 : 0;
 
-  function handlePosted(p: PrikbordPost) {
-    setLocalPosts(prev => [p, ...prev]);
-    onPostAdded?.(p);
+  function handlePosted(post: PrikbordPost) {
+    setLocalPosts(prev => [post, ...prev]);
+    onPostAdded?.(post);
   }
 
   return (
     <>
-      <div style={{ background: "#EDE3D4", borderRadius: 14, boxShadow: "0 2px 12px rgba(0,0,0,0.10)", border: "1px solid #D8CEC0", overflow: "visible" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", padding: "0 24px", marginTop: -10, position: "relative" as const, zIndex: 1 }}>
-          <div style={{ width: 10, height: 18, background: "linear-gradient(180deg,#C8A878,#A88850)", borderRadius: "3px 3px 0 0", boxShadow: "1px 0 3px rgba(0,0,0,0.2)" }} />
-          <div style={{ width: 10, height: 18, background: "linear-gradient(180deg,#C8A878,#A88850)", borderRadius: "3px 3px 0 0", boxShadow: "1px 0 3px rgba(0,0,0,0.2)" }} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px 10px", borderBottom: "1px solid #D0C4B0" }}>
+      {/* ── Houten bord ── */}
+      <div style={{
+        position: "relative",
+        background: `linear-gradient(160deg, ${WOOD.mid} 0%, ${WOOD.dark} 100%)`,
+        borderRadius: 12,
+        padding: "0 0 16px",
+        boxShadow: "0 6px 24px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.1)",
+        overflow: "visible",
+      }}>
+        {/* Houtnerven overlay */}
+        <div style={{
+          position: "absolute", inset: 0, borderRadius: 12, pointerEvents: "none",
+          backgroundImage: `repeating-linear-gradient(92deg, transparent 0px, transparent 18px, rgba(0,0,0,0.03) 18px, rgba(0,0,0,0.03) 19px), repeating-linear-gradient(178deg, transparent 0px, transparent 40px, rgba(255,255,255,0.02) 40px, rgba(255,255,255,0.02) 41px)`,
+        }} />
+
+        {/* Palen linksboven en rechtsboven */}
+        <div style={{ position: "absolute", top: -20, left: 28, width: 12, height: 28, background: `linear-gradient(180deg, ${WOOD.light}, ${WOOD.dark})`, borderRadius: "4px 4px 0 0", boxShadow: "2px 0 4px rgba(0,0,0,0.3)" }} />
+        <div style={{ position: "absolute", top: -20, right: 28, width: 12, height: 28, background: `linear-gradient(180deg, ${WOOD.light}, ${WOOD.dark})`, borderRadius: "4px 4px 0 0", boxShadow: "2px 0 4px rgba(0,0,0,0.3)" }} />
+
+        {/* Header balk */}
+        <div style={{
+          background: `linear-gradient(90deg, ${WOOD.dark} 0%, ${WOOD.mid} 50%, ${WOOD.dark} 100%)`,
+          borderRadius: "12px 12px 0 0", padding: "12px 16px",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          borderBottom: `2px solid ${WOOD.dark}`,
+          boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+        }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 14, fontWeight: 800, color: "#7A5C38", fontFamily: "system-ui" }}>Prikbord</span>
-            {!hasReal && <span style={{ fontSize: 9, fontWeight: 700, color: "#A08878", background: "rgba(0,0,0,0.06)", borderRadius: 10, padding: "2px 7px", fontFamily: "system-ui" }}>voorbeeldberichten</span>}
+            <span style={{ fontSize: 14 }}>📋</span>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 2, color: "rgba(255,255,255,0.85)", textTransform: "uppercase", fontFamily: "system-ui" }}>Prikbord</span>
+            {!hasRealPosts && (
+              <span style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", fontStyle: "italic", fontFamily: "system-ui" }}>voorbeeldberichten</span>
+            )}
           </div>
           {userId && (
-            <button onClick={() => setShowModal(true)} style={{ background: "linear-gradient(135deg, #0D4A63, #2E8FAE)", border: "none", borderRadius: 20, padding: "6px 14px", color: "white", fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontFamily: "system-ui", boxShadow: "0 2px 8px rgba(46,143,174,0.3)" }}>
+            <button onClick={() => setShowModal(true)} style={{
+              background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)",
+              borderRadius: 20, padding: "5px 12px", color: "white", fontSize: 11, fontWeight: 700,
+              cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontFamily: "system-ui",
+              backdropFilter: "blur(4px)",
+            }}>
               📌 Prik iets
             </button>
           )}
         </div>
-        <div style={{ margin: "10px 12px 12px", background: "linear-gradient(145deg, #E8D4A8 0%, #D8C090 50%, #CEB080 100%)", borderRadius: 10, padding: "20px 14px 18px", boxShadow: "inset 0 1px 4px rgba(0,0,0,0.12)", minHeight: compact ? 180 : 220, position: "relative" as const }}>
-          <div style={{ position: "absolute", inset: 0, borderRadius: 10, pointerEvents: "none" as const, backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px)", backgroundSize: "10px 10px" }} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: compact ? 18 : 22, position: "relative" as const }}>
-            {visible.map(p => <PostCard key={p.id} post={p} compact={compact} />)}
+
+        {/* Cork board */}
+        <div style={{
+          margin: "12px 14px",
+          background: `radial-gradient(ellipse at 30% 40%, #D4A96A 0%, ${WOOD.cork} 40%, ${WOOD.corkDark} 100%)`,
+          borderRadius: 8,
+          padding: "20px 12px 16px",
+          boxShadow: "inset 0 2px 8px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(0,0,0,0.1)",
+          minHeight: compact ? 200 : 260,
+        }}>
+          {/* Kurk textuur stippen */}
+          <div style={{ position: "absolute", inset: 0, borderRadius: 8, pointerEvents: "none", opacity: 0.4,
+            backgroundImage: "radial-gradient(circle, rgba(0,0,0,0.15) 1px, transparent 1px)",
+            backgroundSize: "8px 8px",
+          }} />
+
+          {/* Posts grid */}
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: compact ? "1fr 1fr" : "repeat(auto-fill, minmax(160px, 1fr))",
+            gap: compact ? 20 : 24,
+            position: "relative",
+          }}>
+            {visiblePosts.map(post => (
+              <PostCard key={post.id} post={post} compact={compact} />
+            ))}
           </div>
-          {extra > 0 && (
-            <a href={`/spot?id=${spotId}`} style={{ display: "block", marginTop: 14, padding: "8px", background: "rgba(0,0,0,0.08)", borderRadius: 8, textAlign: "center", fontSize: 12, fontWeight: 700, color: "#7A5C38", textDecoration: "none", fontFamily: "system-ui" }}>
-              +{extra} meer berichten
+
+          {/* Meer berichten */}
+          {extraCount > 0 && (
+            <a href={`/spot?id=${spotId}`} style={{
+              display: "block", marginTop: 16, padding: "10px",
+              background: "rgba(0,0,0,0.12)", borderRadius: 8, textAlign: "center",
+              fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.85)",
+              textDecoration: "none", fontFamily: "system-ui",
+            }}>
+              +{extraCount} meer berichten bekijken
             </a>
           )}
+
+          {/* Lege state (als geen posts en niet placeholder) */}
+          {!hasRealPosts && localPosts.length === 0 && (
+            <div style={{ textAlign: "center", padding: "20px 0 8px", position: "relative", zIndex: 1 }}>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", fontStyle: "italic", fontFamily: "system-ui" }}>
+                Voorbeeldberichten — prik zelf het eerste echte bericht
+              </p>
+            </div>
+          )}
         </div>
+
+        {/* Footer: naam spot */}
         {!compact && (
-          <div style={{ textAlign: "center", padding: "0 0 10px", fontSize: 10, color: "#B0A090", letterSpacing: 1, textTransform: "uppercase" as const, fontFamily: "system-ui" }}>
-            {spotName}
+          <div style={{ textAlign: "center", paddingBottom: 4 }}>
+            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", fontFamily: "system-ui", letterSpacing: 1 }}>{spotName.toUpperCase()}</span>
           </div>
         )}
       </div>
+
+      {/* Post modal */}
       {showModal && userId && (
-        <PostModal spotId={spotId} userId={userId} userName={userName} onClose={() => setShowModal(false)} onPosted={handlePosted} />
+        <PostModal
+          spotId={spotId} userId={userId} userName={userName}
+          onClose={() => setShowModal(false)}
+          onPosted={handlePosted}
+        />
       )}
     </>
   );
