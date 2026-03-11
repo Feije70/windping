@@ -14,6 +14,8 @@ const outfit = Outfit({
   display: "swap",
 });
 
+import { I18nProvider } from "@/lib/i18n";
+
 export const metadata: Metadata = {
   title: "WindPing — Kitesurf & Windsurf Alerts",
   description:
@@ -70,7 +72,7 @@ export default function RootLayout({
         className="font-body antialiased"
         style={{ background: "#F6F1EB", color: "#1F354C" }}
       >
-        {children}
+        <I18nProvider>{children}</I18nProvider>
         <script
           dangerouslySetInnerHTML={{
             __html: `
