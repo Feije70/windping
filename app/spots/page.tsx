@@ -202,8 +202,9 @@ function SpotsContent() {
   }
 
   // Filter spots by search + map bounds
+  // Als er een zoekterm is: negeer kaartgrenzen en zoek door alle spots
   const filtered = spots.filter((s) => {
-    if (!visibleIds.has(s.id) && visibleIds.size > 0) return false;
+    if (!search && !visibleIds.has(s.id) && visibleIds.size > 0) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return s.display_name.toLowerCase().includes(q)
