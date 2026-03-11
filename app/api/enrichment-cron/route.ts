@@ -9,6 +9,20 @@ const CRON_KEY = "WindPing-cron-key-2026";
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "feijekooistra@hotmail.com";
 
+// Strip <cite index='...'> tags uit alle string values recursief
+function stripCiteTags(obj: any): any {
+  if (typeof obj === "string") {
+    return obj.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, "$1").trim();
+  }
+  if (Array.isArray(obj)) return obj.map(stripCiteTags);
+  if (obj && typeof obj === "object") {
+    const result: any = {};
+    for (const key of Object.keys(obj)) result[key] = stripCiteTags(obj[key]);
+    return result;
+  }
+  return obj;
+}
+
 const REGION_LANG: Record<string, string> = {
   Spain: "es", Germany: "de", France: "fr", Italy: "it",
   Portugal: "pt", Greece: "el", Denmark: "da", Ireland: "en",
@@ -17,6 +31,23 @@ const REGION_LANG: Record<string, string> = {
   Austria: "de", Switzerland: "de", Latvia: "lv", Romania: "ro",
   Hungary: "hu", Montenegro: "sr", Azores: "pt", Wales: "en",
   England: "en", Scotland: "en",
+  // Zuid-Amerika
+  Brazil: "pt", Argentina: "es", Chile: "es", Colombia: "es",
+  Venezuela: "es", Peru: "es", "Costa Rica": "es", Mexico: "es",
+  "Dominican Republic": "es",
+  // Afrika
+  "South Africa": "en", Kenya: "en", Mozambique: "pt",
+  Madagascar: "fr", Senegal: "fr", Tanzania: "en", Mauritius: "fr",
+  "Cape Verde": "pt",
+  // Azië & Pacific
+  Indonesia: "id", Philippines: "en", Malaysia: "ms",
+  "Sri Lanka": "en", Vietnam: "vi", Thailand: "th",
+  Japan: "ja", Taiwan: "zh", India: "en",
+  // Midden-Oosten
+  Oman: "ar", UAE: "ar",
+  // Engelstalig
+  Australia: "en", "New Zealand": "en", USA: "en", Canada: "en",
+  Egypt: "ar",
 };
 
 const LANG_NAME: Record<string, string> = {
@@ -25,6 +56,8 @@ const LANG_NAME: Record<string, string> = {
   da: "Danish", hr: "Croatian", no: "Norwegian", sv: "Swedish",
   pl: "Polish", ar: "Arabic", bg: "Bulgarian", tr: "Turkish",
   lv: "Latvian", ro: "Romanian", hu: "Hungarian", sr: "Serbian",
+  id: "Indonesian", ms: "Malay", vi: "Vietnamese", th: "Thai",
+  ja: "Japanese", zh: "Chinese",
 };
 
 const DEFAULT_PROMPTS: Record<string, string> = {
@@ -217,7 +250,7 @@ ${jsonStructure}`;
     throw new Error(`Geen JSON in response. Raw: ${fullText.slice(0, 200)}`);
   }
 
-  return JSON.parse(jsonMatch[0]);
+  return stripCiteTags(JSON.parse(jsonMatch[0]));
 }
 
 async function scoreNews(newsText: string, spotName: string): Promise<number> {
