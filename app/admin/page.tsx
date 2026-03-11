@@ -1195,7 +1195,7 @@ function EnrichmentBeheerTab() {
   useEffect(() => {
     async function load() {
       const [enrichRes, spotsRes] = await Promise.all([
-        fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?select=*&order=updated_at.desc`, {
+        fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?select=spot_id,confidence,sources,categories,scanned_at,updated_at,news_score,news_push_blocked&order=updated_at.desc`, {
           headers: { apikey: SUPABASE_ANON_KEY }
         }).then(r => r.json()),
         fetch(`${SUPABASE_URL}/rest/v1/spots?select=id,display_name,region,spot_type&limit=5000`, {
@@ -1237,6 +1237,19 @@ function EnrichmentBeheerTab() {
     setEditLang(defaultLang);
     setEditCats(allLangs[defaultLang] || {});
     setMsg("");
+  }
+
+  async function toggleBlock(spot_id: number, currentBlocked: boolean) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=eq.${spot_id}`, {
+        method: "PATCH",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({ news_push_blocked: !currentBlocked }),
+      });
+      setSaved(prev => prev.map(r => r.spot_id === spot_id ? { ...r, news_push_blocked: !currentBlocked } : r));
+      setMsg(currentBlocked ? "✓ Push-blokkering opgeheven" : "✓ Nieuws-push geblokkeerd voor deze spot");
+      setTimeout(() => setMsg(""), 3000);
+    } catch { setMsg("❌ Opslaan mislukt"); }
   }
 
   async function saveEdit(spot_id: number, row: any) {
@@ -1358,8 +1371,26 @@ function EnrichmentBeheerTab() {
                 {Math.round(conf * 100)}%
               </span>
 
+              {/* Nieuws score badge */}
+              {row.news_score != null && (
+                <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, fontWeight: 700, flexShrink: 0,
+                  background: row.news_score >= 7 ? "#DBEAFE" : "#F3F4F6",
+                  color: row.news_score >= 7 ? "#1D4ED8" : C.muted,
+                }} title="Nieuws relevantiescore (7+ = push)">
+                  📰 {row.news_score}/10
+                </span>
+              )}
+
               {/* Acties */}
               <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <button onClick={() => toggleBlock(row.spot_id, !!row.news_push_blocked)} style={{
+                  padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                  background: row.news_push_blocked ? "#FEF3C7" : "#F0FDF4",
+                  color: row.news_push_blocked ? "#92400E" : "#166534",
+                  border: `1px solid ${row.news_push_blocked ? "#FDE68A" : "#BBF7D0"}`,
+                }} title={row.news_push_blocked ? "Push geblokkeerd — klik om te deblokkeren" : "Push actief — klik om te blokkeren"}>
+                  {row.news_push_blocked ? "🔕 Geblokkeerd" : "🔔 Push aan"}
+                </button>
                 <button onClick={() => isEditing ? setEditId(null) : startEdit(row)} style={{
                   padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
                   background: isEditing ? C.creamDark : `${C.sky}15`,

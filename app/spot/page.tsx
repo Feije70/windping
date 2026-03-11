@@ -270,6 +270,7 @@ function SpotDetailContent() {
   const compassLatRef = useRef<number | null>(null);
   const compassLngRef = useRef<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pushNieuws, setPushNieuws] = useState(true);
   const [toast, setToast] = useState("");
   const [prikbordPosts, setPrikbordPosts] = useState<PrikbordPost[]>([]);
   const tabParam = searchParams.get("tab") as "info" | "prikbord" | "voorkeuren" | null;
@@ -335,7 +336,20 @@ function SpotDetailContent() {
         if (existing.tide_hours_before != null) setTideBefore(existing.tide_hours_before);
         if (existing.tide_hours_after != null) setTideAfter(existing.tide_hours_after);
       }
-      if (existing) setIsSaved(true);
+      if (existing) {
+        setIsSaved(true);
+        // Laad push_nieuws voorkeur (async, apart)
+        getValidToken().then(tok => {
+          if (!tok || !user.id) return;
+          fetch(`${SUPABASE_URL}/rest/v1/alert_preferences?user_id=eq.${user.id}&select=push_nieuws`, {
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${tok}` }
+          }).then(r => r.json()).then(prefData => {
+            if (Array.isArray(prefData) && prefData[0]) {
+              setPushNieuws(prefData[0].push_nieuws !== false);
+            }
+          }).catch(() => {});
+        });
+      }
       setLoading(false);
     }).catch((e) => { setError(e.message); setLoading(false); });
 
@@ -816,6 +830,30 @@ function SpotDetailContent() {
             )}
           </>
         )}
+        {/* Nieuws push voorkeur */}
+        <div onClick={async () => {
+          const next = !pushNieuws;
+          setPushNieuws(next);
+          if (userId) {
+            try {
+              const token = await getValidToken();
+              await fetch(`${SUPABASE_URL}/rest/v1/alert_preferences`, {
+                method: "POST",
+                headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+                body: JSON.stringify({ user_id: userId, push_nieuws: next }),
+              });
+            } catch {}
+          }
+        }} style={{ background: C.card, border: `2px solid ${C.cardBorder}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, display: "flex", alignItems: "center", gap: 6 }}>📰 Nieuws notificaties</div>
+            <div style={{ fontSize: 11, color: C.sub, fontStyle: "italic" }}>Ontvang een push als er relevant nieuws is voor je spots</div>
+          </div>
+          <div style={{ width: 48, height: 26, borderRadius: 13, background: pushNieuws ? C.sky : C.creamDark, position: "relative", flexShrink: 0 }}>
+            <div style={{ position: "absolute", top: 3, left: pushNieuws ? 25 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.3s" }} />
+          </div>
+        </div>
+
         <button onClick={handleSave} disabled={saving} style={{ width: "100%", padding: 14, background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1 }}>
           {saving ? "Saving..." : isSaved ? "Update preferences" : "Add to my spots"}
         </button>
