@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     const spotsQuery = country
       ? `spots?select=id&country=eq.${country}`
-      : `spots?select=id`;
+      : `spots?select=id&country=not.is.null`;
 
     if (mode === "new_only") {
       const [spotsRes, enrichRes] = await Promise.all([
