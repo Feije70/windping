@@ -834,7 +834,9 @@ function EnrichmentTab() {
             continue;
           }
 
-          const hasCreditsError = JSON.stringify(data).toLowerCase().includes("credit") || JSON.stringify(data).toLowerCase().includes("billing") || JSON.stringify(data).toLowerCase().includes("low");
+          const hasCreditsError = data?.error?.type === "insufficient_credits" || 
+            (data?.error && String(data.error).toLowerCase().includes("credit")) ||
+            data?.type === "error" && data?.error?.message?.toLowerCase().includes("credit");
           const spotResult = hasCreditsError ? { error: "insufficient_credits" } : data;
           setResultMap(prev => ({ ...prev, [spot.id]: spotResult }));
           setViewId(spot.id);
@@ -1223,13 +1225,13 @@ function EnrichmentBeheerTab() {
       ["nl","en","de","fr","es","pt","it"].forEach(lang => {
         if (raw[lang] && typeof raw[lang] === "object") {
           const cats: Record<string, string> = {};
-          Object.entries(raw[lang]).forEach(([k, v]) => { if (typeof v === "string") cats[k] = v; });
+          Object.entries(raw[lang]).forEach(([k, v]) => { if (typeof v === "string") cats[k] = stripCite(v); });
           if (Object.keys(cats).length > 0) allLangs[lang] = cats;
         }
       });
     } else {
       const cats: Record<string, string> = {};
-      Object.entries(raw).forEach(([k, v]) => { if (typeof v === "string") cats[k] = v; });
+      Object.entries(raw).forEach(([k, v]) => { if (typeof v === "string") cats[k] = stripCite(v); });
       allLangs["nl"] = cats;
     }
     setEditAllLangs(allLangs);
@@ -1285,8 +1287,9 @@ function EnrichmentBeheerTab() {
 
   async function deleteRow(spot_id: number, spotName: string) {
     if (!confirm(`Enrichment data voor ${spotName} verwijderen?`)) return;
-    const res = await fetch(`/api/admin-delete?key=WindPing-cron-key-2026&type=enrichment&spot_id=${spot_id}`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=eq.${spot_id}`, {
       method: "DELETE",
+      headers: { apikey: SUPABASE_ANON_KEY },
     });
     if (res.ok) {
       setSaved(prev => prev.filter(r => r.spot_id !== spot_id));
@@ -1507,8 +1510,15 @@ function SpotsTab() {
     setDeleting(spot.id);
     try {
       // Delete in juiste volgorde vanwege foreign keys
-      const res = await fetch(`/api/admin-delete?key=WindPing-cron-key-2026&type=spot&spot_id=${spot.id}`, {
+      await Promise.all([
+        fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=eq.${spot.id}`, { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }),
+        fetch(`${SUPABASE_URL}/rest/v1/ideal_conditions?spot_id=eq.${spot.id}`, { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }),
+        fetch(`${SUPABASE_URL}/rest/v1/user_spots?spot_id=eq.${spot.id}`, { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }),
+        fetch(`${SUPABASE_URL}/rest/v1/spot_posts?spot_id=eq.${spot.id}`, { method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` } }),
+      ]);
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/spots?id=eq.${spot.id}`, {
         method: "DELETE",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
       });
       if (res.ok) {
         setSpots(prev => prev.filter(s => s.id !== spot.id));
