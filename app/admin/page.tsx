@@ -699,7 +699,9 @@ function EnrichmentTab() {
 
   const filteredSpots = spots.filter(s => {
     const matchSearch = spotSearch.length >= 2 ? s.display_name.toLowerCase().includes(spotSearch.toLowerCase()) : true;
-    const matchLand = selectedLand ? getLand(s.region) === selectedLand : true;
+    const matchLand = selectedLand ? getLand(s.region) === selectedLand
+      : selectedLanden.size > 0 ? selectedLanden.has(getLand(s.region))
+      : true;
     return matchSearch && matchLand;
   });
 
@@ -854,7 +856,7 @@ function EnrichmentTab() {
       {/* Snelkeuze landen */}
       <div style={{ background: C.card, borderRadius: 10, padding: "10px 14px", marginBottom: 12, boxShadow: C.cardShadow }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: C.sub, whiteSpace: "nowrap" as const }}>FILTER OP LAND</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.sub, whiteSpace: "nowrap" as const }}>HANDMATIGE SCAN — FILTER OP LAND</span>
           {selectedLand && (
             <button onClick={() => setSelectedLand(null)} style={{
               padding: "2px 8px", borderRadius: 5, fontSize: 11, fontWeight: 700,
