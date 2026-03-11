@@ -114,6 +114,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       queued: totalInserted,
+      spot_ids: toQueueLimited,
       mode,
       country: country || "all",
       total_spots: spotIds.length,

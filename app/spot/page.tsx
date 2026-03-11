@@ -89,9 +89,15 @@ function stripCiteSpot(text: string): string {
 
 /* ── Enrichment Info Tab Component ── */
 function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enrichment: any; userLanguage: string }) {
-  // Bepaal juiste taallaag: gebruikerstaal → Engels → root (oud formaat)
   const rawCats = enrichment?.categories || {};
-  const cats = rawCats[userLanguage] || rawCats["en"] || rawCats || {};
+  // Beschikbare talen
+  const availableLangs = ["nl","en","de","fr","es","pt","it"].filter(lang =>
+    rawCats[lang] && typeof rawCats[lang] === "object" && Object.values(rawCats[lang]).some(Boolean)
+  );
+  const isMultiLang = availableLangs.length > 1;
+  const defaultLang = availableLangs.includes(userLanguage) ? userLanguage : availableLangs[0] || userLanguage;
+  const [activeLang, setActiveLang] = useState<string>(defaultLang);
+  const cats = rawCats[activeLang] || rawCats["en"] || rawCats || {};
   const hasEnrichment = enrichment && Object.values(cats).some(Boolean);
   const conf = enrichment?.confidence || 0;
   const scannedAt = enrichment?.scanned_at
@@ -152,6 +158,22 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
             </span>
             {scannedAt && <span style={{ fontSize: 11, color: C.muted }}>Gescand {scannedAt}</span>}
           </div>
+
+          {/* Taalwissel */}
+          {isMultiLang && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              {availableLangs.map(lang => (
+                <button key={lang} onClick={() => setActiveLang(lang)} style={{
+                  padding: "4px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                  border: `1px solid ${activeLang === lang ? C.sky : C.cardBorder}`,
+                  background: activeLang === lang ? C.sky : C.card,
+                  color: activeLang === lang ? "#fff" : C.muted, cursor: "pointer",
+                }}>
+                  {lang === "nl" ? "🇳🇱 NL" : lang === "en" ? "🇬🇧 EN" : lang === "de" ? "🇩🇪 DE" : lang === "fr" ? "🇫🇷 FR" : lang === "es" ? "🇪🇸 ES" : lang.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Nieuws — speciale blauwe card bovenaan */}
           {cats.news && (

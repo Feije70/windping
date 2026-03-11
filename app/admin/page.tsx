@@ -682,6 +682,8 @@ function EnrichmentTab() {
   const [landLimits, setLandLimits] = useState<Record<string, number>>({});
   const [triggerMsg, setTriggerMsg] = useState("");
   const [triggerLoading, setTriggerLoading] = useState(false);
+  const [cronPolling, setCronPolling] = useState(false);
+  const [cronProgress, setCronProgress] = useState<{ done: number; total: number; recent: string[] }>({ done: 0, total: 0, recent: [] });
 
   useEffect(() => {
     async function load() {
@@ -729,6 +731,34 @@ function EnrichmentTab() {
     });
   }
 
+  async function startCronPolling(total: number, spotIds: number[]) {
+    setCronPolling(true);
+    setCronProgress({ done: 0, total, recent: [] });
+    const start = Date.now();
+    const maxWait = 30 * 60 * 1000; // max 30 min polling
+    let lastDone = 0;
+    while (Date.now() - start < maxWait) {
+      await new Promise(r => setTimeout(r, 15000)); // poll elke 15s
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=in.(${spotIds.join(",")})&select=spot_id,scanned_at&order=scanned_at.desc`, {
+          headers: { apikey: SUPABASE_ANON_KEY }
+        });
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const done = data.length;
+          const recentIds = data.slice(0, 3).map((r: any) => r.spot_id);
+          const recentNames = recentIds.map((id: number) => spots.find(s => s.id === id)?.display_name || `#${id}`);
+          setCronProgress({ done, total, recent: recentNames });
+          if (done >= total) break;
+          lastDone = done;
+        }
+      } catch {}
+    }
+    setCronPolling(false);
+    setTriggerMsg(`✓ Klaar — ${lastDone || total} spots gescand`);
+    setTimeout(() => setTriggerMsg(""), 8000);
+  }
+
   async function triggerCron(mode: string) {
     if (selectedLanden.size === 0 && mode !== "active") {
       setTriggerMsg("Selecteer eerst een of meer landen");
@@ -742,22 +772,26 @@ function EnrichmentTab() {
         if (!confirm("Alle actieve spots opnieuw scannen? Dit kan lang duren.")) { setTriggerLoading(false); return; }
         const res = await fetch(`/api/enrichment-full-trigger?key=WindPing-cron-key-2026&mode=active`);
         const data = await res.json();
-        setTriggerMsg(`✓ ${data.queued} spots ingepland voor refresh`);
+        const queued = data.queued || 0;
+        setTriggerMsg(`✓ ${queued} spots ingepland voor refresh`);
+        if (queued > 0 && data.spot_ids?.length) startCronPolling(queued, data.spot_ids);
       } else {
         const landen = Array.from(selectedLanden);
         let totaal = 0;
+        let allSpotIds: number[] = [];
         for (const land of landen) {
           const limit = landLimits[land] || 10;
           const countryCode = LAND_CODE[land] || land;
           const res = await fetch(`/api/enrichment-full-trigger?key=WindPing-cron-key-2026&mode=new_only&limit=${limit}&country=${countryCode}`);
           const data = await res.json();
           totaal += data.queued || 0;
+          if (data.spot_ids) allSpotIds = [...allSpotIds, ...data.spot_ids];
         }
         setTriggerMsg(`✓ ${totaal} spots ingepland (${landen.join(", ")})`);
+        if (totaal > 0 && allSpotIds.length) startCronPolling(totaal, allSpotIds);
       }
     } catch { setTriggerMsg("❌ Mislukt"); }
     setTriggerLoading(false);
-    setTimeout(() => setTriggerMsg(""), 5000);
   }
 
   async function triggerNieuws() {
@@ -933,6 +967,25 @@ function EnrichmentTab() {
             </span>
           )}
         </div>
+        {cronPolling && (
+          <div style={{ marginTop: 10, padding: "10px 14px", background: "#EFF6FF", border: "1px solid #BFDBFE", borderRadius: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <div style={{ width: 14, height: 14, border: "2px solid #93C5FD", borderTopColor: "#2563EB", borderRadius: "50%", animation: "spin 0.6s linear infinite", flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#1D4ED8" }}>
+                Scannen bezig — {cronProgress.done}/{cronProgress.total} spots verwerkt
+              </span>
+            </div>
+            <div style={{ height: 6, background: "#DBEAFE", borderRadius: 3, overflow: "hidden", marginBottom: 6 }}>
+              <div style={{ height: "100%", background: "#2563EB", borderRadius: 3, width: `${cronProgress.total > 0 ? Math.round((cronProgress.done / cronProgress.total) * 100) : 0}%`, transition: "width 0.5s ease" }} />
+            </div>
+            {cronProgress.recent.length > 0 && (
+              <div style={{ fontSize: 11, color: "#3B82F6" }}>
+                Recent: {cronProgress.recent.join(", ")}
+              </div>
+            )}
+            <div style={{ fontSize: 10, color: "#93C5FD", marginTop: 4 }}>Elke 15 seconden bijgewerkt — cron verwerkt 3 spots per 5 min</div>
+          </div>
+        )}
       </div>
 
       {/* Geselecteerde spots strip */}
@@ -1124,6 +1177,8 @@ function EnrichmentBeheerTab() {
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<number | null>(null);
   const [editCats, setEditCats] = useState<Record<string, string>>({});
+  const [editLang, setEditLang] = useState<string>("nl");
+  const [editAllLangs, setEditAllLangs] = useState<Record<string, Record<string, string>>>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const [searchQ, setSearchQ] = useState("");
@@ -1160,16 +1215,27 @@ function EnrichmentBeheerTab() {
 
   function startEdit(row: any) {
     setEditId(row.spot_id);
-    const cats: Record<string, string> = {};
     const raw = row.categories || {};
-    // Nieuw formaat: { nl: {...}, en: {...} } — pak nl of en laag
-    const source = raw.nl || raw.en || raw;
-    if (source && typeof source === "object") {
-      Object.entries(source).forEach(([k, v]) => {
-        if (typeof v === "string") cats[k] = v;
+    const isMultiLang = raw.nl || raw.en;
+    // Bewaar alle taallagen
+    const allLangs: Record<string, Record<string, string>> = {};
+    if (isMultiLang) {
+      ["nl","en","de","fr","es","pt","it"].forEach(lang => {
+        if (raw[lang] && typeof raw[lang] === "object") {
+          const cats: Record<string, string> = {};
+          Object.entries(raw[lang]).forEach(([k, v]) => { if (typeof v === "string") cats[k] = v; });
+          if (Object.keys(cats).length > 0) allLangs[lang] = cats;
+        }
       });
+    } else {
+      const cats: Record<string, string> = {};
+      Object.entries(raw).forEach(([k, v]) => { if (typeof v === "string") cats[k] = v; });
+      allLangs["nl"] = cats;
     }
-    setEditCats(cats);
+    setEditAllLangs(allLangs);
+    const defaultLang = allLangs["nl"] ? "nl" : Object.keys(allLangs)[0] || "nl";
+    setEditLang(defaultLang);
+    setEditCats(allLangs[defaultLang] || {});
     setMsg("");
   }
 
@@ -1186,7 +1252,9 @@ function EnrichmentBeheerTab() {
         spot_id,
         confidence: row.confidence,
         sources: row.sources,
-        categories: editCats,
+        categories: Object.keys(editAllLangs).length > 1
+              ? { ...editAllLangs, [editLang]: editCats }
+              : editCats,
         missing: row.missing,
         scanned_at: row.scanned_at,
         updated_at: new Date().toISOString(),
@@ -1310,6 +1378,24 @@ function EnrichmentBeheerTab() {
             {/* Edit mode */}
             {isEditing && (
               <div style={{ borderTop: `1px solid ${C.cardBorder}`, padding: "14px 16px" }}>
+                {/* Taalwissel */}
+                {Object.keys(editAllLangs).length > 1 && (
+                  <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                    {Object.keys(editAllLangs).map(lang => (
+                      <button key={lang} onClick={() => {
+                        // Sla huidige taal op voordat je wisselt
+                        setEditAllLangs(prev => ({ ...prev, [editLang]: editCats }));
+                        setEditLang(lang);
+                        setEditCats(editAllLangs[lang] || {});
+                      }} style={{
+                        padding: "4px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                        border: `1px solid ${editLang === lang ? C.sky : C.cardBorder}`,
+                        background: editLang === lang ? C.sky : C.creamDark,
+                        color: editLang === lang ? "#fff" : C.muted, cursor: "pointer",
+                      }}>{lang.toUpperCase()}</button>
+                    ))}
+                  </div>
+                )}
                 {Object.entries(editCats).map(([key, value]) => (
                   <div key={key} style={{ marginBottom: 12 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
