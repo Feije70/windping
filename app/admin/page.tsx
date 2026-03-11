@@ -1161,9 +1161,14 @@ function EnrichmentBeheerTab() {
   function startEdit(row: any) {
     setEditId(row.spot_id);
     const cats: Record<string, string> = {};
-    Object.entries(row.categories || {}).forEach(([k, v]) => {
-      cats[k] = String(v || "");
-    });
+    const raw = row.categories || {};
+    // Nieuw formaat: { nl: {...}, en: {...} } — pak nl of en laag
+    const source = raw.nl || raw.en || raw;
+    if (source && typeof source === "object") {
+      Object.entries(source).forEach(([k, v]) => {
+        if (typeof v === "string") cats[k] = v;
+      });
+    }
     setEditCats(cats);
     setMsg("");
   }
