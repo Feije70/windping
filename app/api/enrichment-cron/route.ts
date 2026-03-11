@@ -131,7 +131,7 @@ async function scanSpot(spot: any, prompts: Record<string, string>): Promise<{
       : "";
 
   const langInstruction = needsBothLangs
-    ? `Write all category values TWICE: once in ${spotLangName} (key: "${spotLang}") and once in English (key: "en").`
+    ? `IMPORTANT: You MUST write all category values TWICE. First in ${spotLangName} under key "${spotLang}", then the same content in English under key "en". Both keys are REQUIRED in the JSON output.`
     : `Write all category values in English (key: "en").`;
 
   const categoryFields = `{
