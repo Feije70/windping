@@ -530,6 +530,143 @@ const LAND_VLAG: Record<string, string> = {
   Austria: "🇦🇹", Switzerland: "🇨🇭", Latvia: "🇱🇻", Romania: "🇷🇴", Hungary: "🇭🇺",
   Montenegro: "🇲🇪", Azores: "🇵🇹",
 };
+const LAND_CODE: Record<string, string> = {
+  "Nederland": "NL",
+  "België": "BE",
+  "Duitsland": "DE",
+  "Frankrijk": "FR",
+  "Spanje": "ES",
+  "Portugal": "PT",
+  "Italië": "IT",
+  "Griekenland": "GR",
+  "Turkije": "TR",
+  "Marokko": "MA",
+  "Zuid-Afrika": "ZA",
+  "Australië": "AU",
+  "Brazilië": "BR",
+  "USA": "US",
+};
+
+
+const PROMPT_CATEGORIEEN = [
+  { key: "conditions", label: "Conditions", desc: "Windcondities, golfhoogte, seizoenen",
+    default: "Wind conditions, directions, best season, wave height, currents, water type. Null if unknown." },
+  { key: "facilities", label: "Facilities", desc: "Faciliteiten, parkeren, huur",
+    default: "Parking, toilets, showers, food, kite school, rental. Null if unknown." },
+  { key: "hazards", label: "Hazards", desc: "Gevaren, regels, obstakels",
+    default: "Hazards: rocks, currents, shipping, restricted zones, rules. Null if unknown." },
+  { key: "tips", label: "Tips", desc: "Insider tips, beste tijden",
+    default: "Practical tips from experienced surfers, best launch spot, local knowledge. Null if unknown." },
+  { key: "events", label: "Events", desc: "Evenementen, wedstrijden",
+    default: "Kite/windsurf competitions, festivals, markets, events affecting crowding. Null if unknown." },
+  { key: "news", label: "News", desc: "Nieuws, recente ontwikkelingen",
+    default: "Recent news: beach closures, new rules, construction, upcoming major events. Null if unknown." },
+];
+
+function PromptsTab() {
+  const [prompts, setPrompts] = useState<Record<string, string>>(() => {
+    const defaults: Record<string, string> = {};
+    PROMPT_CATEGORIEEN.forEach(c => { defaults[c.key] = c.default; });
+    return defaults;
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [activePrompt, setActivePrompt] = useState("conditions");
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/enrichment_prompts?select=category,prompt_text&order=category.asc`, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` }
+        });
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setPrompts(prev => {
+            const merged = { ...prev };
+            data.forEach((r: any) => { if (r.prompt_text) merged[r.category] = r.prompt_text; });
+            return merged;
+          });
+        }
+      } catch {}
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  async function savePrompt(category: string) {
+    setSaving(true);
+    setSaveMsg("");
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/enrichment_prompts`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          "Content-Type": "application/json",
+          "Prefer": "resolution=merge-duplicates",
+        },
+        body: JSON.stringify({ category, prompt_text: prompts[category] || "", updated_at: new Date().toISOString() }),
+      });
+      if (res.ok) { setSaveMsg("✓ Opgeslagen"); }
+      else { setSaveMsg("❌ Opslaan mislukt"); }
+    } catch { setSaveMsg("❌ Fout"); }
+    setSaving(false);
+    setTimeout(() => setSaveMsg(""), 3000);
+  }
+
+  if (loading) return <div style={{ padding: 40, textAlign: "center", color: C.muted }}>Laden...</div>;
+
+  const active = PROMPT_CATEGORIEEN.find(c => c.key === activePrompt)!;
+
+  return (
+    <div>
+      <div style={{ background: C.card, borderRadius: 12, padding: "14px 18px", marginBottom: 14, boxShadow: C.cardShadow, border: `1px solid ${C.cardBorder}` }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: C.navy, marginBottom: 4 }}>Enrichment Prompts</div>
+        <div style={{ fontSize: 13, color: C.muted }}>Beheer de AI-prompts per categorie. Wijzigingen worden direct gebruikt bij de volgende scan.</div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: 16 }}>
+        {/* Categorie menu */}
+        <div style={{ background: C.card, borderRadius: 12, boxShadow: C.cardShadow, padding: "8px 6px" }}>
+          {PROMPT_CATEGORIEEN.map(c => (
+            <button key={c.key} onClick={() => setActivePrompt(c.key)} style={{
+              width: "100%", textAlign: "left" as const, padding: "10px 12px", borderRadius: 8, border: "none",
+              background: activePrompt === c.key ? `${C.sky}12` : "transparent",
+              color: activePrompt === c.key ? C.sky : C.navy,
+              fontWeight: activePrompt === c.key ? 700 : 500, fontSize: 13, cursor: "pointer", marginBottom: 2,
+            }}>
+              {c.label}
+              {prompts[c.key] ? <span style={{ display: "block", fontSize: 10, color: C.muted, fontWeight: 400, marginTop: 1 }}>✓ ingesteld</span> : <span style={{ display: "block", fontSize: 10, color: "#F59E0B", fontWeight: 400, marginTop: 1 }}>leeg</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* Editor */}
+        <div style={{ background: C.card, borderRadius: 12, padding: 16, boxShadow: C.cardShadow }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 4 }}>{active.label}</div>
+          <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>{active.desc}</div>
+          <textarea
+            value={prompts[activePrompt] || ""}
+            onChange={e => setPrompts(prev => ({ ...prev, [activePrompt]: e.target.value }))}
+            rows={14}
+            placeholder={active.default}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${C.cardBorder}`, fontSize: 13, color: C.navy, background: C.creamDark, resize: "vertical" as const, fontFamily: "monospace", boxSizing: "border-box" as const, lineHeight: 1.6 }}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+            <button onClick={() => savePrompt(activePrompt)} disabled={saving} style={{
+              padding: "9px 20px", borderRadius: 8, fontSize: 13, fontWeight: 700, border: "none",
+              background: C.sky, color: "#fff", cursor: "pointer", opacity: saving ? 0.6 : 1,
+            }}>
+              {saving ? "Opslaan..." : "Opslaan"}
+            </button>
+            {saveMsg && <span style={{ fontSize: 12, fontWeight: 700, color: saveMsg.startsWith("✓") ? "#166534" : "#DC2626" }}>{saveMsg}</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function EnrichmentTab() {
   const [spots, setSpots] = useState<any[]>([]);
@@ -541,6 +678,10 @@ function EnrichmentTab() {
   const [scanProgress, setScanProgress] = useState("");
   const [spotSearch, setSpotSearch] = useState("");
   const [selectedLand, setSelectedLand] = useState<string | null>(null);
+  const [selectedLanden, setSelectedLanden] = useState<Set<string>>(new Set());
+  const [landLimits, setLandLimits] = useState<Record<string, number>>({});
+  const [triggerMsg, setTriggerMsg] = useState("");
+  const [triggerLoading, setTriggerLoading] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -576,6 +717,58 @@ function EnrichmentTab() {
     } else {
       setCheckedIds(new Set(filteredSpots.map((s: any) => s.id)));
     }
+  }
+
+  function toggleLand(land: string) {
+    setSelectedLanden(prev => {
+      const next = new Set(prev);
+      if (next.has(land)) next.delete(land); else next.add(land);
+      return next;
+    });
+  }
+
+  async function triggerCron(mode: string) {
+    if (selectedLanden.size === 0 && mode !== "active") {
+      setTriggerMsg("Selecteer eerst een of meer landen");
+      setTimeout(() => setTriggerMsg(""), 3000);
+      return;
+    }
+    setTriggerLoading(true);
+    setTriggerMsg("Bezig...");
+    try {
+      if (mode === "active") {
+        if (!confirm("Alle actieve spots opnieuw scannen? Dit kan lang duren.")) { setTriggerLoading(false); return; }
+        const res = await fetch(`/api/enrichment-full-trigger?key=WindPing-cron-key-2026&mode=active`);
+        const data = await res.json();
+        setTriggerMsg(`✓ ${data.queued} spots ingepland voor refresh`);
+      } else {
+        const landen = Array.from(selectedLanden);
+        let totaal = 0;
+        for (const land of landen) {
+          const limit = landLimits[land] || 10;
+          const countryCode = LAND_CODE[land] || land;
+          const res = await fetch(`/api/enrichment-full-trigger?key=WindPing-cron-key-2026&mode=new_only&limit=${limit}&country=${countryCode}`);
+          const data = await res.json();
+          totaal += data.queued || 0;
+        }
+        setTriggerMsg(`✓ ${totaal} spots ingepland (${landen.join(", ")})`);
+      }
+    } catch { setTriggerMsg("❌ Mislukt"); }
+    setTriggerLoading(false);
+    setTimeout(() => setTriggerMsg(""), 5000);
+  }
+
+  async function triggerNieuws() {
+    if (!confirm("Nieuws-check starten voor alle actieve spots?")) return;
+    setTriggerLoading(true);
+    setTriggerMsg("Nieuws-check starten...");
+    try {
+      const res = await fetch(`/api/enrichment-news-trigger?key=WindPing-cron-key-2026`);
+      const data = await res.json();
+      setTriggerMsg(`✓ Nieuws-check gestart: ${data.queued} spots`);
+    } catch { setTriggerMsg("❌ Mislukt"); }
+    setTriggerLoading(false);
+    setTimeout(() => setTriggerMsg(""), 5000);
   }
 
   async function scanChecked() {
@@ -682,6 +875,61 @@ function EnrichmentTab() {
               }}>{LAND_VLAG[land] || "🌍"} {land} ({ls.length})</button>
             );
           })}
+        </div>
+      </div>
+
+      {/* Cron trigger sectie */}
+      <div style={{ background: C.card, borderRadius: 10, padding: "12px 14px", marginBottom: 12, boxShadow: C.cardShadow, border: `1px solid ${C.cardBorder}` }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 10 }}>CRON TRIGGER — NIEUWE SPOTS INPLANNEN</div>
+        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6, marginBottom: 10 }}>
+          {landenSorted.map(([land, ls]) => {
+            const isActive = selectedLanden.has(land);
+            return (
+              <div key={land} style={{ display: "flex", alignItems: "center", gap: 4, background: isActive ? `${C.sky}10` : C.creamDark, border: `1px solid ${isActive ? C.sky : C.cardBorder}`, borderRadius: 8, padding: "4px 6px 4px 8px" }}>
+                <button onClick={() => toggleLand(land)} style={{
+                  background: "none", border: "none", cursor: "pointer", fontSize: 11,
+                  fontWeight: isActive ? 700 : 500, color: isActive ? C.sky : C.navy, padding: 0,
+                }}>
+                  {LAND_VLAG[land] || "🌍"} {land} ({ls.length})
+                </button>
+                {isActive && (
+                  <input
+                    type="number" min={1} max={ls.length} value={landLimits[land] ?? 10}
+                    onChange={e => setLandLimits(prev => ({ ...prev, [land]: Math.max(1, parseInt(e.target.value) || 1) }))}
+                    style={{ width: 44, padding: "2px 4px", borderRadius: 5, border: `1px solid ${C.sky}40`, fontSize: 11, fontWeight: 700, color: C.navy, textAlign: "center" as const, background: "#fff" }}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const }}>
+          <button
+            onClick={() => triggerCron("new_only")}
+            disabled={triggerLoading || selectedLanden.size === 0}
+            style={{ padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: selectedLanden.size > 0 ? "pointer" : "not-allowed", background: selectedLanden.size > 0 ? C.sky : C.creamDark, color: selectedLanden.size > 0 ? "#fff" : C.muted, border: "none", opacity: triggerLoading ? 0.6 : 1 }}
+          >
+            Scan nieuwe spots
+          </button>
+          <button
+            onClick={() => triggerCron("active")}
+            disabled={triggerLoading}
+            style={{ padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", background: "#F5F3FF", color: "#7C3AED", border: "1px solid #DDD6FE", opacity: triggerLoading ? 0.6 : 1 }}
+          >
+            Jaarlijkse refresh (alle actieve)
+          </button>
+          <button
+            onClick={triggerNieuws}
+            disabled={triggerLoading}
+            style={{ padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", background: "#ECFDF5", color: "#065F46", border: "1px solid #A7F3D0", opacity: triggerLoading ? 0.6 : 1 }}
+          >
+            Nieuws-check
+          </button>
+          {triggerMsg && (
+            <span style={{ fontSize: 12, fontWeight: 700, color: triggerMsg.startsWith("✓") ? "#166534" : triggerMsg.startsWith("❌") ? "#DC2626" : C.sky }}>
+              {triggerMsg}
+            </span>
+          )}
         </div>
       </div>
 
@@ -1594,7 +1842,7 @@ function ModerationTab() {
 export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [section, setSection] = useState<"dashboard" | "gebruikers" | "alerts" | "content" | "systeem" | "financien">("dashboard");
-  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "spots" | "moderation" | "enrichment" | "beheer" | "kosten" | "campagnes">("stats");
+  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "spots" | "moderation" | "enrichment" | "beheer" | "prompts" | "kosten" | "campagnes">("stats");
   const [flaggedPosts, setFlaggedPosts] = useState<any[]>([]);
   const [flaggedLoading, setFlaggedLoading] = useState(false);
   const [stats, setStats] = useState({ users: 0, spots: 0, alerts: 0, alertsToday: 0 });
@@ -1793,6 +2041,7 @@ export default function AdminPage() {
       { id: "moderation", label: "Moderatie" },
       { id: "enrichment", label: "Spot Enrichment" },
       { id: "beheer", label: "Enrichment Beheer" },
+      { id: "prompts", label: "Prompts" },
     ],
     systeem: [
       { id: "health", label: "Health" },
@@ -2580,6 +2829,9 @@ export default function AdminPage() {
           <EnrichmentTab />
         )}
 
+        {section === "content" && tab === "prompts" && (
+          <PromptsTab />
+        )}
         {section === "content" && tab === "beheer" && (
           <EnrichmentBeheerTab />
         )}
