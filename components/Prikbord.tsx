@@ -81,7 +81,7 @@ function PostCard({ post, compact, userId, userName, onReport, onDelete }: {
     <div style={{
       position: "relative", background: t.bg, border: `1.5px solid ${t.border}`, borderRadius: 10,
       padding: compact ? "16px 12px 11px" : "18px 14px 12px", boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-      opacity: ph ? 0.72 : 1, transition: "transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s",
+      opacity: ph ? 0.45 : 1, transition: "transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s",
       cursor: ph ? "default" : "pointer", minHeight: compact ? 88 : 105,
     }}
       onMouseEnter={e => { if (!ph) { const el = e.currentTarget as HTMLElement; el.style.transform = "translateY(-2px)"; el.style.boxShadow = "0 6px 18px rgba(0,0,0,0.14)"; } }}
@@ -111,7 +111,7 @@ function PostCard({ post, compact, userId, userName, onReport, onDelete }: {
           <span style={{ marginLeft: "auto", fontSize: 9, fontWeight: 700, color: t.color, fontFamily: "system-ui" }}>{post.wind_speed}kn {post.wind_dir}</span>
         )}
       </div>
-      <p style={{ margin: "0 0 9px", fontSize: compact ? 12 : 13, lineHeight: 1.45, color: "#2A1F14", fontFamily: "'Georgia', serif" }}>{post.content}</p>
+      <p style={{ margin: "0 0 9px", fontSize: compact ? 12 : 13, lineHeight: 1.45, color: post.isPlaceholder ? "#B0A090" : "#2A1F14", fontFamily: "'Georgia', serif" }}>{post.content}</p>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: t.color, fontFamily: "system-ui" }}>{post.author_name}</span>
         <span style={{ fontSize: 10, color: "#9B8878", fontFamily: "system-ui" }}>{timeAgo(post.created_at)}</span>
