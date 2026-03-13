@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { Icons } from "@/components/Icons";
-import { getValidToken, getEmail, isTokenExpired, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 
 const h = { fontFamily: fonts.heading };
 
@@ -54,6 +55,8 @@ function SpotCard({ spot, fromOnboarding }: { spot: Spot; fromOnboarding?: boole
 function SpotsContent() {
   const searchParams = useSearchParams();
   const fromOnboarding = searchParams.get("from") === "onboarding";
+  const { token, loading: authLoading } = useUser({ redirectIfUnauthenticated: true });
+
   const [spots, setSpots] = useState<Spot[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -64,37 +67,25 @@ function SpotsContent() {
   const LRef = useRef<any>(null);
   const [visibleIds, setVisibleIds] = useState<Set<number>>(new Set());
 
-  // Load spots from Supabase
   useEffect(() => {
-    async function load() {
-      try {
-        const token = await getValidToken();
-        const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY };
-        if (token) headers.Authorization = `Bearer ${token}`;
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/spots?active=eq.true&is_private=eq.false&select=id,display_name,latitude,longitude,spot_type,level,min_wind,max_wind,good_directions,tips&order=display_name`, {
-          headers,
-        });
-        const data = await res.json();
-        setSpots(data || []);
-      } catch (e) { console.warn("Spots load error:", e); }
-      setLoading(false);
-    }
-    load();
-  }, []);
+    if (!token) return;
+    fetch(`${SUPABASE_URL}/rest/v1/spots?active=eq.true&is_private=eq.false&select=id,display_name,latitude,longitude,spot_type,level,min_wind,max_wind,good_directions,tips&order=display_name`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => setSpots(data || []))
+      .catch((e) => console.warn("Spots load error:", e))
+      .finally(() => setLoading(false));
+  }, [token]);
 
-  // Load Leaflet dynamically
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    // Load CSS
     if (!document.querySelector('link[href*="leaflet"]')) {
       const link = document.createElement("link");
       link.rel = "stylesheet";
       link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
       document.head.appendChild(link);
     }
-
-    // Load JS
     if (!(window as any).L) {
       const script = document.createElement("script");
       script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
@@ -106,40 +97,26 @@ function SpotsContent() {
     }
   }, []);
 
-  // Initialize map
   useEffect(() => {
     if (!mapReady || !mapElRef.current || mapRef.current || !LRef.current) return;
     const L = LRef.current;
-
     const map = L.map(mapElRef.current, { zoomControl: true, scrollWheelZoom: true, attributionControl: false }).setView([52.3, 5.0], 7);
     L.control.attribution({ prefix: false, position: "bottomright" }).addAttribution('<a href="https://leafletjs.com" style="font-size:9px;opacity:0.5;">Leaflet</a> · © OSM').addTo(map);
-
-    // Light tile layer (Google Maps style)
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-      maxZoom: 18,
-    }).addTo(map);
-
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 18 }).addTo(map);
     mapRef.current = map;
-
     map.on("moveend zoomend", filterByBounds);
-
-    // IP-based geolocation on load (no permission needed)
     fetch("https://ipapi.co/json/")
       .then((r) => r.json())
       .then((d) => { if (d.latitude && d.longitude) map.setView([d.latitude, d.longitude], 7); })
       .catch(() => {});
   }, [mapReady]);
 
-  // Add markers when spots load
   useEffect(() => {
     if (!mapRef.current || !LRef.current || !spots.length) return;
     const L = LRef.current;
     const map = mapRef.current;
-
-    // Clear old markers
     markersRef.current.forEach((m) => map.removeLayer(m));
     markersRef.current = [];
-
     spots.forEach((spot) => {
       if (!spot.latitude || !spot.longitude) return;
       const color = typeColors[spot.spot_type || ""] || C.sky;
@@ -148,7 +125,6 @@ function SpotsContent() {
         html: `<div style="width:12px;height:12px;background:${color};border:2.5px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.3);"></div>`,
         iconSize: [12, 12], iconAnchor: [6, 6], popupAnchor: [0, -8],
       });
-
       const dirs = spot.good_directions?.join(", ") || "—";
       const popup = `<div style="font-family:system-ui;font-size:13px;">
         <strong>${spot.display_name}</strong><br/>
@@ -156,16 +132,13 @@ function SpotsContent() {
         <span style="font-size:11px;">Wind: ${spot.min_wind || "?"}-${spot.max_wind || "?"} kn · ${dirs}</span><br/>
         <a href="/spot?id=${spot.id}" style="display:block;margin-top:8px;padding:7px 0;background:linear-gradient(135deg,#2E8FAE,#4DB8C9);color:white;font-weight:700;font-size:12px;text-decoration:none;text-align:center;border-radius:8px;">View spot →</a>
       </div>`;
-
       const marker = L.marker([spot.latitude, spot.longitude], { icon })
         .addTo(map)
         .bindPopup(popup, { maxWidth: 220 })
         .bindTooltip(spot.display_name, { direction: "top", offset: [0, -8] });
-
       (marker as any)._spotId = spot.id;
       markersRef.current.push(marker);
     });
-
     if (markersRef.current.length) {
       map.fitBounds(L.featureGroup(markersRef.current).getBounds().pad(0.1));
     }
@@ -196,13 +169,11 @@ function SpotsContent() {
         L.marker([latitude, longitude], { icon }).addTo(mapRef.current).bindTooltip("Your location", { direction: "top", offset: [0, -10] });
         mapRef.current.setView([latitude, longitude], 8);
       },
-      () => { /* silently fail */ },
+      () => {},
       { timeout: 10000, maximumAge: 300000 }
     );
   }
 
-  // Filter spots by search + map bounds
-  // Als er een zoekterm is: negeer kaartgrenzen en zoek door alle spots
   const filtered = spots.filter((s) => {
     if (!search && !visibleIds.has(s.id) && visibleIds.size > 0) return false;
     if (!search) return true;
@@ -213,16 +184,16 @@ function SpotsContent() {
       || (s.good_directions || []).join(" ").toLowerCase().includes(q);
   });
 
+  if (authLoading) return null;
+
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
       <NavBar />
       <div style={{ maxWidth: 700, margin: "0 auto", padding: "24px 16px 100px" }}>
         <h1 className="font-bebas" style={{ ...h, fontSize: 28, letterSpacing: 2, color: C.navy, margin: "0 0 16px" }}>Spots</h1>
 
-        {/* Map */}
         <div ref={mapElRef} style={{ width: "100%", height: 400, borderRadius: 16, overflow: "hidden", border: `1px solid ${C.cardBorder}`, marginBottom: 12 }} />
 
-        {/* Locate button */}
         <button onClick={handleLocate} style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%",
           padding: "13px 16px", background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`, border: "none", borderRadius: 12,
@@ -231,7 +202,6 @@ function SpotsContent() {
           {Icons.mapPin({ color: "#fff", size: 18 })} Zoom to my location
         </button>
 
-        {/* Search */}
         <input
           type="text" value={search} onChange={(e) => setSearch(e.target.value)}
           placeholder="Search spots..."
@@ -241,19 +211,16 @@ function SpotsContent() {
           }}
         />
 
-        {/* Counter */}
         <div style={{ fontSize: 12, color: C.sub, padding: "4px 0 12px 2px" }}>
           {filtered.length} of {spots.length} spots{search ? ` (search: "${search}")` : ""}
         </div>
 
-        {/* Loading */}
         {loading && (
           <div style={{ textAlign: "center", padding: "40px 20px" }}>
             <div style={{ display: "inline-block", width: 28, height: 28, border: `3px solid ${C.cardBorder}`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
           </div>
         )}
 
-        {/* Spot cards */}
         {!loading && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
             {filtered.map((spot) => (
