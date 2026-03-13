@@ -2,11 +2,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { colors as C, fonts } from "@/lib/design";
-import { getValidToken, isTokenExpired, getAuthId, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 const h = { fontFamily: fonts.heading };
 
 export default function SpotCreatePage() {
   const router = useRouter();
+  const { user, token, loading: authLoading } = useUser({ redirectIfUnauthenticated: true });
+
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
@@ -18,10 +21,8 @@ export default function SpotCreatePage() {
   const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
-    if (isTokenExpired()) { window.location.href = "/login"; return; }
     if (mapInstanceRef.current) return;
 
-    // Load Leaflet CSS
     if (!document.querySelector('link[href*="leaflet"]')) {
       const link = document.createElement("link");
       link.rel = "stylesheet";
@@ -34,7 +35,6 @@ export default function SpotCreatePage() {
       const L = (window as any).L;
       if (!L) return;
 
-      // Fix voor Leaflet icon path in Next.js
       delete (L.Icon.Default.prototype as any)._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -64,15 +64,12 @@ export default function SpotCreatePage() {
 
       mapInstanceRef.current = map;
       setMapReady(true);
-
-      // Fix kaart grootte na render
       setTimeout(() => map.invalidateSize(), 100);
     }
 
-    // Load Leaflet JS
     if ((window as any).L) {
       navigator.geolocation?.getCurrentPosition(
-        pos => initMap(pos.coords.latitude, pos.coords.longitude),
+        (pos) => initMap(pos.coords.latitude, pos.coords.longitude),
         () => initMap(52.3, 4.9),
         { timeout: 5000 }
       );
@@ -81,7 +78,7 @@ export default function SpotCreatePage() {
       script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
       script.onload = () => {
         navigator.geolocation?.getCurrentPosition(
-          pos => initMap(pos.coords.latitude, pos.coords.longitude),
+          (pos) => initMap(pos.coords.latitude, pos.coords.longitude),
           () => initMap(52.3, 4.9),
           { timeout: 5000 }
         );
@@ -91,19 +88,11 @@ export default function SpotCreatePage() {
   }, []);
 
   async function saveSpot() {
+    if (!user || !token) return;
     if (!lat || !lng || !name.trim()) { setError("Kies een locatie op de kaart en geef een naam op."); return; }
     setSaving(true);
     setError("");
     try {
-      const token = await getValidToken();
-      const authId = getAuthId();
-      const userRes = await fetch(`${SUPABASE_URL}/rest/v1/users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id`, {
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-      });
-      const users = await userRes.json();
-      if (!users?.length) throw new Error("User not found");
-      const userId = users[0].id;
-
       const spotRes = await fetch(`${SUPABASE_URL}/rest/v1/spots`, {
         method: "POST",
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
@@ -115,7 +104,7 @@ export default function SpotCreatePage() {
       await fetch(`${SUPABASE_URL}/rest/v1/user_spots`, {
         method: "POST",
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, spot_id: newSpot.id }),
+        body: JSON.stringify({ user_id: user.id, spot_id: newSpot.id }),
       });
 
       localStorage.setItem("session_spot_id", String(newSpot.id));
@@ -127,6 +116,8 @@ export default function SpotCreatePage() {
     }
     setSaving(false);
   }
+
+  if (authLoading) return null;
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
@@ -149,13 +140,13 @@ export default function SpotCreatePage() {
           </div>
         </div>
 
-        {/* Naam invoer bovenaan */}
+        {/* Naam invoer */}
         <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.cardBorder}`, background: C.cream }}>
           <input
             type="text"
             placeholder="Naam van de spot..."
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={(e) => setName(e.target.value)}
             style={{
               width: "100%", padding: "12px 14px", background: C.card,
               border: `1.5px solid ${name ? C.sky : C.cardBorder}`, borderRadius: 12, fontSize: 14,
@@ -167,7 +158,7 @@ export default function SpotCreatePage() {
         {/* Kaart */}
         <div ref={mapRef} style={{ flex: 1, minHeight: 400 }} />
 
-        {/* Instructie + opslaan onderin */}
+        {/* Onderin */}
         <div style={{ padding: "12px 16px 32px", borderTop: `1px solid ${C.cardBorder}`, background: C.cream }}>
           {!lat && (
             <div style={{ fontSize: 13, color: C.sky, fontWeight: 600, textAlign: "center", marginBottom: 10 }}>
