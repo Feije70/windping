@@ -331,7 +331,7 @@ function SpotDetailContent() {
   useEffect(() => {
     if (!spot || loading || !mapElRef.current) return;
     const tryInit = () => {
-      if (!LRef.current) { setTimeout(tryInit, 200); return; }
+      if (!LRef.current) { setTimeout(tryInit, 400); return; }
       if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
       const L = LRef.current;
       const center = compassLatRef.current != null ? [compassLatRef.current, compassLngRef.current] : [spot.latitude, spot.longitude];
@@ -347,7 +347,7 @@ function SpotDetailContent() {
       }
       map.on("moveend", () => { if (!spotMarkerRef.current) return; const c = map.getCenter(); spotMarkerRef.current.setLatLng([c.lat, c.lng]); });
       mapRef.current = map;
-      setTimeout(() => map.invalidateSize(), 200);
+      setTimeout(() => map.invalidateSize(), 800);
     };
     tryInit();
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
