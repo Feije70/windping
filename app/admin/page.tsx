@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { colors as C, fonts } from "@/lib/design";
-import { getValidToken, getEmail, getAuthId, isTokenExpired, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 
 // Lib
 import { sbGet, sbPatch, sbDelete, sbPost2, apiPost } from "./lib/helpers";
@@ -26,6 +27,8 @@ import { FinancienTab } from "./components/FinancienTab";
 import { SimulatorTab } from "./components/SimulatorTab";
 
 export default function AdminPage() {
+  const { token, loading: authLoading } = useUser({ redirectIfUnauthenticated: true });
+
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [section, setSection] = useState<"dashboard" | "gebruikers" | "alerts" | "content" | "systeem" | "financien">("dashboard");
   const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "spots" | "moderation" | "enrichment" | "beheer" | "nieuws" | "prompts" | "kosten" | "campagnes">("stats");
@@ -45,7 +48,6 @@ export default function AdminPage() {
   const [diagnoseUserId, setDiagnoseUserId] = useState<number | null>(null);
   const [diagnoseLoading, setDiagnoseLoading] = useState(false);
   const [health, setHealth] = useState<HealthData | null>(null);
-  const [adminToken, setAdminToken] = useState<string | null>(null);
 
   // Users tab state
   const [allUsers, setAllUsers] = useState<any[]>([]);
@@ -63,17 +65,10 @@ export default function AdminPage() {
   const [healthLoading, setHealthLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  // Auth check
-  useEffect(() => {
-    if (isTokenExpired()) { window.location.href = "/login"; return; }
-    setAuthorized(true);
-  }, []);
-
   // Load admin data
   const loadData = useCallback(async () => {
+    if (!token) return;
     try {
-      const token = await getValidToken();
-      if (token) setAdminToken(token);
       const res = await fetch("/api/admin", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -81,6 +76,7 @@ export default function AdminPage() {
         if (res.status === 403) { setAuthorized(false); return; }
         throw new Error(`${res.status}`);
       }
+      setAuthorized(true);
       const data = await res.json();
       setUsers(data.users || []);
       setSpots(data.spots || []);
@@ -95,13 +91,13 @@ export default function AdminPage() {
         alertsToday: (data.alerts || []).filter((a: any) => a.created_at?.startsWith(today)).length,
       });
     } catch (e) { console.error(e); }
-  }, [selectedUser]);
+  }, [token, selectedUser]);
 
   // Load health data
   const loadHealth = useCallback(async () => {
+    if (!token) return;
     setHealthLoading(true);
     try {
-      const token = await getValidToken();
       const res = await fetch("/api/admin/health", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -112,18 +108,18 @@ export default function AdminPage() {
     } catch (e) { console.error("Health load error:", e); }
     setHealthLoading(false);
     setLastRefresh(new Date());
-  }, []);
+  }, [token]);
 
   useEffect(() => {
-    if (authorized) { loadData(); loadHealth(); }
-  }, [authorized, loadData, loadHealth]);
+    if (token) { loadData(); loadHealth(); }
+  }, [token, loadData, loadHealth]);
 
   // Auto-refresh health every 5 minutes
   useEffect(() => {
-    if (!authorized) return;
+    if (!token) return;
     const interval = setInterval(loadHealth, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [authorized, loadHealth]);
+  }, [token, loadHealth]);
 
   // Actions
   const runPreview = async () => {
@@ -138,14 +134,12 @@ export default function AdminPage() {
   };
 
   const runLive = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || !token) return;
     setLoading(true); setEvalResult(null);
     try {
-      const token = localStorage.getItem("wp_supabase_auth");
-      const accessToken = token ? JSON.parse(token).access_token : "";
       const res = await fetch("/api/alerts/evaluate", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ test: false, userId: selectedUser }),
       });
       const result = await res.json();
@@ -183,7 +177,7 @@ export default function AdminPage() {
     setLoading(false);
   };
 
-  if (authorized === null) return (
+  if (authLoading || authorized === null) return (
     <div style={{ background: C.cream, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ width: 28, height: 28, border: `3px solid ${C.cardBorder}`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes heartPulse { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.4); opacity: 0.1; } }`}</style>
@@ -196,7 +190,6 @@ export default function AdminPage() {
     </div>
   );
 
-  // Sidebar nav items
   const criticalCount = health?.redFlags.filter(f => f.severity === "critical").length || 0;
 
   const NAV = [
@@ -208,7 +201,6 @@ export default function AdminPage() {
     { section: "systeem" as const, icon: "⚙️", label: "Systeem", badge: 0 },
   ];
 
-  // Sub-tabs per sectie
   const SUBTABS: Record<string, { id: string; label: string; badge?: number }[]> = {
     dashboard: [],
     gebruikers: [
@@ -243,22 +235,15 @@ export default function AdminPage() {
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes heartPulse { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.4); opacity: 0.1; } }`}</style>
 
-      {/* ── Sidebar layout ── */}
       <div style={{ display: "flex", minHeight: "100vh" }}>
 
         {/* Sidebar */}
-        <div style={{
-          width: 220, flexShrink: 0, background: C.navy,
-          display: "flex", flexDirection: "column",
-          padding: "0 0 24px", position: "sticky", top: 0, height: "100vh",
-        }}>
-          {/* Logo */}
+        <div style={{ width: 220, flexShrink: 0, background: C.navy, display: "flex", flexDirection: "column", padding: "0 0 24px", position: "sticky", top: 0, height: "100vh" }}>
           <div style={{ padding: "24px 20px 20px", borderBottom: `1px solid rgba(255,255,255,0.08)` }}>
             <div className="font-bebas" style={{ ...h, fontSize: 22, letterSpacing: 3, color: "#fff", margin: 0 }}>WINDPING</div>
             <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", letterSpacing: 1, textTransform: "uppercase" as const }}>Admin</div>
           </div>
 
-          {/* KPI strip */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "rgba(255,255,255,0.05)", margin: "12px 0", padding: "12px 16px", borderTop: "1px solid rgba(255,255,255,0.06)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
             {[
               { label: "Users", value: stats.users, color: C.sky },
@@ -273,7 +258,6 @@ export default function AdminPage() {
             ))}
           </div>
 
-          {/* Nav items */}
           <nav style={{ flex: 1, padding: "4px 8px", overflowY: "auto" as const }}>
             {NAV.map(item => (
               <div key={item.section}>
@@ -297,7 +281,6 @@ export default function AdminPage() {
                   )}
                 </button>
 
-                {/* Sub-tabs */}
                 {section === item.section && SUBTABS[item.section].length > 0 && (
                   <div style={{ paddingLeft: 20, marginBottom: 4 }}>
                     {SUBTABS[item.section].map(sub => (
@@ -321,7 +304,6 @@ export default function AdminPage() {
             ))}
           </nav>
 
-          {/* Footer */}
           <div style={{ padding: "12px 20px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
             <a href="/" style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -333,7 +315,6 @@ export default function AdminPage() {
         {/* Main content */}
         <div style={{ flex: 1, padding: "28px 28px 60px", overflowY: "auto" as const }}>
 
-          {/* Page title */}
           <div style={{ marginBottom: 24 }}>
             <h1 className="font-bebas" style={{ ...h, fontSize: 26, letterSpacing: 2, margin: "0 0 2px", color: C.navy }}>
               {NAV.find(n => n.section === section)?.label || "Dashboard"}
@@ -356,7 +337,6 @@ export default function AdminPage() {
             )}
           </div>
 
-          {/* Dashboard sectie */}
           {section === "dashboard" && (
             <AdminDashboard
               stats={stats}
@@ -368,25 +348,19 @@ export default function AdminPage() {
         {/* ═══ HEALTH TAB ═══ */}
         {(section === "alerts" || section === "systeem") && tab === "health" && (
           <>
-            {/* Refresh bar */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <span style={{ fontSize: 10, color: C.muted }}>
                 Bijgewerkt: {lastRefresh.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}
                 {" · "}Auto-refresh: 5 min
               </span>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <button onClick={loadHealth} disabled={healthLoading} style={{
-                  padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 600,
-                  background: C.card, border: `1px solid ${C.cardBorder}`, color: C.sky,
-                  cursor: "pointer", opacity: healthLoading ? 0.5 : 1,
-                }}>
+                <button onClick={loadHealth} disabled={healthLoading} style={{ padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 600, background: C.card, border: `1px solid ${C.cardBorder}`, color: C.sky, cursor: "pointer", opacity: healthLoading ? 0.5 : 1 }}>
                   {healthLoading ? "⏳" : "🔄"} Ververs
                 </button>
                 <Tip text="Herlaadt alle health data: heartbeat, delivery funnel en gebruikersstatus. Gebeurt ook automatisch elke 5 minuten." />
               </div>
             </div>
 
-            {/* Quick guide */}
             <Card style={{ marginBottom: 16, border: `1.5px solid ${C.cardBorder}`, padding: "14px 16px" }}>
               <details>
                 <summary style={{ fontSize: 12, fontWeight: 700, color: C.sky, cursor: "pointer", listStyle: "none", display: "flex", alignItems: "center", gap: 6 }}>
@@ -394,11 +368,9 @@ export default function AdminPage() {
                 </summary>
                 <div style={{ fontSize: 12, color: C.sub, lineHeight: 1.7, marginTop: 10 }}>
                   <strong style={{ color: C.navy }}>🚩 Status</strong> — het allerbelangrijkste. Groen = alles ok. Geel = let op. Rood = actie nodig.<br/>
-                  <strong style={{ color: C.navy }}>💓 Heartbeat</strong> — laat zien of de engine draait. Het groene bolletje pulseert als het systeem gezond is. Als de laatste run langer dan 8 uur geleden is, wordt het rood.<br/>
-                  <strong style={{ color: C.navy }}>Recente runs</strong> — blokjes die tonen wanneer de engine draaide en hoeveel alerts hij maakte.<br/>
-                  <strong style={{ color: C.navy }}>Cron schema</strong> — 4 vaste momenten per dag: 01:00, 07:00, 13:00, 19:00 NL-tijd. Vinkje = gedraaid, streepje = gemist.<br/>
-                  <strong style={{ color: C.navy }}>📊 Funnel</strong> — hoeveel alerts zijn aangemaakt, hoeveel emails/push zijn daadwerkelijk bezorgd.<br/>
-                  <strong style={{ color: C.navy }}>👥 Gebruikers</strong> — per gebruiker: ontvangt hij alerts? Zijn emails bezorgd? Groen bolletje = gezond.
+                  <strong style={{ color: C.navy }}>💓 Heartbeat</strong> — laat zien of de engine draait.<br/>
+                  <strong style={{ color: C.navy }}>📊 Funnel</strong> — hoeveel alerts zijn aangemaakt, hoeveel emails/push zijn bezorgd.<br/>
+                  <strong style={{ color: C.navy }}>👥 Gebruikers</strong> — per gebruiker: ontvangt hij alerts? Zijn emails bezorgd?
                 </div>
               </details>
             </Card>
@@ -410,27 +382,18 @@ export default function AdminPage() {
               </Card>
             ) : health ? (
               <>
-                {/* Red Flags — always on top */}
                 <Section title={`🚩 Status (${health.redFlags.length} melding${health.redFlags.length !== 1 ? "en" : ""})`}>
                   <RedFlagsPanel flags={health.redFlags} />
                 </Section>
-
-                {/* Heartbeat */}
                 <Section title="💓 Heartbeat">
                   <HeartbeatPanel heartbeat={health.heartbeat} />
                 </Section>
-
-                {/* Delivery Funnel */}
                 <Section title="📊 Delivery Funnel (7 dagen)">
                   <FunnelPanel funnel={health.funnel} />
                 </Section>
-
-                {/* Enrichment Crons */}
                 <Section title="⚙️ Enrichment Crons" defaultOpen={true}>
                   <EnrichmentCronPanel />
                 </Section>
-
-                {/* Per-user status */}
                 <Section title={`👥 Gebruikers (${health.users.length})`} defaultOpen={false}>
                   <UserStatusPanel users={health.users} />
                 </Section>
@@ -485,19 +448,19 @@ export default function AdminPage() {
                   <button onClick={sendTestEmail} disabled={loading} style={{ padding: "11px 20px", background: C.sky, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
                     {loading ? "Sending..." : "📧 Send Test Email"}
                   </button>
-                  <Tip text="Stuurt een nep-alert email naar de geselecteerde gebruiker. Geen echte forecast, alleen om de email layout te testen." />
+                  <Tip text="Stuurt een nep-alert email naar de geselecteerde gebruiker." />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <button onClick={runPreview} disabled={loading} style={{ padding: "11px 20px", background: C.creamDark, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.sub, fontSize: 13, fontWeight: 600, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
                     {loading ? "Running..." : "👁️ Preview"}
                   </button>
-                  <Tip text="Evalueert de echte weersverwachting voor deze gebruiker en toont het resultaat — maar stuurt geen email of push." />
+                  <Tip text="Evalueert de echte weersverwachting maar stuurt niks." />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <button onClick={runLive} disabled={loading} style={{ padding: "11px 20px", background: C.green, border: "none", borderRadius: 10, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: loading ? 0.6 : 1 }}>
                     {loading ? "Running..." : "🚀 Run Live"}
                   </button>
-                  <Tip text="Voert een echte alert evaluatie uit én stuurt email + push notificatie als de condities kloppen. Gebruik alleen voor testen!" />
+                  <Tip text="Voert een echte evaluatie uit én stuurt email + push. Alleen voor testen!" />
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -505,20 +468,14 @@ export default function AdminPage() {
                   <button onClick={testPush} disabled={loading} style={{ padding: "8px 14px", background: "rgba(139,92,246,0.15)", border: "1px solid rgba(139,92,246,0.3)", borderRadius: 8, color: "#8B5CF6", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
                     🔔 Test Push
                   </button>
-                  <Tip text="Stuurt een test push notificatie naar het apparaat van de gebruiker. Handig om te checken of push werkt." />
+                  <Tip text="Stuurt een test push notificatie naar het apparaat van de gebruiker." />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <button onClick={clearTestAlerts} disabled={loading} style={{ padding: "8px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, color: C.muted, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
                     🗑️ Clear Test Alerts
                   </button>
-                  <Tip text="Verwijdert alle test-alerts uit de database. Gebruik dit na het testen om de alert history schoon te houden." />
+                  <Tip text="Verwijdert alle test-alerts uit de database." />
                 </div>
-              </div>
-              <div style={{ marginTop: 10, fontSize: 10, color: C.muted, lineHeight: 1.6 }}>
-                <strong>Send Test Email</strong> — nep-alert, stuurt alleen email<br/>
-                <strong>Preview</strong> — echte forecast, toont resultaat maar stuurt niks<br/>
-                <strong>Run Live</strong> — echte forecast, stuurt email + push<br/>
-                <strong>Test Push</strong> — stuurt een test push notificatie
               </div>
             </Card>
 
@@ -546,16 +503,15 @@ export default function AdminPage() {
           </Section>
         )}
 
-        {/* ═══ HISTORY TAB ═══ */}
+        {/* ═══ DIAGNOSE TAB ═══ */}
         {section === "alerts" && tab === "diagnose" && (
           <div>
             <Section title="🔍 Waarom geen alert?">
               <p style={{ fontSize: 13, color: C.sub, margin: "0 0 16px" }}>Kies een gebruiker om te zien waarom ze wel of geen alert hebben gekregen.</p>
 
-              {/* User selector */}
               {allUsers.length === 0 ? (
                 <button onClick={async () => {
-                  const token = await getValidToken();
+                  if (!token) return;
                   const res = await fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } });
                   const data = await res.json();
                   setAllUsers(data || []);
@@ -578,10 +534,10 @@ export default function AdminPage() {
 
               {diagnoseUserId && (
                 <button onClick={async () => {
+                  if (!token) return;
                   setDiagnoseLoading(true);
                   setDiagnoseResult(null);
                   try {
-                    const token = await getValidToken();
                     const res = await fetch(`/api/alerts/diagnose?user_id=${diagnoseUserId}`, {
                       headers: { Authorization: `Bearer ${token}` }
                     });
@@ -595,22 +551,18 @@ export default function AdminPage() {
                     setDiagnoseResult({ error: e.message || "Fetch mislukt" });
                   }
                   setDiagnoseLoading(false);
-                }} style={{
-                  padding: "10px 20px", background: C.sky, color: "#fff",
-                  border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
-                  marginBottom: 20, opacity: diagnoseLoading ? 0.6 : 1,
-                }}>{diagnoseLoading ? "Laden..." : "🔍 Analyseer"}</button>
+                }} style={{ padding: "10px 20px", background: C.sky, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 20, opacity: diagnoseLoading ? 0.6 : 1 }}>
+                  {diagnoseLoading ? "Laden..." : "🔍 Analyseer"}
+                </button>
               )}
 
               {diagnoseResult && !diagnoseResult.error && (
                 <div>
-                  {/* Prefs summary */}
                   <Card style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8 }}>INSTELLINGEN</div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {Object.entries(diagnoseResult.prefs.availability).map(([day, avail]: [string, any]) => (
-                        <span key={day} style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700,
-                          background: avail ? "#D1FAE5" : C.creamDark, color: avail ? "#065F46" : C.muted }}>
+                        <span key={day} style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: avail ? "#D1FAE5" : C.creamDark, color: avail ? "#065F46" : C.muted }}>
                           {day.charAt(0).toUpperCase() + day.slice(1)}
                         </span>
                       ))}
@@ -621,41 +573,29 @@ export default function AdminPage() {
                     </div>
                   </Card>
 
-                  {/* Spots */}
                   <Card style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8 }}>SPOTS ({diagnoseResult.spots.length})</div>
                     {diagnoseResult.spots.map((s: any) => (
                       <div key={s.id} style={{ padding: "6px 0", borderBottom: `1px solid ${C.cardBorder}`, fontSize: 12 }}>
                         <span style={{ fontWeight: 600, color: C.navy }}>{s.name}</span>
                         {s.conditions ? (
-                          <span style={{ color: C.sub, marginLeft: 8 }}>
-                            {s.conditions.windMin}–{s.conditions.windMax}kn · {s.conditions.directions?.join(", ") || "alle richtingen"}
-                          </span>
+                          <span style={{ color: C.sub, marginLeft: 8 }}>{s.conditions.windMin}–{s.conditions.windMax}kn · {s.conditions.directions?.join(", ") || "alle richtingen"}</span>
                         ) : <span style={{ color: C.gold, marginLeft: 8 }}>Geen voorkeuren ingesteld</span>}
                       </div>
                     ))}
                   </Card>
 
-                  {/* Per day */}
                   {diagnoseResult.days.map((day: any) => (
-                    <div key={day.date} style={{
-                      background: C.card, borderRadius: 14, padding: "14px 16px", marginBottom: 10,
-                      boxShadow: C.cardShadow,
-                      borderLeft: `4px solid ${day.hadGo ? C.green : day.hadHeadsUp ? C.sky : day.wouldSend ? C.gold : C.cardBorder}`,
-                    }}>
+                    <div key={day.date} style={{ background: C.card, borderRadius: 14, padding: "14px 16px", marginBottom: 10, boxShadow: C.cardShadow, borderLeft: `4px solid ${day.hadGo ? C.green : day.hadHeadsUp ? C.sky : day.wouldSend ? C.gold : C.cardBorder}` }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                         <div style={{ fontWeight: 700, color: C.navy, fontSize: 14 }}>{day.dayLabel}</div>
-                        <div style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 8,
-                          background: day.hadGo ? "#D1FAE5" : day.hadHeadsUp ? "#DBEAFE" : day.wouldSend ? "#FEF3C7" : C.creamDark,
-                          color: day.hadGo ? "#065F46" : day.hadHeadsUp ? "#1D4ED8" : day.wouldSend ? "#D97706" : C.muted,
-                        }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 8, background: day.hadGo ? "#D1FAE5" : day.hadHeadsUp ? "#DBEAFE" : day.wouldSend ? "#FEF3C7" : C.creamDark, color: day.hadGo ? "#065F46" : day.hadHeadsUp ? "#1D4ED8" : day.wouldSend ? "#D97706" : C.muted }}>
                           {day.hadGo ? "✅ Go verstuurd" : day.hadHeadsUp ? "📣 Heads-up verstuurd" : day.hadDowngrade ? "⬇️ Downgrade verstuurd" : day.wouldSend ? `⏳ Zou sturen: ${day.wouldSend}` : `❌ ${day.wouldNotSendReason || "Geen alert"}`}
                         </div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                         {day.spotResults.map((s: any) => (
-                          <div key={s.spotId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8,
-                            background: s.inRange ? "#F0FDF4" : "#FFF7ED" }}>
+                          <div key={s.spotId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8, background: s.inRange ? "#F0FDF4" : "#FFF7ED" }}>
                             <span>{s.inRange ? "✅" : "❌"}</span>
                             <span style={{ fontWeight: 600, fontSize: 12, color: C.navy, flex: 1 }}>{s.spotName}</span>
                             <span style={{ fontSize: 12, color: C.sub }}>{s.wind}kn {s.dir}</span>
@@ -664,8 +604,6 @@ export default function AdminPage() {
                           </div>
                         ))}
                       </div>
-
-                      {/* Verstuurde alerts voor deze dag */}
                       {day.sentAlerts?.length > 0 && (
                         <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.cardBorder}` }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, marginBottom: 6, letterSpacing: 0.5 }}>VERSTUURDE ALERTS</div>
@@ -685,8 +623,6 @@ export default function AdminPage() {
                           </div>
                         </div>
                       )}
-
-                      {/* Nog geen alert maar zou sturen */}
                       {day.wouldSend && !day.sentAlerts?.length && (
                         <div style={{ marginTop: 8, padding: "5px 10px", borderRadius: 8, background: "#FEF3C7", fontSize: 11, color: "#D97706" }}>
                           ⏳ Nog niet verstuurd — zou een <strong>{day.wouldSend}</strong> alert sturen bij volgende engine run
@@ -722,7 +658,7 @@ export default function AdminPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {history.map((a) => {
                   const tc = alertTypeColors[a.alert_type] || C.muted;
-                  const spots = a.conditions?.spots || [];
+                  const spotsList = a.conditions?.spots || [];
                   return (
                     <Card key={a.id} style={{ padding: "12px 16px", border: a.is_test ? `1.5px solid ${C.gold}40` : undefined }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
@@ -735,7 +671,7 @@ export default function AdminPage() {
                       </div>
                       <div style={{ fontSize: 12, color: C.muted }}>
                         Target: <strong style={{ color: C.navy }}>{a.target_date}</strong>
-                        {spots.length > 0 && <span> · {spots.map((s: any) => `${s.spotName || s.name} ${s.wind}kn ${s.dir}`).join(", ")}</span>}
+                        {spotsList.length > 0 && <span> · {spotsList.map((s: any) => `${s.spotName || s.name} ${s.wind}kn ${s.dir}`).join(", ")}</span>}
                       </div>
                       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                         <span style={{ fontSize: 10, color: a.delivered_push ? C.green : C.sub }}>📱 Push: {a.delivered_push ? "✓" : "—"}</span>
@@ -752,14 +688,13 @@ export default function AdminPage() {
         {section === "gebruikers" && tab === "users" && (
           <div>
             <Section title="👤 Gebruikersbeheer">
-              {/* User list */}
               <div style={{ marginBottom: 16 }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
                   <button onClick={async () => {
-                    const token = await getValidToken();
-                  const res = await fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } });
-                  const data = await res.json();
-                  setAllUsers(data || []);
+                    if (!token) return;
+                    const res = await fetch("/api/admin/users", { headers: { Authorization: `Bearer ${token}` } });
+                    const data = await res.json();
+                    setAllUsers(data || []);
                   }} style={{ padding: "8px 16px", background: C.sky, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                     Laad gebruikers
                   </button>
@@ -777,20 +712,15 @@ export default function AdminPage() {
                         setEditWelcome(u.welcome_shown || false);
                         setUserDetail(u);
                         setUserMsg("");
-                        // Load prefs and spots
-                        const [prefs, spots, spotsList] = await Promise.all([
+                        const [prefs, userSpotsData, spotsList] = await Promise.all([
                           sbGet(`alert_preferences?user_id=eq.${u.id}`),
                           sbGet(`user_spots?user_id=eq.${u.id}&select=spot_id,spots(id,display_name)`),
                           sbGet("spots?select=id,display_name&order=display_name.asc&limit=100"),
                         ]);
                         setUserPrefs(prefs?.[0] || null);
-                        setUserSpots(spots || []);
+                        setUserSpots(userSpotsData || []);
                         setAllSpots(spotsList || []);
-                      }} style={{
-                        padding: "10px 14px", background: selectedUserId === u.id ? `${C.sky}15` : C.card,
-                        border: `1.5px solid ${selectedUserId === u.id ? C.sky : C.cardBorder}`,
-                        borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
-                      }}>
+                      }} style={{ padding: "10px 14px", background: selectedUserId === u.id ? `${C.sky}15` : C.card, border: `1.5px solid ${selectedUserId === u.id ? C.sky : C.cardBorder}`, borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{u.name || "—"}</div>
                           <div style={{ fontSize: 11, color: C.sub }}>{u.email}</div>
@@ -805,7 +735,6 @@ export default function AdminPage() {
                 )}
               </div>
 
-              {/* User detail editor */}
               {userDetail && (
                 <div style={{ background: C.creamDark, borderRadius: 14, padding: 16, marginTop: 8 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, marginBottom: 14 }}>
@@ -820,7 +749,6 @@ export default function AdminPage() {
                   )}
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-                    {/* Name */}
                     <div style={{ gridColumn: "1 / -1" }}>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>NAAM / DISPLAY NAME</label>
                       <div style={{ display: "flex", gap: 8 }}>
@@ -837,14 +765,12 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    {/* Wind min */}
                     <div>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>MIN WIND (KN)</label>
                       <input type="number" value={editWindMin} onChange={e => setEditWindMin(Number(e.target.value))} min={5} max={50}
                         style={{ width: "100%", padding: "8px 12px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, outline: "none", boxSizing: "border-box" }} />
                     </div>
 
-                    {/* Wind max */}
                     <div>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 4 }}>MAX WIND (KN)</label>
                       <input type="number" value={editWindMax} onChange={e => setEditWindMax(Number(e.target.value))} min={5} max={50}
@@ -870,7 +796,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* Welcome / onboarding flags */}
                   <div style={{ borderTop: `1px solid ${C.cardBorder}`, paddingTop: 12, marginBottom: 12 }}>
                     <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8 }}>ONBOARDING FLAGS</label>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -884,10 +809,7 @@ export default function AdminPage() {
                       <button onClick={async () => {
                         await sbPatch(`users?id=eq.${userDetail.id}`, { welcome_shown: false });
                         if (userPrefs) {
-                          await sbPatch(`alert_preferences?user_id=eq.${userDetail.id}`, {
-                            available_mon: false, available_tue: false, available_wed: false,
-                            available_thu: false, available_fri: false, available_sat: true, available_sun: true,
-                          });
+                          await sbPatch(`alert_preferences?user_id=eq.${userDetail.id}`, { available_mon: false, available_tue: false, available_wed: false, available_thu: false, available_fri: false, available_sat: true, available_sun: true });
                         }
                         setEditWelcome(false); setEditWindMin(12); setEditWindMax(28);
                         await sbPatch(`users?id=eq.${userDetail.id}`, { min_wind_speed: 12, max_wind_speed: 28 });
@@ -903,7 +825,7 @@ export default function AdminPage() {
                         🧪 Test onboarding (behoudt data)
                       </button>
                       <button onClick={async () => {
-                        if (!confirm(`Weet je zeker dat je ALLES van ${userDetail.name || userDetail.email} wilt verwijderen? Dit reset de volledige onboarding.`)) return;
+                        if (!confirm(`Weet je zeker dat je ALLES van ${userDetail.name || userDetail.email} wilt verwijderen?`)) return;
                         setUserSaving(true);
                         try {
                           await Promise.all([
@@ -911,22 +833,10 @@ export default function AdminPage() {
                             sbDelete(`alert_preferences?user_id=eq.${userDetail.id}`),
                             sbDelete(`alert_schedules?user_id=eq.${userDetail.id}`),
                           ]);
-                          await sbPatch(`users?id=eq.${userDetail.id}`, {
-                            name: null,
-                            min_wind_speed: null,
-                            max_wind_speed: null,
-                            welcome_shown: false,
-                          });
-                          setUserSpots([]);
-                          setUserPrefs(null);
-                          setEditName("");
-                          setEditWindMin(12);
-                          setEditWindMax(28);
-                          setEditWelcome(false);
+                          await sbPatch(`users?id=eq.${userDetail.id}`, { name: null, min_wind_speed: null, max_wind_speed: null, welcome_shown: false });
+                          setUserSpots([]); setUserPrefs(null); setEditName(""); setEditWindMin(12); setEditWindMax(28); setEditWelcome(false);
                           setUserMsg("✓ Alles verwijderd — gebruiker kan opnieuw onboarden");
-                        } catch(e: any) {
-                          setUserMsg("❌ Fout: " + e.message);
-                        }
+                        } catch(e: any) { setUserMsg("❌ Fout: " + e.message); }
                         setUserSaving(false);
                       }} style={{ padding: "7px 14px", background: "#FEF2F2", border: "2px solid #DC2626", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#DC2626", cursor: "pointer" }}>
                         🗑️ Verwijder alles (onboarding reset)
@@ -934,7 +844,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* Spots */}
                   <div style={{ borderTop: `1px solid ${C.cardBorder}`, paddingTop: 12, marginBottom: 12 }}>
                     <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8 }}>SPOTS ({userSpots.length})</label>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
@@ -953,7 +862,6 @@ export default function AdminPage() {
                         </div>
                       ))}
                     </div>
-                    {/* Add spot */}
                     <div style={{ display: "flex", gap: 8 }}>
                       <select onChange={async (e) => {
                         const spotId = Number(e.target.value);
@@ -972,7 +880,6 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  {/* Alert preferences summary */}
                   {userPrefs && (
                     <div style={{ borderTop: `1px solid ${C.cardBorder}`, paddingTop: 12 }}>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8 }}>BESCHIKBAARHEID</label>
@@ -986,10 +893,7 @@ export default function AdminPage() {
                         })}
                       </div>
                       <button onClick={async () => {
-                        await sbPatch(`alert_preferences?user_id=eq.${userDetail.id}`, {
-                          available_mon: false, available_tue: false, available_wed: false,
-                          available_thu: false, available_fri: false, available_sat: true, available_sun: true,
-                        });
+                        await sbPatch(`alert_preferences?user_id=eq.${userDetail.id}`, { available_mon: false, available_tue: false, available_wed: false, available_thu: false, available_fri: false, available_sat: true, available_sun: true });
                         setUserPrefs((p: any) => ({ ...p, available_mon: false, available_tue: false, available_wed: false, available_thu: false, available_fri: false, available_sat: true, available_sun: true }));
                         setUserMsg("✓ Beschikbaarheid naar default (weekenden)");
                       }} style={{ padding: "6px 14px", background: C.creamDark, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
@@ -1003,46 +907,18 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ═══ STATS TAB ═══ */}
-        {section === "gebruikers" && tab === "stats" && <StatsTab token={adminToken} />}
-
-        {/* ═══ SIMULATOR TAB ═══ */}
-        {section === "alerts" && tab === "simulator" && <SimulatorTab token={adminToken} />}
-
-        {section === "content" && tab === "moderation" && (
-          <ModerationTab />
-        )}
-
-        {section === "content" && tab === "spots" && (
-          <SpotsTab />
-        )}
-
-        {section === "content" && tab === "enrichment" && (
-          <EnrichmentTab />
-        )}
-
-        {section === "content" && tab === "prompts" && (
-          <PromptsTab />
-        )}
-        {section === "content" && tab === "beheer" && (
-          <EnrichmentBeheerTab />
-        )}
-
-        {section === "content" && tab === "nieuws" && (
-          <NieuwsOverzichtTab />
-        )}
-
-        {section === "financien" && (tab === "kosten" || tab === "campagnes") && (
-          <FinancienTab tab={tab} token={adminToken} />
-        )}
+        {section === "gebruikers" && tab === "stats" && <StatsTab token={token} />}
+        {section === "alerts" && tab === "simulator" && <SimulatorTab token={token} />}
+        {section === "content" && tab === "moderation" && <ModerationTab />}
+        {section === "content" && tab === "spots" && <SpotsTab />}
+        {section === "content" && tab === "enrichment" && <EnrichmentTab />}
+        {section === "content" && tab === "prompts" && <PromptsTab />}
+        {section === "content" && tab === "beheer" && <EnrichmentBeheerTab />}
+        {section === "content" && tab === "nieuws" && <NieuwsOverzichtTab />}
+        {section === "financien" && (tab === "kosten" || tab === "campagnes") && <FinancienTab tab={tab} token={token} />}
 
         </div>
       </div>
     </div>
   );
 }
-
-/* ══════════════════════════════════════════════════════════════
-   STATS TAB
-   ══════════════════════════════════════════════════════════════ */
-

@@ -1,7 +1,6 @@
-import { getValidToken, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 
-export async function sbGet(path: string) {
-  const token = await getValidToken();
+export async function sbGet(path: string, token?: string) {
   const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers });
@@ -9,37 +8,41 @@ export async function sbGet(path: string) {
   return res.json();
 }
 
-export async function sbPatch(path: string, body: any) {
-  const token = await getValidToken();
+export async function sbPatch(path: string, body: any, token?: string) {
+  const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json", Prefer: "return=minimal" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method: "PATCH",
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+    headers,
     body: JSON.stringify(body),
   });
 }
 
-export async function sbDelete(path: string) {
-  const token = await getValidToken();
+export async function sbDelete(path: string, token?: string) {
+  const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY };
+  if (token) headers.Authorization = `Bearer ${token}`;
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method: "DELETE",
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    headers,
   });
 }
 
-export async function sbPost2(path: string, body: any) {
-  const token = await getValidToken();
+export async function sbPost2(path: string, body: any, token?: string) {
+  const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method: "POST",
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+    headers,
     body: JSON.stringify(body),
   });
 }
 
-export async function apiPost(path: string, body: any) {
-  const token = await getValidToken();
+export async function apiPost(path: string, body: any, token?: string) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers,
     body: JSON.stringify(body),
   });
   return res.json();
