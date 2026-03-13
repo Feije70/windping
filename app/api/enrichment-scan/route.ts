@@ -14,6 +14,23 @@ const REGION_LANG: Record<string, string> = {
   Austria: "de", Switzerland: "de", Latvia: "lv", Romania: "ro",
   Hungary: "hu", Montenegro: "sr", Azores: "pt", Wales: "en",
   England: "en", Scotland: "en",
+  // Zuid-Amerika
+  Brazil: "pt", Argentina: "es", Chile: "es", Colombia: "es",
+  Venezuela: "es", Peru: "es", "Costa Rica": "es", Mexico: "es",
+  "Dominican Republic": "es",
+  // Afrika
+  "South Africa": "en", Kenya: "en", Mozambique: "pt",
+  Madagascar: "fr", Senegal: "fr", Tanzania: "en", Mauritius: "fr",
+  "Cape Verde": "pt",
+  // Azië & Pacific
+  Indonesia: "id", Philippines: "en", Malaysia: "ms",
+  "Sri Lanka": "en", Vietnam: "vi", Thailand: "th",
+  Japan: "ja", Taiwan: "zh", India: "en",
+  // Midden-Oosten
+  Oman: "ar", UAE: "ar",
+  // Engelstalig
+  Australia: "en", "New Zealand": "en", USA: "en", Canada: "en",
+  Egypt: "ar",
 };
 
 const LANG_NAME: Record<string, string> = {
@@ -22,6 +39,8 @@ const LANG_NAME: Record<string, string> = {
   da: "Danish", hr: "Croatian", no: "Norwegian", sv: "Swedish",
   pl: "Polish", ar: "Arabic", bg: "Bulgarian", tr: "Turkish",
   lv: "Latvian", ro: "Romanian", hu: "Hungarian", sr: "Serbian",
+  id: "Indonesian", ms: "Malay", vi: "Vietnamese", th: "Thai",
+  ja: "Japanese", zh: "Chinese",
 };
 
 function getLangForSpot(region: string | undefined): string {
@@ -37,7 +56,6 @@ Use web_search to find current information about the given spot.
 Be specific and factual — never invent information.
 ALWAYS respond with valid JSON only, no markdown, no explanation.`;
 
-// Haal prompts op uit database, valt terug op defaults
 async function loadPrompts(): Promise<Record<string, string>> {
   const defaults: Record<string, string> = {
     conditions: "Wind conditions, directions, best season, wave height, currents, water type. Null if unknown.",
@@ -89,7 +107,7 @@ export async function POST(req: NextRequest) {
         : "";
 
     const langInstruction = needsBothLangs
-      ? `Write all category values TWICE: once in ${spotLangName} (key: "${spotLang}") and once in English (key: "en").`
+      ? `CRITICAL REQUIREMENT: Your response MUST contain BOTH language keys. Write all category values in ${spotLangName} under key "${spotLang}", AND the same content in English under key "en". A response with ONLY "en" is INVALID and will be rejected. BOTH keys are MANDATORY.`
       : `Write all category values in English (key: "en").`;
 
     const categoryFields = `{
@@ -135,7 +153,6 @@ ${jsonStructure}`;
     const tools = [{ type: "web_search_20250305", name: "web_search" }];
     let messages: any[] = [{ role: "user", content: prompt }];
 
-    // Ronde 1
     const res1 = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -184,7 +201,7 @@ ${jsonStructure}`;
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
-          max_tokens: needsBothLangs ? 4000 : 2000,
+          max_tokens: needsBothLangs ? 6000 : 3000,
           system: SYSTEM,
           tools,
           messages,
@@ -210,7 +227,13 @@ ${jsonStructure}`;
 
     const result = JSON.parse(jsonMatch[0]);
 
-    // Sla op in spot_enrichment
+    // Valideer taallagen
+    if (needsBothLangs && result.categories && !result.categories[spotLang]) {
+      return NextResponse.json({ 
+        error: `Taallaag "${spotLang}" ontbreekt — probeer opnieuw` 
+      }, { status: 500 });
+    }
+
     const upsertRes = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment`, {
       method: "POST",
       headers: {
