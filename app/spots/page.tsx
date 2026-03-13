@@ -67,7 +67,6 @@ function SpotsContent() {
   const LRef = useRef<any>(null);
   const [visibleIds, setVisibleIds] = useState<Set<number>>(new Set());
 
-  // ── Moet boven de useEffects staan die hem gebruiken ──
   const filterByBounds = useCallback(() => {
     if (!mapRef.current) return;
     const bounds = mapRef.current.getBounds();
@@ -109,7 +108,17 @@ function SpotsContent() {
   }, []);
 
   useEffect(() => {
-    if (!mapReady || !mapElRef.current || mapRef.current || !LRef.current) return;
+    if (!mapReady || !mapElRef.current || !LRef.current) return;
+
+    // Cleanup: verwijder oude Leaflet instantie als die er nog op zit
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+    if ((mapElRef.current as any)._leaflet_id) {
+      delete (mapElRef.current as any)._leaflet_id;
+    }
+
     const L = LRef.current;
     const map = L.map(mapElRef.current, { zoomControl: true, scrollWheelZoom: true, attributionControl: false }).setView([52.3, 5.0], 7);
     L.control.attribution({ prefix: false, position: "bottomright" }).addAttribution('<a href="https://leafletjs.com" style="font-size:9px;opacity:0.5;">Leaflet</a> · © OSM').addTo(map);
@@ -120,6 +129,11 @@ function SpotsContent() {
       .then((r) => r.json())
       .then((d) => { if (d.latitude && d.longitude) map.setView([d.latitude, d.longitude], 7); })
       .catch(() => {});
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
   }, [mapReady, filterByBounds]);
 
   useEffect(() => {
