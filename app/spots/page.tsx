@@ -67,6 +67,16 @@ function SpotsContent() {
   const LRef = useRef<any>(null);
   const [visibleIds, setVisibleIds] = useState<Set<number>>(new Set());
 
+  const filterByBounds = useCallback(() => {
+    if (!mapRef.current) return;
+    const bounds = mapRef.current.getBounds();
+    const ids = new Set<number>();
+    markersRef.current.forEach((m: any) => {
+      if (bounds.contains(m.getLatLng())) ids.add(m._spotId);
+    });
+    setVisibleIds(ids);
+  }, []);
+
   useEffect(() => {
     if (!token) return;
     fetch(`${SUPABASE_URL}/rest/v1/spots?active=eq.true&is_private=eq.false&select=id,display_name,latitude,longitude,spot_type,level,min_wind,max_wind,good_directions,tips&order=display_name`, {
@@ -78,6 +88,7 @@ function SpotsContent() {
       .finally(() => setLoading(false));
   }, [token]);
 
+  // Leaflet script laden — eenmalig globaal
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!document.querySelector('link[href*="leaflet"]')) {
@@ -92,15 +103,29 @@ function SpotsContent() {
       script.onload = () => { LRef.current = (window as any).L; setMapReady(true); };
       document.head.appendChild(script);
     } else {
+      // Leaflet al geladen (terug op pagina via client-side navigatie)
       LRef.current = (window as any).L;
       setMapReady(true);
     }
+    // Bij unmount: reset mapReady zodat volgende mount opnieuw initialiseert
+    return () => { setMapReady(false); };
   }, []);
 
+  // Map initialiseren — met cleanup van oude Leaflet state op de container
   useEffect(() => {
-    if (!mapReady || !mapElRef.current || mapRef.current || !LRef.current) return;
+    if (!mapReady || !mapElRef.current || !LRef.current) return;
+
+    // Verwijder eventuele oude Leaflet instantie
+    if (mapRef.current) {
+      mapRef.current.remove();
+      mapRef.current = null;
+    }
+    // Verwijder _leaflet_id van de DOM node zodat L.map() hem accepteert
+    const el = mapElRef.current as any;
+    if (el._leaflet_id) delete el._leaflet_id;
+
     const L = LRef.current;
-    const map = L.map(mapElRef.current, { zoomControl: true, scrollWheelZoom: true, attributionControl: false }).setView([52.3, 5.0], 7);
+    const map = L.map(el, { zoomControl: true, scrollWheelZoom: true, attributionControl: false }).setView([52.3, 5.0], 7);
     L.control.attribution({ prefix: false, position: "bottomright" }).addAttribution('<a href="https://leafletjs.com" style="font-size:9px;opacity:0.5;">Leaflet</a> · © OSM').addTo(map);
     L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 18 }).addTo(map);
     mapRef.current = map;
@@ -109,7 +134,12 @@ function SpotsContent() {
       .then((r) => r.json())
       .then((d) => { if (d.latitude && d.longitude) map.setView([d.latitude, d.longitude], 7); })
       .catch(() => {});
-  }, [mapReady]);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [mapReady, filterByBounds]);
 
   useEffect(() => {
     if (!mapRef.current || !LRef.current || !spots.length) return;
@@ -143,17 +173,7 @@ function SpotsContent() {
       map.fitBounds(L.featureGroup(markersRef.current).getBounds().pad(0.1));
     }
     filterByBounds();
-  }, [spots, mapReady]);
-
-  const filterByBounds = useCallback(() => {
-    if (!mapRef.current) return;
-    const bounds = mapRef.current.getBounds();
-    const ids = new Set<number>();
-    markersRef.current.forEach((m: any) => {
-      if (bounds.contains(m.getLatLng())) ids.add(m._spotId);
-    });
-    setVisibleIds(ids);
-  }, []);
+  }, [spots, mapReady, filterByBounds]);
 
   function handleLocate() {
     if (!navigator.geolocation || !mapRef.current || !LRef.current) return;
