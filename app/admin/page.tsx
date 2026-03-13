@@ -16,6 +16,7 @@ import { AdminDashboard } from "./components/AdminDashboard";
 import { EnrichmentCronPanel } from "./components/EnrichmentCronPanel";
 import { EnrichmentTab } from "./components/EnrichmentTab";
 import { EnrichmentBeheerTab } from "./components/EnrichmentBeheerTab";
+import { NieuwsOverzichtTab } from "./components/NieuwsOverzichtTab";
 import { EnrichmentResult } from "./components/EnrichmentResult";
 import { SpotsTab } from "./components/SpotsTab";
 import { ModerationTab } from "./components/ModerationTab";
@@ -27,7 +28,7 @@ import { SimulatorTab } from "./components/SimulatorTab";
 export default function AdminPage() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [section, setSection] = useState<"dashboard" | "gebruikers" | "alerts" | "content" | "systeem" | "financien">("dashboard");
-  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "spots" | "moderation" | "enrichment" | "beheer" | "prompts" | "kosten" | "campagnes">("stats");
+  const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "spots" | "moderation" | "enrichment" | "beheer" | "nieuws" | "prompts" | "kosten" | "campagnes">("stats");
   const [flaggedPosts, setFlaggedPosts] = useState<any[]>([]);
   const [flaggedLoading, setFlaggedLoading] = useState(false);
   const [stats, setStats] = useState({ users: 0, spots: 0, alerts: 0, alertsToday: 0 });
@@ -226,6 +227,7 @@ export default function AdminPage() {
       { id: "moderation", label: "Moderatie" },
       { id: "enrichment", label: "Spot Enrichment" },
       { id: "beheer", label: "Enrichment Beheer" },
+      { id: "nieuws", label: "Nieuws overzicht" },
       { id: "prompts", label: "Prompts" },
     ],
     systeem: [
@@ -1024,6 +1026,10 @@ export default function AdminPage() {
         )}
         {section === "content" && tab === "beheer" && (
           <EnrichmentBeheerTab />
+        )}
+
+        {section === "content" && tab === "nieuws" && (
+          <NieuwsOverzichtTab />
         )}
 
         {section === "financien" && (tab === "kosten" || tab === "campagnes") && (
