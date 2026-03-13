@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { C } from "../lib/constants";
 import { alertTypeColors, alertTypeEmoji, severityStyles } from "../lib/constants";
@@ -162,5 +163,69 @@ export function RedFlagsPanel({ flags }: { flags: HealthData["redFlags"] }) {
         );
       })}
     </div>
+  );
+}
+
+interface SentryIssue { id: string; title: string; culprit: string; count: string; lastSeen: string; level: string; permalink: string; }
+interface SentryData { total24h: number; total7d: number; recentIssues: SentryIssue[]; topCulprit: { route: string; count: number } | null; sentryUrl: string; }
+
+export function SentryPanel() {
+  const [data, setData] = useState<SentryData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/admin/sentry")
+      .then(r => r.json())
+      .then(d => { if (d.error) throw new Error(d.error); setData(d); })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+  const levelColor = (level: string) => ({fatal:"#DC2626",error:"#EA580C",warning:"#F59E0B",info:"#2E8FAE"} as Record<string,string>)[level] || "#8A9BB0";
+  const hasIssues = data && data.total24h > 0;
+  return (
+    <Card>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: hasIssues ? "#EA580C" : C.green }} />
+          <div style={{ fontSize: 13, fontWeight: 800, color: C.navy }}>Error Monitoring</div>
+        </div>
+        {data?.sentryUrl && <a href={data.sentryUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: C.sky, textDecoration: "none", fontWeight: 600 }}>Sentry →</a>}
+      </div>
+      {loading && <div style={{ fontSize: 12, color: C.muted, textAlign: "center", padding: "16px 0" }}>Laden...</div>}
+      {error && <div style={{ fontSize: 12, color: "#DC2626" }}>Fout: {error}</div>}
+      {data && (
+        <>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <div style={{ flex: 1, padding: "10px 12px", background: hasIssues ? "#FEF2F2" : C.green + "10", borderRadius: 10, border: "1.5px solid " + (hasIssues ? "#FCA5A5" : C.green + "30") }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: hasIssues ? "#DC2626" : C.green }}>{data.total24h}</div>
+              <div style={{ fontSize: 10, color: C.sub }}>issues 24u</div>
+            </div>
+            <div style={{ flex: 1, padding: "10px 12px", background: C.creamDark, borderRadius: 10, border: "1px solid " + C.cardBorder }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: C.navy }}>{data.total7d}</div>
+              <div style={{ fontSize: 10, color: C.sub }}>issues 7 dagen</div>
+            </div>
+          </div>
+          {data.recentIssues.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {data.recentIssues.map(issue => (
+                <a key={issue.id} href={issue.permalink} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "none", display: "block", padding: "8px 10px", background: "#FEF2F2", borderRadius: 8, border: "1px solid #FCA5A5" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: "1px 5px", borderRadius: 3, background: levelColor(issue.level), color: "#fff", textTransform: "uppercase" as const }}>{issue.level}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#7F1D1D", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{issue.title}</span>
+                    <span style={{ fontSize: 10, color: C.muted }}>{issue.count}x</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: "#9A3412", marginTop: 2 }}>{issue.culprit}</div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: C.green + "10", borderRadius: 8, border: "1px solid " + C.green + "30" }}>
+              <span>✅</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.green }}>Geen errors in de afgelopen 24 uur</span>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   );
 }
