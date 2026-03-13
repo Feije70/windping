@@ -105,11 +105,7 @@ function SpotsContent() {
     L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 18 }).addTo(map);
     mapRef.current = map;
     map.on("moveend zoomend", filterByBounds);
-    fetch("https://ipapi.co/json/")
-      .then((r) => r.json())
-      .then((d) => { if (d.latitude && d.longitude) map.setView([d.latitude, d.longitude], 7); })
-      .catch(() => {});
-  }, [mapReady]);
+  }, [mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!mapRef.current || !LRef.current || !spots.length) return;
@@ -143,7 +139,7 @@ function SpotsContent() {
       map.fitBounds(L.featureGroup(markersRef.current).getBounds().pad(0.1));
     }
     filterByBounds();
-  }, [spots, mapReady]);
+  }, [spots, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filterByBounds = useCallback(() => {
     if (!mapRef.current) return;
