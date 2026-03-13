@@ -4,7 +4,8 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { Icons } from "@/components/Icons";
-import { getValidToken, getEmail, getAuthId, isTokenExpired, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 
 const h = { fontFamily: fonts.heading };
 const SMIN = 5, SMAX = 50, SIZE = 280, CTR = 140, SEG = 16, SEG_A = 22.5, IR = 22, OR = CTR - 16;
@@ -20,26 +21,6 @@ const TYPES = [
   { value: "Overig", label: "📍 Other" },
 ];
 const LEVELS = ["Beginners", "Alle niveaus", "Gevorderden"];
-
-/* ── Supabase ── */
-async function sbPost(table: string, data: any, prefer = "return=representation") {
-  const token = await getValidToken(); if (!token) throw new Error("auth");
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-    method: "POST",
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: prefer },
-    body: JSON.stringify(data),
-  });
-  if (res.status === 401) throw new Error("auth");
-  if (!res.ok) { const t = await res.text(); throw new Error(`post_${res.status}_${t}`); }
-  if (prefer.includes("representation")) return res.json();
-}
-
-async function sbGet(path: string) {
-  const token = await getValidToken(); if (!token) throw new Error("auth");
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } });
-  if (!res.ok) throw new Error("fetch_failed");
-  return res.json();
-}
 
 /* ── Wind Range Slider ── */
 function WindSlider({ min, max, onChange, color = C.sky }: { min: number; max: number; onChange: (mn: number, mx: number) => void; color?: string }) {
@@ -83,35 +64,14 @@ function WindSlider({ min, max, onChange, color = C.sky }: { min: number; max: n
 /* ── First Spot Popup ── */
 function FirstSpotPopup({ spotName, onClose }: { spotName: string; onClose: () => void }) {
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 99999,
-      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)",
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
-    }}>
-      <div style={{
-        background: C.card, borderRadius: 24, padding: "36px 28px", maxWidth: 360, width: "100%",
-        textAlign: "center", boxShadow: "0 24px 80px rgba(0,0,0,0.3)",
-        animation: "popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)",
-      }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 99999, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: C.card, borderRadius: 24, padding: "36px 28px", maxWidth: 360, width: "100%", textAlign: "center", boxShadow: "0 24px 80px rgba(0,0,0,0.3)", animation: "popIn 0.4s cubic-bezier(0.34,1.56,0.64,1)" }}>
         <div style={{ fontSize: 64, marginBottom: 16 }}>🤙</div>
         <h2 style={{ ...h, fontSize: 26, fontWeight: 800, color: C.navy, margin: "0 0 10px" }}>Je bent er klaar voor!</h2>
-        <p style={{ fontSize: 14, color: C.sub, lineHeight: 1.6, margin: "0 0 8px" }}>
-          Vanaf nu houden we de wind in de gaten voor
-        </p>
-        <div style={{
-          display: "inline-block", padding: "6px 16px", borderRadius: 20,
-          background: `${C.sky}20`, color: C.sky, fontWeight: 700, fontSize: 15, marginBottom: 16,
-        }}>
-          📍 {spotName}
-        </div>
-        <p style={{ fontSize: 13, color: C.sub, lineHeight: 1.6, margin: "0 0 24px" }}>
-          Je krijgt een ping zodra het waait. Tijd om je gear klaar te leggen. Je kunt altijd meer spots toevoegen of je instellingen aanpassen.
-        </p>
-        <button onClick={onClose} style={{
-          width: "100%", padding: "14px", background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`,
-          color: "#fff", border: "none", borderRadius: 14, fontSize: 15, fontWeight: 700,
-          cursor: "pointer", boxShadow: `0 4px 20px ${C.sky}40`,
-        }}>
+        <p style={{ fontSize: 14, color: C.sub, lineHeight: 1.6, margin: "0 0 8px" }}>Vanaf nu houden we de wind in de gaten voor</p>
+        <div style={{ display: "inline-block", padding: "6px 16px", borderRadius: 20, background: `${C.sky}20`, color: C.sky, fontWeight: 700, fontSize: 15, marginBottom: 16 }}>📍 {spotName}</div>
+        <p style={{ fontSize: 13, color: C.sub, lineHeight: 1.6, margin: "0 0 24px" }}>Je krijgt een ping zodra het waait. Tijd om je gear klaar te leggen. Je kunt altijd meer spots toevoegen of je instellingen aanpassen.</p>
+        <button onClick={onClose} style={{ width: "100%", padding: "14px", background: `linear-gradient(135deg, ${C.sky}, #4DB8C9)`, color: "#fff", border: "none", borderRadius: 14, fontSize: 15, fontWeight: 700, cursor: "pointer", boxShadow: `0 4px 20px ${C.sky}40` }}>
           Let's go! 🌊
         </button>
       </div>
@@ -124,6 +84,8 @@ function FirstSpotPopup({ spotName, onClose }: { spotName: string; onClose: () =
    MAIN PAGE
    ══════════════════════════════════════════════════════════════════════ */
 export default function AddSpotPage() {
+  const { user, token, loading: authLoading } = useUser({ redirectIfUnauthenticated: true });
+
   const [name, setName] = useState("");
   const [spotType, setSpotType] = useState<string | null>(null);
   const [level, setLevel] = useState("Alle niveaus");
@@ -145,9 +107,6 @@ export default function AddSpotPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  // First spot popup
-  // First spot popup
   const [showFirstSpotPopup, setShowFirstSpotPopup] = useState(false);
   const [savedSpotName, setSavedSpotName] = useState("");
   const fromOnboarding = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "onboarding";
@@ -166,13 +125,18 @@ export default function AddSpotPage() {
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
   const pinPlaced = spotLat !== null;
 
+  // Load user wind defaults once auth is ready
   useEffect(() => {
-    if (!getEmail() || isTokenExpired()) { window.location.href = "/login"; return; }
-    sbGet(`users?auth_id=eq.${encodeURIComponent(getAuthId() || "")}&select=min_wind_speed,max_wind_speed`)
+    if (!user || !token) return;
+    fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${user.id}&select=min_wind_speed,max_wind_speed`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
       .then((u) => { if (u?.[0]?.min_wind_speed != null) { setWMin(u[0].min_wind_speed); setWMax(u[0].max_wind_speed || 25); } })
       .catch(() => {});
-  }, []);
+  }, [user, token]);
 
+  // Leaflet init — geen auth nodig, ongewijzigd
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!document.querySelector('link[href*="leaflet"]')) { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(l); }
@@ -346,6 +310,7 @@ export default function AddSpotPage() {
   }
 
   async function handleSave() {
+    if (!user || !token) return;
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = "Enter a name";
     if (!spotType) errs.type = "Choose a type";
@@ -357,38 +322,51 @@ export default function AddSpotPage() {
 
     setSaving(true);
     try {
-      const users = await sbGet(`users?auth_id=eq.${encodeURIComponent(getAuthId() || "")}&select=id`);
-      if (!users?.length) throw new Error("no_user");
-      const uid = users[0].id;
       const dirs = DIRS.filter((_, i) => userSegs[i]);
       const eDirs = epicEnabled ? DIRS.filter((_, i) => epicSegs[i]) : null;
       const compassCenter = mapRef.current?.getCenter();
 
-      const newSpot = await sbPost("spots", {
-        name: name.trim(), display_name: name.trim(), region: "Own spot", spot_type: spotType,
-        level, latitude: spotLat, longitude: spotLng, good_directions: dirs,
-        min_wind: wMin, max_wind: wMax, tips: tips.trim() || null,
-        is_private: true, created_by: uid, active: true,
+      const spotRes = await fetch(`${SUPABASE_URL}/rest/v1/spots`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify({
+          name: name.trim(), display_name: name.trim(), region: "Own spot", spot_type: spotType,
+          level, latitude: spotLat, longitude: spotLng, good_directions: dirs,
+          min_wind: wMin, max_wind: wMax, tips: tips.trim() || null,
+          is_private: true, created_by: user.id, active: true,
+        }),
       });
+      if (!spotRes.ok) throw new Error(`spot_create_${spotRes.status}`);
+      const newSpot = await spotRes.json();
       if (!newSpot?.length) throw new Error("spot_create_failed");
       const sid = newSpot[0].id;
 
       await Promise.all([
-        sbPost("user_spots", { user_id: uid, spot_id: sid }, "resolution=merge-duplicates,return=minimal"),
-        sbPost("ideal_conditions", {
-          user_id: uid, spot_id: sid, wind_min: wMin, wind_max: wMax,
-          directions: dirs, enabled: true,
-          perfect_enabled: epicEnabled,
-          perfect_wind_min: epicEnabled ? eMin : null,
-          perfect_wind_max: epicEnabled ? eMax : null,
-          perfect_directions: eDirs,
-          compass_lat: compassCenter?.lat ?? spotLat,
-          compass_lng: compassCenter?.lng ?? spotLng,
-        }, "resolution=merge-duplicates,return=minimal"),
+        fetch(`${SUPABASE_URL}/rest/v1/user_spots`, {
+          method: "POST",
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({ user_id: user.id, spot_id: sid }),
+        }),
+        fetch(`${SUPABASE_URL}/rest/v1/ideal_conditions`, {
+          method: "POST",
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+          body: JSON.stringify({
+            user_id: user.id, spot_id: sid, wind_min: wMin, wind_max: wMax,
+            directions: dirs, enabled: true,
+            perfect_enabled: epicEnabled,
+            perfect_wind_min: epicEnabled ? eMin : null,
+            perfect_wind_max: epicEnabled ? eMax : null,
+            perfect_directions: eDirs,
+            compass_lat: compassCenter?.lat ?? spotLat,
+            compass_lng: compassCenter?.lng ?? spotLng,
+          }),
+        }),
       ]);
 
-      // Check if this is first spot ever
-      const allSpots = await sbGet(`user_spots?user_id=eq.${uid}&select=spot_id`);
+      const allSpotsRes = await fetch(`${SUPABASE_URL}/rest/v1/user_spots?user_id=eq.${user.id}&select=spot_id`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+      });
+      const allSpots = await allSpotsRes.json();
       if (allSpots?.length === 1) {
         setSavedSpotName(name.trim());
         setShowFirstSpotPopup(true);
@@ -411,6 +389,8 @@ export default function AddSpotPage() {
     const a = i * SEG_A; const r = (a - 90) * Math.PI / 180;
     return { d, x: CTR + Math.cos(r) * labelR, y: CTR + Math.sin(r) * labelR, isCard: i % 2 === 0 };
   });
+
+  if (authLoading) return null;
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
@@ -436,11 +416,7 @@ export default function AddSpotPage() {
           <label style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: "block" }}>Type <span style={{ color: C.amber }}>*</span></label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {TYPES.map((t) => (
-              <button key={t.value} onClick={() => { setSpotType(t.value); setErrors((p) => ({ ...p, type: "" })); }} style={{
-                padding: "8px 18px", borderRadius: 10, border: `2px solid ${spotType === t.value ? C.sky : C.cardBorder}`,
-                background: spotType === t.value ? `${C.sky}20` : C.card,
-                fontSize: 13, fontWeight: 600, color: spotType === t.value ? C.sky : C.muted, cursor: "pointer",
-              }}>{t.label}</button>
+              <button key={t.value} onClick={() => { setSpotType(t.value); setErrors((p) => ({ ...p, type: "" })); }} style={{ padding: "8px 18px", borderRadius: 10, border: `2px solid ${spotType === t.value ? C.sky : C.cardBorder}`, background: spotType === t.value ? `${C.sky}20` : C.card, fontSize: 13, fontWeight: 600, color: spotType === t.value ? C.sky : C.muted, cursor: "pointer" }}>{t.label}</button>
             ))}
           </div>
           {errors.type && <div style={{ color: C.amber, fontSize: 12, marginTop: 4 }}>{errors.type}</div>}
@@ -460,13 +436,7 @@ export default function AddSpotPage() {
             {pinPlaced && (
               <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 1001, display: "flex", background: "rgba(0,0,0,0.6)", borderRadius: 10, boxShadow: "0 2px 12px rgba(0,0,0,0.3)", overflow: "hidden", border: `1px solid rgba(255,255,255,0.15)`, gap: 2, padding: 2 }}>
                 {(["map", "select"] as const).map((m) => (
-                  <button key={m} onClick={() => setMode(m)} style={{
-                    padding: "8px 14px", border: "none", borderRadius: 8,
-                    background: mode === m ? (m === "select" ? C.sky : "rgba(255,255,255,0.2)") : "transparent",
-                    cursor: "pointer", fontSize: 11, fontWeight: 600,
-                    color: mode === m ? "#fff" : "rgba(255,255,255,0.5)",
-                    display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap",
-                  }}>
+                  <button key={m} onClick={() => setMode(m)} style={{ padding: "8px 14px", border: "none", borderRadius: 8, background: mode === m ? (m === "select" ? C.sky : "rgba(255,255,255,0.2)") : "transparent", cursor: "pointer", fontSize: 11, fontWeight: 600, color: mode === m ? "#fff" : "rgba(255,255,255,0.5)", display: "flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" }}>
                     {m === "map" ? "📌 Kaart verplaatsen" : "🌊 Wind selecteren"}
                   </button>
                 ))}
@@ -574,12 +544,7 @@ export default function AddSpotPage() {
         )}
 
         {/* Save button */}
-        <button onClick={handleSave} disabled={saving} style={{
-          width: "100%", padding: 14,
-          background: saving ? "rgba(255,255,255,0.1)" : `linear-gradient(135deg, ${C.sky}, #4DB8C9)`,
-          color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700,
-          cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1,
-        }}>
+        <button onClick={handleSave} disabled={saving} style={{ width: "100%", padding: 14, background: saving ? "rgba(255,255,255,0.1)" : `linear-gradient(135deg, ${C.sky}, #4DB8C9)`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1 }}>
           {saving ? "Opslaan..." : "Spot opslaan"}
         </button>
 
@@ -588,12 +553,8 @@ export default function AddSpotPage() {
         )}
       </div>
 
-      {/* First Spot Popup */}
       {showFirstSpotPopup && (
-        <FirstSpotPopup
-          spotName={savedSpotName}
-          onClose={() => { window.location.href = fromOnboarding ? "/" : "/mijn-spots"; }}
-        />
+        <FirstSpotPopup spotName={savedSpotName} onClose={() => { window.location.href = fromOnboarding ? "/" : "/mijn-spots"; }} />
       )}
 
       <style>{`
