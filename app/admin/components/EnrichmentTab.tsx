@@ -22,6 +22,11 @@ function EnrichmentTab() {
   const [cronPolling, setCronPolling] = useState(false);
   const [cronProgress, setCronProgress] = useState<{ done: number; total: number; recent: string[] }>({ done: 0, total: 0, recent: [] });
 
+  // Landenoverzicht state
+  const [landStats, setLandStats] = useState<Record<string, { gescand: number; laatste: string | null }>>({});
+  const [landStatsLoading, setLandStatsLoading] = useState(true);
+  const [overzichtOpen, setOverzichtOpen] = useState(true);
+
   useEffect(() => {
     async function load() {
       try {
@@ -35,6 +40,30 @@ function EnrichmentTab() {
     }
     load();
   }, []);
+
+  // Laad enrichment stats per spot
+  useEffect(() => {
+    async function loadStats() {
+      setLandStatsLoading(true);
+      try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?select=spot_id,scanned_at&limit=5000`, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, "Range-Unit": "items", "Range": "0-4999" }
+        });
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          // Bouw map: spot_id -> scanned_at
+          const scannedMap: Record<number, string> = {};
+          data.forEach((row: any) => { scannedMap[row.spot_id] = row.scanned_at; });
+          setLandStats(scannedMap as any);
+        }
+      } catch {}
+      setLandStatsLoading(false);
+    }
+    loadStats();
+  }, []);
+
+  // Herbereken landStats zodra spots én enrichment data beschikbaar zijn
+  const scannedMap: Record<number, string> = landStats as any;
 
   const filteredSpots = spots.filter(s => {
     const matchSearch = spotSearch.length >= 2 ? s.display_name.toLowerCase().includes(spotSearch.toLowerCase()) : true;
@@ -68,14 +97,27 @@ function EnrichmentTab() {
     });
   }
 
+  // Selecteer ontbrekende spots van een land
+  function selectOntbrekende(land: string) {
+    const ontbrekende = spots
+      .filter(s => getLand(s.region) === land && !scannedMap[s.id])
+      .map(s => s.id);
+    setCheckedIds(new Set(ontbrekende));
+    setSelectedLand(land);
+    // Scroll naar spot lijst
+    setTimeout(() => {
+      document.getElementById("spot-lijst")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  }
+
   async function startCronPolling(total: number, spotIds: number[]) {
     setCronPolling(true);
     setCronProgress({ done: 0, total, recent: [] });
     const start = Date.now();
-    const maxWait = 30 * 60 * 1000; // max 30 min polling
+    const maxWait = 30 * 60 * 1000;
     let lastDone = 0;
     while (Date.now() - start < maxWait) {
-      await new Promise(r => setTimeout(r, 15000)); // poll elke 15s
+      await new Promise(r => setTimeout(r, 15000));
       try {
         const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=in.(${spotIds.join(",")})&select=spot_id,scanned_at&order=scanned_at.desc`, {
           headers: { apikey: SUPABASE_ANON_KEY }
@@ -86,6 +128,10 @@ function EnrichmentTab() {
           const recentIds = data.slice(0, 3).map((r: any) => r.spot_id);
           const recentNames = recentIds.map((id: number) => spots.find(s => s.id === id)?.display_name || `#${id}`);
           setCronProgress({ done, total, recent: recentNames });
+          // Update scannedMap live
+          data.forEach((row: any) => {
+            (scannedMap as any)[row.spot_id] = row.scanned_at;
+          });
           if (done >= total) break;
           lastDone = done;
         }
@@ -171,11 +217,13 @@ function EnrichmentTab() {
             continue;
           }
 
-          const hasCreditsError = data?.error?.type === "insufficient_credits" || 
+          const hasCreditsError = data?.error?.type === "insufficient_credits" ||
             (data?.error && String(data.error).toLowerCase().includes("credit")) ||
             data?.type === "error" && data?.error?.message?.toLowerCase().includes("credit");
           const spotResult = hasCreditsError ? { error: "insufficient_credits" } : data;
           setResultMap(prev => ({ ...prev, [spot.id]: spotResult }));
+          // Update scannedMap live zodat overzicht bijwerkt
+          (scannedMap as any)[spot.id] = new Date().toISOString();
           setViewId(spot.id);
           break;
         } catch {
@@ -183,7 +231,6 @@ function EnrichmentTab() {
           break;
         }
       }
-      // 4s tussen spots om binnen 30k tokens/min te blijven (~15 spots/min max)
       if (i < toScan.length - 1) {
         for (let s = 15; s > 0; s--) {
           setScanProgress(`${i + 1}/${toScan.length}: ${spot.display_name} ✓ — volgende over ${s}s`);
@@ -210,11 +257,112 @@ function EnrichmentTab() {
     .filter(([land]) => land !== "Overig")
     .sort((a, b) => b[1].length - a[1].length);
 
-  const nlCount = (landenMap["Nederland"] || []).length;
+  // Bouw landenoverzicht data
+  const landenOverzicht = landenSorted.map(([land, ls]) => {
+    const gescand = ls.filter(s => scannedMap[s.id]).length;
+    const ontbreekt = ls.length - gescand;
+    const dates = ls.map(s => scannedMap[s.id]).filter(Boolean).sort().reverse();
+    const laatste = dates[0] || null;
+    return { land, totaal: ls.length, gescand, ontbreekt, laatste };
+  });
 
+  function formatDatum(iso: string | null) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    const nu = new Date();
+    const diffMs = nu.getTime() - d.getTime();
+    const diffU = Math.floor(diffMs / 3600000);
+    const diffD = Math.floor(diffMs / 86400000);
+    if (diffU < 1) return "zojuist";
+    if (diffU < 24) return `${diffU}u geleden`;
+    if (diffD < 7) return `${diffD}d geleden`;
+    return d.toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
+  }
 
   return (
     <div>
+      {/* ── Landenoverzicht ── */}
+      <div style={{ background: C.card, borderRadius: 12, marginBottom: 14, boxShadow: C.cardShadow, border: `1px solid ${C.cardBorder}`, overflow: "hidden" }}>
+        <div
+          onClick={() => setOverzichtOpen(o => !o)}
+          style={{ padding: "12px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", userSelect: "none" as const }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 14, fontWeight: 800, color: C.navy }}>📊 Overzicht per land</span>
+            {!landStatsLoading && (
+              <span style={{ fontSize: 11, color: C.muted }}>
+                {landenOverzicht.reduce((a, l) => a + l.gescand, 0)}/{landenOverzicht.reduce((a, l) => a + l.totaal, 0)} spots gescand
+              </span>
+            )}
+          </div>
+          <span style={{ fontSize: 12, color: C.muted }}>{overzichtOpen ? "▲" : "▼"}</span>
+        </div>
+
+        {overzichtOpen && (
+          <div style={{ borderTop: `1px solid ${C.cardBorder}`, overflowX: "auto" as const }}>
+            {landStatsLoading ? (
+              <div style={{ padding: 20, color: C.muted, fontSize: 13, textAlign: "center" as const }}>Laden...</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse" as const, fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: C.creamDark }}>
+                    <th style={{ padding: "8px 14px", textAlign: "left" as const, fontWeight: 700, color: C.sub, fontSize: 11 }}>LAND</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right" as const, fontWeight: 700, color: C.sub, fontSize: 11 }}>TOTAAL</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right" as const, fontWeight: 700, color: C.sub, fontSize: 11 }}>GESCAND</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right" as const, fontWeight: 700, color: C.sub, fontSize: 11 }}>ONTBREEKT</th>
+                    <th style={{ padding: "8px 10px", textAlign: "left" as const, fontWeight: 700, color: C.sub, fontSize: 11 }}>LAATSTE SCAN</th>
+                    <th style={{ padding: "8px 14px", textAlign: "right" as const, fontWeight: 700, color: C.sub, fontSize: 11 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {landenOverzicht.map(({ land, totaal, gescand, ontbreekt, laatste }, i) => {
+                    const pct = totaal > 0 ? Math.round((gescand / totaal) * 100) : 0;
+                    const volledig = ontbreekt === 0;
+                    return (
+                      <tr key={land} style={{ borderTop: i > 0 ? `1px solid ${C.cardBorder}` : "none", background: volledig ? "#F0FDF4" : "transparent" }}>
+                        <td style={{ padding: "9px 14px", fontWeight: 600, color: C.navy }}>
+                          {LAND_VLAG[land] || "🌍"} {land}
+                        </td>
+                        <td style={{ padding: "9px 10px", textAlign: "right" as const, color: C.muted }}>{totaal}</td>
+                        <td style={{ padding: "9px 10px", textAlign: "right" as const }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+                            <div style={{ width: 48, height: 5, background: C.cardBorder, borderRadius: 3, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${pct}%`, background: volledig ? "#22C55E" : C.sky, borderRadius: 3 }} />
+                            </div>
+                            <span style={{ color: volledig ? "#16A34A" : C.navy, fontWeight: 700, minWidth: 28, textAlign: "right" as const }}>{gescand}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: "9px 10px", textAlign: "right" as const }}>
+                          {ontbreekt > 0
+                            ? <span style={{ fontWeight: 700, color: "#DC2626" }}>{ontbreekt}</span>
+                            : <span style={{ color: "#16A34A", fontWeight: 700 }}>✓</span>
+                          }
+                        </td>
+                        <td style={{ padding: "9px 10px", color: C.muted, whiteSpace: "nowrap" as const }}>{formatDatum(laatste)}</td>
+                        <td style={{ padding: "9px 14px", textAlign: "right" as const }}>
+                          {ontbreekt > 0 && (
+                            <button
+                              onClick={() => selectOntbrekende(land)}
+                              style={{
+                                padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700,
+                                background: "#FEF2F2", border: "1px solid #FECACA", color: "#DC2626",
+                                cursor: "pointer", whiteSpace: "nowrap" as const,
+                              }}
+                            >
+                              Scan {ontbreekt} ontbrekende
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Header */}
       <div style={{ background: C.card, borderRadius: 12, padding: "14px 18px", marginBottom: 14, boxShadow: C.cardShadow, border: `1px solid ${C.cardBorder}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
@@ -369,10 +517,9 @@ function EnrichmentTab() {
         <span style={{ fontSize: 12, color: C.muted, marginLeft: "auto" }}>{spots.length} spots totaal</span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16 }}>
+      <div id="spot-lijst" style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 16 }}>
         {/* Spot lijst met checkboxes */}
         <div style={{ background: C.card, borderRadius: 12, boxShadow: C.cardShadow, display: "flex", flexDirection: "column", maxHeight: 640 }}>
-          {/* Zoek + selecteer alle */}
           <div style={{ padding: "10px 10px 6px", borderBottom: `1px solid ${C.cardBorder}` }}>
             <input
               placeholder="Zoek spot..."
@@ -389,6 +536,7 @@ function EnrichmentTab() {
             {filteredSpots.map((spot: any) => {
               const checked = checkedIds.has(spot.id);
               const isScanning = scanning && scanProgress.includes(spot.display_name);
+              const isGescand = !!scannedMap[spot.id];
               return (
                 <div
                   key={spot.id}
@@ -413,6 +561,7 @@ function EnrichmentTab() {
                     <div style={{ fontSize: 10, color: C.muted }}>{spot.region ? `${spot.region} · ` : ""}{spot.spot_type || "—"}</div>
                   </div>
                   {isScanning && <div style={{ width: 12, height: 12, border: `2px solid ${C.sky}40`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite", flexShrink: 0 }} />}
+                  {!isScanning && isGescand && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#22C55E", flexShrink: 0 }} title="Gescand" />}
                 </div>
               );
             })}
@@ -431,7 +580,6 @@ function EnrichmentTab() {
             </div>
           )}
 
-          {/* Resultaten navigatie tabs als meerdere gescand */}
           {scannedSpots.length > 1 && (
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 14 }}>
               {scannedSpots.map(spot => (
@@ -465,7 +613,5 @@ function EnrichmentTab() {
     </div>
   );
 }
-
-// ── SVG Iconen voor enrichment categorieën ──
 
 export { EnrichmentTab };
