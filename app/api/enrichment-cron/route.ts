@@ -131,7 +131,7 @@ async function scanSpot(spot: any, prompts: Record<string, string>): Promise<{
       : "";
 
   const langInstruction = needsBothLangs
-    ? `IMPORTANT: You MUST write all category values TWICE. First in ${spotLangName} under key "${spotLang}", then the same content in English under key "en". Both keys are REQUIRED in the JSON output.`
+    ? `CRITICAL REQUIREMENT: Your response MUST contain BOTH language keys. Write all category values in ${spotLangName} under key "${spotLang}", AND the same content in English under key "en". A response with ONLY "en" is INVALID and will be rejected. BOTH keys are MANDATORY.`
     : `Write all category values in English (key: "en").`;
 
   const categoryFields = `{
@@ -250,7 +250,15 @@ ${jsonStructure}`;
     throw new Error(`Geen JSON in response. Raw: ${fullText.slice(0, 200)}`);
   }
 
-  return stripCiteTags(JSON.parse(jsonMatch[0]));
+  const parsed = JSON.parse(jsonMatch[0]);
+
+  // Valideer taallagen — als beide vereist zijn maar lokale taal ontbreekt, gooi error
+  // De job wordt dan automatisch opnieuw opgepakt door de cron
+  if (needsBothLangs && parsed.categories && !parsed.categories[spotLang]) {
+    throw new Error(`Taallaag "${spotLang}" ontbreekt in response — job wordt opnieuw ingepland`);
+  }
+
+  return stripCiteTags(parsed);
 }
 
 async function scoreNews(newsText: string, spotName: string): Promise<number> {
