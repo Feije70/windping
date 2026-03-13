@@ -4,7 +4,8 @@ import { useSearchParams } from "next/navigation";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { Icons } from "@/components/Icons";
-import { getValidToken, getEmail, getAuthId, isTokenExpired, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 import Prikbord, { PrikbordPost } from "@/components/Prikbord";
 const h = { fontFamily: fonts.heading };
 const SMIN = 5, SMAX = 50, SIZE = 280, CTR = 140, SEG = 16, SEG_A = 22.5, IR = 22, OR = CTR - 16;
@@ -14,26 +15,7 @@ const typeColors: Record<string, string> = { Zee: "#2E8FAE", Meer: "#3EAA8C", Ri
 function normA(a: number) { return ((a % 360) + 360) % 360; }
 function pct(v: number) { return ((v - SMIN) / (SMAX - SMIN)) * 100; }
 function valFromPct(p: number) { return Math.round(SMIN + (p / 100) * (SMAX - SMIN)); }
-async function sbGet(path: string) {
-  const token = await getValidToken(); if (!token) throw new Error("auth");
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } });
-  if (res.status === 401) throw new Error("auth"); if (!res.ok) throw new Error(`supabase_${res.status}`);
-  return res.json();
-}
-async function sbUpsert(table: string, data: any) {
-  const token = await getValidToken(); if (!token) throw new Error("auth");
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-    method: "POST",
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify(data),
-  });
-  if (res.status === 401) throw new Error("auth");
-  if (!res.ok) {
-    const patchUrl = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${data.user_id}&spot_id=eq.${data.spot_id}`;
-    const patchRes = await fetch(patchUrl, { method: "PATCH", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(data) });
-    if (!patchRes.ok) { const t = await patchRes.text(); throw new Error(`upsert_${patchRes.status}_${t}`); }
-  }
-}
+
 function WindSlider({ min, max, onChange, color = C.sky }: { min: number; max: number; onChange: (mn: number, mx: number) => void; color?: string }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef<"min" | "max" | null>(null);
@@ -81,16 +63,13 @@ function WindSlider({ min, max, onChange, color = C.sky }: { min: number; max: n
   );
 }
 
-/* ── Strip cite tags from enrichment text ── */
 function stripCiteSpot(text: string): string {
   if (!text) return text;
   return text.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, '$1').trim();
 }
 
-/* ── Enrichment Info Tab Component ── */
 function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enrichment: any; userLanguage: string }) {
   const rawCats = enrichment?.categories || {};
-  // Beschikbare talen
   const availableLangs = ["nl","en","de","fr","es","pt","it"].filter(lang =>
     rawCats[lang] && typeof rawCats[lang] === "object" && Object.values(rawCats[lang]).some(Boolean)
   );
@@ -106,11 +85,8 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
 
   return (
     <div>
-      {/* Basis spot info */}
       <div style={{ background: C.card, borderRadius: 14, padding: "16px 18px", boxShadow: C.cardShadow, marginBottom: 16 }}>
-        {spot.tips && (
-          <p style={{ fontSize: 14, color: C.sub, lineHeight: 1.7, margin: "0 0 14px" }}>{spot.tips}</p>
-        )}
+        {spot.tips && <p style={{ fontSize: 14, color: C.sub, lineHeight: 1.7, margin: "0 0 14px" }}>{spot.tips}</p>}
         <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 16 }}>
           {spot.good_directions?.length > 0 && (
             <div>
@@ -147,42 +123,25 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
         </div>
       ) : (
         <>
-          {/* Meta */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, padding: "0 2px" }}>
-            <span style={{
-              fontSize: 11, padding: "3px 9px", borderRadius: 6, fontWeight: 700,
-              background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2",
-              color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B",
-            }}>
+            <span style={{ fontSize: 11, padding: "3px 9px", borderRadius: 6, fontWeight: 700, background: conf > 0.7 ? "#DCFCE7" : conf > 0.4 ? "#FEF3C7" : "#FEE2E2", color: conf > 0.7 ? "#166534" : conf > 0.4 ? "#92400E" : "#991B1B" }}>
               {conf > 0.7 ? "✓ Betrouwbaar" : conf > 0.4 ? "~ Redelijk betrouwbaar" : "! Weinig info"}
             </span>
             {scannedAt && <span style={{ fontSize: 11, color: C.muted }}>Gescand {scannedAt}</span>}
           </div>
 
-          {/* Taalwissel */}
           {isMultiLang && (
             <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
               {availableLangs.map(lang => (
-                <button key={lang} onClick={() => setActiveLang(lang)} style={{
-                  padding: "4px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700,
-                  border: `1px solid ${activeLang === lang ? C.sky : C.cardBorder}`,
-                  background: activeLang === lang ? C.sky : C.card,
-                  color: activeLang === lang ? "#fff" : C.muted, cursor: "pointer",
-                }}>
+                <button key={lang} onClick={() => setActiveLang(lang)} style={{ padding: "4px 12px", borderRadius: 6, fontSize: 11, fontWeight: 700, border: `1px solid ${activeLang === lang ? C.sky : C.cardBorder}`, background: activeLang === lang ? C.sky : C.card, color: activeLang === lang ? "#fff" : C.muted, cursor: "pointer" }}>
                   {lang === "nl" ? "🇳🇱 NL" : lang === "en" ? "🇬🇧 EN" : lang === "de" ? "🇩🇪 DE" : lang === "fr" ? "🇫🇷 FR" : lang === "es" ? "🇪🇸 ES" : lang.toUpperCase()}
                 </button>
               ))}
             </div>
           )}
 
-          {/* Nieuws — speciale blauwe card bovenaan */}
           {cats.news && (
-            <div style={{
-              background: "linear-gradient(135deg, #EFF6FF, #DBEAFE)",
-              border: "1.5px solid #BFDBFE", borderRadius: 14,
-              padding: "14px 16px", marginBottom: 12,
-              boxShadow: "0 2px 8px rgba(59,130,246,0.08)",
-            }}>
+            <div style={{ background: "linear-gradient(135deg, #EFF6FF, #DBEAFE)", border: "1.5px solid #BFDBFE", borderRadius: 14, padding: "14px 16px", marginBottom: 12, boxShadow: "0 2px 8px rgba(59,130,246,0.08)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg>
                 <span style={{ fontSize: 11, fontWeight: 800, color: "#1D4ED8", textTransform: "uppercase" as const, letterSpacing: 0.8 }}>Nieuws</span>
@@ -192,13 +151,8 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
             </div>
           )}
 
-          {/* Events — gele card */}
           {cats.events && (
-            <div style={{
-              background: "linear-gradient(135deg, #FFFBEB, #FEF3C7)",
-              border: "1.5px solid #FDE68A", borderRadius: 14,
-              padding: "14px 16px", marginBottom: 12,
-            }}>
+            <div style={{ background: "linear-gradient(135deg, #FFFBEB, #FEF3C7)", border: "1.5px solid #FDE68A", borderRadius: 14, padding: "14px 16px", marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
                 <span style={{ fontSize: 11, fontWeight: 800, color: "#92400E", textTransform: "uppercase" as const, letterSpacing: 0.8 }}>Events & wedstrijden</span>
@@ -207,7 +161,6 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
             </div>
           )}
 
-          {/* Overige categorieën */}
           {[
             { key: "conditions", label: "Windcondities",    icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/></svg> },
             { key: "hazards",    label: "Gevaren & regels", icon: <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> },
@@ -223,7 +176,6 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
             </div>
           ))}
 
-          {/* Bronnen */}
           {enrichment.sources?.length > 0 && (
             <div style={{ marginTop: 6, padding: "10px 14px", background: C.creamDark, borderRadius: 10 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.8, textTransform: "uppercase" as const, marginBottom: 4 }}>Bronnen</div>
@@ -240,12 +192,13 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
 function SpotDetailContent() {
   const searchParams = useSearchParams();
   const spotId = searchParams.get("id");
+  const { user, token, loading: authLoading } = useUser({ redirectIfUnauthenticated: true });
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [spot, setSpot] = useState<any>(null);
-  const [userId, setUserId] = useState<number | null>(null);
   const [userName, setUserName] = useState<string>("");
-  const [enrichment, setEnrichment] = useState<any>(null); // ← NIEUW
+  const [enrichment, setEnrichment] = useState<any>(null);
   const [userLanguage, setUserLanguage] = useState<string>("nl");
   const [wMin, setWMin] = useState(15);
   const [wMax, setWMax] = useState(25);
@@ -283,6 +236,7 @@ function SpotDetailContent() {
     tabSetByData.current = true;
     setActiveTab(isSaved ? "prikbord" : "voorkeuren");
   }, [loading, isSaved, tabParam]);
+
   const mapRef = useRef<any>(null);
   const mapElRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -292,21 +246,25 @@ function SpotDetailContent() {
   useEffect(() => { stateRef.current = { userSegs, userArc, defaults, isSaved, epicSegs, epicArc, epicEnabled, compassLayer, hasEdits, wMin, wMax, eMin, eMax, tideEnabled, tideRef, tideBefore, tideAfter }; }, [userSegs, userArc, defaults, isSaved, epicSegs, epicArc, epicEnabled, compassLayer, hasEdits, wMin, wMax, eMin, eMax, tideEnabled, tideRef, tideBefore, tideAfter]);
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
 
+  // ── Data load — wacht op token + user ──
   useEffect(() => {
-    if (!spotId) { setError("No spot ID"); setLoading(false); return; }
-    const email = getEmail();
-    if (!email || isTokenExpired()) { window.location.href = "/login"; return; }
+    if (!spotId || !user || !token) return;
+
+    const sbGet = (path: string) =>
+      fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+      }).then((r) => { if (!r.ok) throw new Error(`supabase_${r.status}`); return r.json(); });
+
     Promise.all([
       sbGet(`spots?id=eq.${spotId}&select=*`),
-      sbGet(`users?auth_id=eq.${encodeURIComponent(getAuthId() || "")}&select=id,name,min_wind_speed,max_wind_speed`),
       sbGet(`ideal_conditions?spot_id=eq.${spotId}&select=*`),
-    ]).then(([spots, users, conds]) => {
+    ]).then(([spots, conds]) => {
       if (!spots?.length) { setError("Spot not found"); setLoading(false); return; }
-      if (!users?.length) { setError("User not found"); setLoading(false); return; }
-      const sp = spots[0]; const user = users[0];
+      const sp = spots[0];
       if (user.language) setUserLanguage(user.language);
-      setSpot(sp); setUserId(user.id);
+      setSpot(sp);
       if (user.name) setUserName(user.name);
+
       const existing = conds?.find((c: any) => c.user_id === user.id) || null;
       if (existing?.wind_min != null) { setWMin(existing.wind_min); setWMax(existing.wind_max); }
       else if (user.min_wind_speed != null) { setWMin(user.min_wind_speed); setWMax(user.max_wind_speed || 25); }
@@ -318,8 +276,7 @@ function SpotDetailContent() {
       } else if (sp.good_directions?.length) {
         const exp: Record<string, boolean> = {};
         sp.good_directions.forEach((d: string) => (EXPAND[d] || [d]).forEach((x: string) => { exp[x] = true; }));
-        const defs = DIRS.map((d) => !!exp[d]);
-        setDefaults(defs);
+        setDefaults(DIRS.map((d) => !!exp[d]));
       }
       if (existing?.perfect_enabled) {
         setEpicEnabled(true);
@@ -338,35 +295,27 @@ function SpotDetailContent() {
       }
       if (existing) {
         setIsSaved(true);
-        // Laad push_nieuws voorkeur (async, apart)
-        getValidToken().then(tok => {
-          if (!tok || !user.id) return;
-          fetch(`${SUPABASE_URL}/rest/v1/alert_preferences?user_id=eq.${user.id}&select=push_nieuws`, {
-            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${tok}` }
-          }).then(r => r.json()).then(prefData => {
-            if (Array.isArray(prefData) && prefData[0]) {
-              setPushNieuws(prefData[0].push_nieuws !== false);
-            }
-          }).catch(() => {});
-        });
+        fetch(`${SUPABASE_URL}/rest/v1/alert_preferences?user_id=eq.${user.id}&select=push_nieuws`, {
+          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+        }).then(r => r.json()).then(prefData => {
+          if (Array.isArray(prefData) && prefData[0]) setPushNieuws(prefData[0].push_nieuws !== false);
+        }).catch(() => {});
       }
       setLoading(false);
     }).catch((e) => { setError(e.message); setLoading(false); });
 
-    // Prikbord
-    sbGet(`spot_posts?spot_id=eq.${spotId}&order=created_at.desc&limit=20&select=id,type,content,author_name,created_at,wind_speed,wind_dir`)
-      .then(posts => setPrikbordPosts(posts || []))
-      .catch(() => {});
+    // Prikbord — met auth
+    fetch(`${SUPABASE_URL}/rest/v1/spot_posts?spot_id=eq.${spotId}&order=created_at.desc&limit=20&select=id,type,content,author_name,created_at,wind_speed,wind_dir`, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    }).then(r => r.json()).then(posts => setPrikbordPosts(posts || [])).catch(() => {});
 
-    // Enrichment data ← NIEUW
+    // Enrichment — publiek, geen auth nodig
     fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment?spot_id=eq.${spotId}&select=*`, {
-      headers: { apikey: SUPABASE_ANON_KEY }
-    })
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data) && data.length) setEnrichment(data[0]); })
-      .catch(() => {});
-  }, [spotId]);
+      headers: { apikey: SUPABASE_ANON_KEY },
+    }).then(r => r.json()).then(data => { if (Array.isArray(data) && data.length) setEnrichment(data[0]); }).catch(() => {});
+  }, [spotId, user, token]);
 
+  // Leaflet laden — geen auth
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!document.querySelector('link[href*="leaflet"]')) { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(l); }
@@ -378,6 +327,7 @@ function SpotDetailContent() {
   const streetLayerRef = useRef<any>(null);
   const spotMarkerRef = useRef<any>(null);
   const [isSat, setIsSat] = useState(true);
+
   useEffect(() => {
     if (!spot || loading || !mapElRef.current) return;
     const tryInit = () => {
@@ -427,11 +377,9 @@ function SpotDetailContent() {
     if (!contiguous) {
       const all = new Set(active); let gapStart = -1;
       for (let i = 0; i < SEG; i++) { if (!all.has(i) && all.has((i + SEG - 1) % SEG)) { gapStart = i; break; } }
-      if (gapStart >= 0) { let s = gapStart; while (!all.has(s)) s = (s + 1) % SEG; start = s; let e = (gapStart + SEG - 1) % SEG; end = e; }
+      if (gapStart >= 0) { let s = gapStart; while (!all.has(s)) s = (s + 1) % SEG; start = s; end = (gapStart + SEG - 1) % SEG; }
     }
-    const fromAngle = start * SEG_A - SEG_A / 2;
-    const toAngle = end * SEG_A + SEG_A / 2;
-    return [fromAngle, toAngle];
+    return [start * SEG_A - SEG_A / 2, end * SEG_A + SEG_A / 2];
   }
 
   const drawPie = useCallback(() => {
@@ -486,10 +434,9 @@ function SpotDetailContent() {
       let from: number, to: number; if (d >= 0) { from = s; to = s + d; } else { from = s + d; to = s; }
       const isEpic = st.compassLayer === "epic";
       const rad = isEpic ? OR * 0.72 : OR;
-      const fc = isEpic ? "rgba(212,146,46,0.35)" : "rgba(46,111,126,0.35)";
-      const sc = isEpic ? "rgba(212,146,46,0.8)" : "rgba(46,111,126,0.8)";
       ctx.beginPath(); ctx.moveTo(CTR, CTR); ctx.arc(CTR, CTR, rad, (from - 90) * Math.PI / 180, (to - 90) * Math.PI / 180); ctx.closePath();
-      ctx.fillStyle = fc; ctx.fill(); ctx.strokeStyle = sc; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = isEpic ? "rgba(212,146,46,0.35)" : "rgba(46,111,126,0.35)"; ctx.fill();
+      ctx.strokeStyle = isEpic ? "rgba(212,146,46,0.8)" : "rgba(46,111,126,0.8)"; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5]); ctx.stroke(); ctx.setLineDash([]);
     }
   }, []);
   useEffect(() => { drawPie(); }, [userSegs, userArc, defaults, isSaved, epicSegs, epicArc, epicEnabled, drawPie]);
@@ -560,6 +507,7 @@ function SpotDetailContent() {
       document.removeEventListener("touchend", onUp);
     };
   }, [drawPie]);
+
   function onCanvasDown(e: React.MouseEvent | React.TouchEvent) {
     if (mode !== "select") return;
     const a = angleFromEvent(e.nativeEvent); if (a === null) return;
@@ -568,8 +516,9 @@ function SpotDetailContent() {
   }
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   async function doSave(showFeedback = true) {
-    if (!spot || !userId) return;
+    if (!spot || !user || !token) return;
     const st = stateRef.current;
     const dirs: string[] = [];
     for (let i = 0; i < SEG; i++) if (st.userSegs[i]) dirs.push(DIRS[i]);
@@ -577,11 +526,25 @@ function SpotDetailContent() {
     const eDirs: string[] = [];
     if (st.epicEnabled) for (let i = 0; i < SEG; i++) if (st.epicSegs[i]) eDirs.push(DIRS[i]);
     const mapCenter = mapRef.current?.getCenter();
+
+    const upsert = async (table: string, data: any) => {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+        method: "POST",
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const patchUrl = `${SUPABASE_URL}/rest/v1/${table}?user_id=eq.${data.user_id}&spot_id=eq.${data.spot_id}`;
+        const patchRes = await fetch(patchUrl, { method: "PATCH", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(data) });
+        if (!patchRes.ok) { const t = await patchRes.text(); throw new Error(`upsert_${patchRes.status}_${t}`); }
+      }
+    };
+
     try {
       await Promise.all([
-        sbUpsert("user_spots", { user_id: userId, spot_id: spot.id }),
-        sbUpsert("ideal_conditions", {
-          user_id: userId, spot_id: spot.id, wind_min: st.wMin, wind_max: st.wMax, directions: dirs, enabled: true,
+        upsert("user_spots", { user_id: user.id, spot_id: spot.id }),
+        upsert("ideal_conditions", {
+          user_id: user.id, spot_id: spot.id, wind_min: st.wMin, wind_max: st.wMax, directions: dirs, enabled: true,
           perfect_enabled: st.epicEnabled, perfect_wind_min: st.epicEnabled ? st.eMin : null, perfect_wind_max: st.epicEnabled ? st.eMax : null,
           perfect_directions: st.epicEnabled ? eDirs : null, compass_lat: mapCenter?.lat ?? null, compass_lng: mapCenter?.lng ?? null,
           tide_enabled: st.tideEnabled, tide_reference: st.tideEnabled ? st.tideRef : null,
@@ -592,15 +555,17 @@ function SpotDetailContent() {
       if (showFeedback) showToast("✓ Saved");
     } catch (e: any) { if (showFeedback) showToast("Save failed"); }
   }
+
   async function handleSave() {
-    if (!spot || !userId) return;
+    if (!spot || !user) return;
     if (epicEnabled && !epicSegs.some(Boolean)) { showToast("Select epic wind directions first"); return; }
     setSaving(true);
     await doSave(true);
     setSaving(false);
   }
+
   useEffect(() => {
-    if (!isSaved || !userId || !spot) return;
+    if (!isSaved || !user || !spot) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => { doSave(true); }, 1200);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
@@ -615,7 +580,7 @@ function SpotDetailContent() {
     return { d, x: CTR + Math.cos(r) * labelR, y: CTR + Math.sin(r) * labelR, isCard: i % 2 === 0 };
   });
 
-  if (loading) return (
+  if (authLoading || loading) return (
     <div style={{ textAlign: "center", padding: "60px 20px" }}>
       <div style={{ display: "inline-block", width: 28, height: 28, border: `3px solid ${C.cardBorder}`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
       <div style={{ fontSize: 13, color: C.sub, marginTop: 10 }}>Loading spot...</div>
@@ -658,21 +623,17 @@ function SpotDetailContent() {
       {/* Tab bar */}
       <div style={{ display: "flex", background: "#E2D8CC", borderRadius: 12, padding: 4, marginBottom: 20, gap: 4 }}>
         {TABS.map(tab => (
-          <button key={tab.key} onClick={() => { setActiveTab(tab.key); if (tab.key === 'voorkeuren') { setTimeout(() => { mapRef.current?.invalidateSize(); }, 100); setTimeout(() => { mapRef.current?.invalidateSize(); }, 400); } }} style={{
-            flex: 1, padding: "9px 8px", borderRadius: 9, border: "none",
-            background: activeTab === tab.key ? "#FFFFFF" : "transparent",
-            color: activeTab === tab.key ? C.navy : "#8A7A6A",
-            fontSize: 12, fontWeight: activeTab === tab.key ? 700 : 500,
-            cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-            boxShadow: activeTab === tab.key ? "0 1px 6px rgba(0,0,0,0.10)" : "none",
-            transition: "all 0.15s ease",
-          }}>
+          <button key={tab.key} onClick={() => {
+            setActiveTab(tab.key);
+            if (tab.key === "voorkeuren") {
+              setTimeout(() => { mapRef.current?.invalidateSize(); }, 100);
+              setTimeout(() => { mapRef.current?.invalidateSize(); }, 400);
+            }
+          }} style={{ flex: 1, padding: "9px 8px", borderRadius: 9, border: "none", background: activeTab === tab.key ? "#FFFFFF" : "transparent", color: activeTab === tab.key ? C.navy : "#8A7A6A", fontSize: 12, fontWeight: activeTab === tab.key ? 700 : 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, boxShadow: activeTab === tab.key ? "0 1px 6px rgba(0,0,0,0.10)" : "none", transition: "all 0.15s ease" }}>
             {TAB_ICONS[tab.key]}
             {tab.label}
             {tab.key === "prikbord" && prikbordPosts.length > 0 && (
-              <span style={{ background: C.sky, color: "#fff", borderRadius: 10, fontSize: 9, fontWeight: 800, padding: "1px 5px", minWidth: 16, textAlign: "center" }}>
-                {prikbordPosts.length}
-              </span>
+              <span style={{ background: C.sky, color: "#fff", borderRadius: 10, fontSize: 9, fontWeight: 800, padding: "1px 5px", minWidth: 16, textAlign: "center" }}>{prikbordPosts.length}</span>
             )}
             {tab.key === "info" && enrichment?.categories?.news && (
               <span style={{ background: "#3B82F6", color: "#fff", borderRadius: 10, fontSize: 9, fontWeight: 800, padding: "1px 5px" }}>!</span>
@@ -681,17 +642,13 @@ function SpotDetailContent() {
         ))}
       </div>
 
-      {/* ── TAB: Spot info ── */}
-      {activeTab === "info" && (
-        <EnrichmentInfoTab spot={spot} enrichment={enrichment} userLanguage={userLanguage} />
-      )}
+      {activeTab === "info" && <EnrichmentInfoTab spot={spot} enrichment={enrichment} userLanguage={userLanguage} />}
 
-      {/* ── TAB: Prikbord ── */}
       {activeTab === "prikbord" && (
         <Prikbord
           spotId={Number(spotId)}
           spotName={spot.display_name}
-          userId={userId}
+          userId={user?.id ?? null}
           userName={userName}
           posts={prikbordPosts}
           onPostAdded={(post) => setPrikbordPosts(prev => [post, ...prev])}
@@ -699,7 +656,7 @@ function SpotDetailContent() {
         />
       )}
 
-      {/* ── TAB: Voorkeuren ── */}
+      {/* Voorkeuren tab — display toggle, nooit unmounten (Leaflet valkuil #34) */}
       <div style={{ display: activeTab === "voorkeuren" ? "block" : "none" }}>
         <div style={{ position: "relative", width: "100%", height: "min(500px, 70vh)", borderRadius: 16, overflow: "hidden", marginBottom: 16, border: `1px solid ${C.cardBorder}` }}>
           <div ref={mapElRef} style={{ width: "100%", height: "100%", zIndex: 1 }} />
@@ -733,6 +690,7 @@ function SpotDetailContent() {
             </div>
           </div>
         </div>
+
         {epicEnabled && (
           <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
             {(["good", "epic"] as const).map((l) => (
@@ -743,12 +701,14 @@ function SpotDetailContent() {
             ))}
           </div>
         )}
+
         {hasEdits && (
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
             <button onClick={() => { setUserSegs(new Array(16).fill(false)); setUserArc(null); setHasEdits(false); setIsSaved(false); }} style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.muted, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Reset to default</button>
             <button onClick={() => { setUserSegs(new Array(16).fill(false)); setUserArc(null); setHasEdits(false); }} style={{ padding: "6px 14px", borderRadius: 8, background: "transparent", border: `1px solid ${C.amber}40`, color: C.amber, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Clear selection</button>
           </div>
         )}
+
         <div style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 17, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Your Wind Directions</h2>
           <p style={{ fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 12 }}>You'll only get pinged when wind comes from these directions</p>
@@ -758,11 +718,13 @@ function SpotDetailContent() {
             {!userDirNames.length && !defaultDirNames.length && <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>Sweep over water on the compass above</span>}
           </div>
         </div>
+
         <div style={{ marginBottom: 24 }}>
           <h2 style={{ fontSize: 17, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Your Wind Speed Range</h2>
           <p style={{ fontSize: 12, color: C.sub, fontStyle: "italic", marginBottom: 12 }}>You'll only get pinged when wind speed falls within this range</p>
           <WindSlider min={wMin} max={wMax} onChange={(mn, mx) => { setWMin(mn); setWMax(mx); }} />
         </div>
+
         <div onClick={() => { const next = !epicEnabled; setEpicEnabled(next); if (next) setCompassLayer("epic"); else setCompassLayer("good"); }} style={{ background: epicEnabled ? C.epicBg : C.card, border: `2px solid ${epicEnabled ? "#E8A83E" : C.cardBorder}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: epicEnabled ? "#E8A83E" : C.navy, display: "flex", alignItems: "center", gap: 6 }}>🤙 Set Epic conditions</div>
@@ -772,6 +734,7 @@ function SpotDetailContent() {
             <div style={{ position: "absolute", top: 3, left: epicEnabled ? 25 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.3s" }} />
           </div>
         </div>
+
         {epicEnabled && (
           <div style={{ marginBottom: 24 }}>
             <h2 style={{ fontSize: 17, fontWeight: 700, color: "#E8A83E", marginBottom: 4 }}>Epic Wind Speed</h2>
@@ -788,6 +751,7 @@ function SpotDetailContent() {
             )}
           </div>
         )}
+
         {spot.spot_type?.toLowerCase() === "zee" && (
           <>
             <div onClick={() => setTideEnabled(!tideEnabled)} style={{ background: tideEnabled ? C.oceanTint : C.card, border: `2px solid ${tideEnabled ? C.sky : C.cardBorder}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
@@ -830,20 +794,19 @@ function SpotDetailContent() {
             )}
           </>
         )}
+
         {/* Nieuws push voorkeur */}
         <div onClick={async () => {
+          if (!user || !token) return;
           const next = !pushNieuws;
           setPushNieuws(next);
-          if (userId) {
-            try {
-              const token = await getValidToken();
-              await fetch(`${SUPABASE_URL}/rest/v1/alert_preferences`, {
-                method: "POST",
-                headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
-                body: JSON.stringify({ user_id: userId, push_nieuws: next }),
-              });
-            } catch {}
-          }
+          try {
+            await fetch(`${SUPABASE_URL}/rest/v1/alert_preferences`, {
+              method: "POST",
+              headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
+              body: JSON.stringify({ user_id: user.id, push_nieuws: next }),
+            });
+          } catch {}
         }} style={{ background: C.card, border: `2px solid ${C.cardBorder}`, borderRadius: 12, padding: "14px 18px", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, display: "flex", alignItems: "center", gap: 6 }}>📰 Nieuws notificaties</div>
