@@ -4,7 +4,7 @@ import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { cropStyle } from "@/lib/cropStyle";
-import { getValidToken, isTokenExpired, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
 
 const h = { fontFamily: fonts.heading };
 
@@ -57,7 +57,6 @@ function SessionCard({ item, isNew, onHide }: { item: any; isNew: boolean; onHid
         <div style={{ position: "relative", width: "100%", aspectRatio: "16/9", overflow: "hidden" }}>
           <img src={item.photoUrl} alt="" style={cropStyle(item.photoCrop)} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to bottom, transparent 50%, rgba(31,53,76,0.65) 100%)" }} />
-          {/* Wind badge rechtsonder */}
           {item.forecastWind && (
             <div style={{ position: "absolute", bottom: 10, right: 12, background: "rgba(15,25,40,0.75)", backdropFilter: "blur(8px)", borderRadius: 9, padding: "5px 9px", textAlign: "center" }}>
               <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{item.forecastWind}</div>
@@ -80,7 +79,7 @@ function SessionCard({ item, isNew, onHide }: { item: any; isNew: boolean; onHid
         </div>
       )}
 
-      {/* Gear + notes — stip stijl */}
+      {/* Gear + notes */}
       {(item.gearType || item.notes) && (
         <div style={{ padding: "8px 14px 12px", borderTop: `1px solid ${C.cardBorder}`, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" as const }}>
           {item.gearType && (
@@ -100,16 +99,17 @@ function SessionCard({ item, isNew, onHide }: { item: any; isNew: boolean; onHid
 }
 
 export default function VriendenFeedPage() {
+  const { token, loading: authLoading } = useUser();
+
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const load = useCallback(async () => {
-    if (isTokenExpired()) { window.location.href = "/login"; return; }
+    if (!token) return;
     try {
-      const token = await getValidToken();
       const res = await fetch("/api/friends?type=feed", {
-        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -120,24 +120,24 @@ export default function VriendenFeedPage() {
     setLoading(false);
 
     try {
-      const token = await getValidToken();
       await fetch("/api/friends?type=mark_seen", {
-        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+        headers: { Authorization: `Bearer ${token}` },
       });
     } catch {}
-  }, []);
+  }, [token]);
 
   useEffect(() => { load(); }, [load]);
 
   async function hideSession(sessionId: number) {
     setSessions(prev => prev.filter(s => s.id !== sessionId));
     try {
-      const token = await getValidToken();
       await fetch(`/api/friends?type=hide_session&session_id=${sessionId}`, {
-        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+        headers: { Authorization: `Bearer ${token ?? ""}` },
       });
     } catch (e) { console.error(e); }
   }
+
+  if (authLoading) return null;
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh" }}>
