@@ -3,6 +3,7 @@ import { C } from "../lib/constants";
 import { HealthData } from "../lib/types";
 import { alertTypeColors, alertTypeEmoji } from "../lib/constants";
 import { Card } from "./SharedUI";
+import { SentryPanel } from "./HealthPanels";
 
 function AdminDashboard({ stats, health, onNavigate }: {
   stats: { users: number; spots: number; alerts: number; alertsToday: number };
@@ -88,6 +89,10 @@ function AdminDashboard({ stats, health, onNavigate }: {
           </div>
         </div>
       )}
+
+      <div style={{ marginBottom: 20 }}>
+        <SentryPanel />
+      </div>
 
       {/* Snelkoppelingen */}
       <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase" as const, letterSpacing: 1, marginBottom: 10 }}>Snelkoppelingen</div>
