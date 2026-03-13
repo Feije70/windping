@@ -4,21 +4,21 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { Icons } from "@/components/Icons";
-import { getValidToken, getEmail, getAuthId, isTokenExpired, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
+import { clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 
 const h = { fontFamily: fonts.heading };
 
 /* ── Supabase helpers ── */
-async function sb(path: string, opts?: { method?: string; body?: unknown }) {
-  const token = await getValidToken();
-  if (!token) throw new Error("auth");
-  const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" };
-  if (opts?.method === "POST") headers.Prefer = "resolution=merge-duplicates,return=minimal";
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method: opts?.method || "GET", headers, body: opts?.body ? JSON.stringify(opts.body) : undefined });
-  if (res.status === 401) throw new Error("auth");
-  if (!res.ok) throw new Error(`supabase_${res.status}`);
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
+function makeSb(token: string) {
+  return async function sb(path: string, opts?: { method?: string; body?: unknown }) {
+    const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" };
+    if (opts?.method === "POST") headers.Prefer = "resolution=merge-duplicates,return=minimal";
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { method: opts?.method || "GET", headers, body: opts?.body ? JSON.stringify(opts.body) : undefined });
+    if (!res.ok) throw new Error(`supabase_${res.status}`);
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
+  };
 }
 
 /* ── Constants ── */
@@ -128,7 +128,6 @@ function TempControl({ value, enabled, unit, onValueChange, onToggle, onUnitChan
 
   return (
     <div>
-      {/* Toggle */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: enabled ? C.sky : C.sub }}>
           {enabled ? "Temperature filter on" : "Temperature filter off"}
@@ -137,8 +136,6 @@ function TempControl({ value, enabled, unit, onValueChange, onToggle, onUnitChan
           <div style={{ position: "absolute", top: 3, left: enabled ? 25 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.3)", transition: "left 0.3s" }} />
         </div>
       </div>
-
-      {/* Controls */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16, opacity: enabled ? 1 : 0.3, transition: "opacity 0.3s", pointerEvents: enabled ? "auto" : "none" }}>
         <button onClick={() => adj(-1)} style={{ width: 44, height: 44, borderRadius: "50%", border: `2px solid ${C.cardBorder}`, background: C.card, fontSize: 22, fontWeight: 700, color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
         <div style={{ width: 120, height: 72, borderRadius: 16, background: col.bg, border: `2px solid ${col.border}`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
@@ -149,8 +146,6 @@ function TempControl({ value, enabled, unit, onValueChange, onToggle, onUnitChan
         </div>
         <button onClick={() => adj(1)} style={{ width: 44, height: 44, borderRadius: "50%", border: `2px solid ${C.cardBorder}`, background: C.card, fontSize: 22, fontWeight: 700, color: C.muted, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
       </div>
-
-      {/* Bar */}
       <div style={{ height: 6, background: C.creamDark, borderRadius: 3, marginBottom: 8, overflow: "hidden", opacity: enabled ? 1 : 0.3 }}>
         <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg, #60A5FA, ${col.text})`, borderRadius: 3, transition: "width 0.3s" }} />
       </div>
@@ -158,15 +153,9 @@ function TempControl({ value, enabled, unit, onValueChange, onToggle, onUnitChan
         <span>{unit === "C" ? MIN_C : cToF(MIN_C)}°</span>
         <span>{unit === "C" ? MAX_C : cToF(MAX_C)}°</span>
       </div>
-
-      {/* Unit toggle */}
       <div style={{ display: "flex", justifyContent: "center", gap: 4, opacity: enabled ? 1 : 0.3 }}>
         {(["C", "F"] as const).map((u) => (
-          <button key={u} onClick={() => onUnitChange(u)} style={{
-            padding: "5px 14px", borderRadius: 8, border: `1.5px solid ${unit === u ? C.sky : C.cardBorder}`,
-            background: unit === u ? C.sky : "transparent", color: unit === u ? "#fff" : C.sub,
-            fontSize: 12, fontWeight: 600, cursor: "pointer",
-          }}>°{u}</button>
+          <button key={u} onClick={() => onUnitChange(u)} style={{ padding: "5px 14px", borderRadius: 8, border: `1.5px solid ${unit === u ? C.sky : C.cardBorder}`, background: unit === u ? C.sky : "transparent", color: unit === u ? "#fff" : C.sub, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>°{u}</button>
         ))}
       </div>
     </div>
@@ -179,7 +168,6 @@ function ScheduleGrid({ schedule, onChange }: {
   onChange: (day: number, period: string) => void;
 }) {
   function quickSelect(preset: string) {
-    // We trigger onChange for each slot that needs to change
     for (let d = 0; d < 7; d++) {
       for (const p of PERIODS) {
         const current = schedule[d]?.[p] || false;
@@ -194,7 +182,6 @@ function ScheduleGrid({ schedule, onChange }: {
 
   return (
     <div style={{ background: C.card, borderRadius: 16, padding: "20px 16px", boxShadow: C.cardShadow }}>
-      {/* Headers */}
       <div style={{ display: "grid", gridTemplateColumns: "44px 1fr 1fr 1fr", gap: 8, marginBottom: 10, paddingBottom: 12, borderBottom: `1px solid ${C.cardBorder}` }}>
         <div />
         {PERIODS.map((p) => (
@@ -204,8 +191,6 @@ function ScheduleGrid({ schedule, onChange }: {
           </div>
         ))}
       </div>
-
-      {/* Days */}
       {DAYS.map((day, d) => (
         <div key={d}>
           {d === 5 && <div style={{ height: 1, background: `${C.sky}20`, margin: "6px 0" }} />}
@@ -214,37 +199,17 @@ function ScheduleGrid({ schedule, onChange }: {
             {PERIODS.map((p) => {
               const active = schedule[d]?.[p] || false;
               return (
-                <div key={p} onClick={() => onChange(d, p)} style={{
-                  height: 44, borderRadius: 12, cursor: "pointer", position: "relative", overflow: "hidden",
-                  background: active ? `linear-gradient(135deg, ${C.sky}, #4DB8C9)` : C.creamDark,
-                  border: active ? "none" : `1px solid ${C.cardBorder}`,
-                  boxShadow: active ? `0 3px 12px ${C.sky}40` : "none",
-                  transition: "all 0.25s", display: "flex", alignItems: "center", justifyContent: "center",
-                }}>
-                  {active && (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
+                <div key={p} onClick={() => onChange(d, p)} style={{ height: 44, borderRadius: 12, cursor: "pointer", position: "relative", overflow: "hidden", background: active ? `linear-gradient(135deg, ${C.sky}, #4DB8C9)` : C.creamDark, border: active ? "none" : `1px solid ${C.cardBorder}`, boxShadow: active ? `0 3px 12px ${C.sky}40` : "none", transition: "all 0.25s", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {active && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>}
                 </div>
               );
             })}
           </div>
         </div>
       ))}
-
-      {/* Quick select */}
       <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
-        {[
-          { label: "Weekends", preset: "weekends" },
-          { label: "Evenings", preset: "evenings" },
-          { label: "All", preset: "all" },
-          { label: "Reset", preset: "none" },
-        ].map((q) => (
-          <button key={q.preset} onClick={() => quickSelect(q.preset)} style={{
-            padding: "6px 14px", borderRadius: 8, border: `1px solid ${C.cardBorder}`,
-            background: "transparent", color: C.muted, fontSize: 11, fontWeight: 600, cursor: "pointer",
-          }}>{q.label}</button>
+        {[{ label: "Weekends", preset: "weekends" }, { label: "Evenings", preset: "evenings" }, { label: "All", preset: "all" }, { label: "Reset", preset: "none" }].map((q) => (
+          <button key={q.preset} onClick={() => quickSelect(q.preset)} style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${C.cardBorder}`, background: "transparent", color: C.muted, fontSize: 11, fontWeight: 600, cursor: "pointer" }}>{q.label}</button>
         ))}
       </div>
     </div>
@@ -269,8 +234,9 @@ function Section({ icon, title, subtitle, children }: { icon: React.ReactNode; t
 
 /* ── Main Page ── */
 export default function SettingsPage() {
+  const { user, token, loading: authLoading } = useUser({ redirectIfUnauthenticated: true });
+
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<number | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [wMin, setWMin] = useState(15);
   const [wMax, setWMax] = useState(25);
@@ -284,66 +250,46 @@ export default function SettingsPage() {
   const [toast, setToast] = useState("");
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
 
+  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
+
   // Check push notification status on mount
   useEffect(() => {
     const checkPush = async () => {
-      // Check if we're in a context that supports push
       const hasNotification = "Notification" in window;
       const hasSW = "serviceWorker" in navigator;
       const isPWA = window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone;
-      
       if (!hasNotification || !hasSW) {
-        // On iOS, Notification API is only available in PWA mode
-        if (isPWA) {
-          // PWA but APIs not ready yet — show as default, let user try
-          setPushStatus("default");
-        } else {
-          setPushStatus("unsupported");
-        }
+        setPushStatus(isPWA ? "default" : "unsupported");
         return;
       }
-      
       const permission = Notification.permission as "default" | "granted" | "denied";
       setPushStatus(permission);
-      
-      // If already granted, ensure subscription is saved to DB
       if (permission === "granted") {
         try {
           const reg = await navigator.serviceWorker.ready;
           const existingSub = await reg.pushManager.getSubscription();
-          if (existingSub) {
+          if (existingSub && token) {
             const subJson = existingSub.toJSON();
-            const token = await getValidToken();
             await fetch("/api/push/subscribe", {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-              body: JSON.stringify({
-                endpoint: subJson.endpoint,
-                keys: { p256dh: subJson.keys?.p256dh, auth: subJson.keys?.auth },
-              }),
+              body: JSON.stringify({ endpoint: subJson.endpoint, keys: { p256dh: subJson.keys?.p256dh, auth: subJson.keys?.auth } }),
             });
           }
         } catch (e) { console.error("Auto-save push sub:", e); }
       }
     };
-    checkPush();
-  }, []);
+    if (token) checkPush();
+  }, [token]);
 
   const handlePushToggle = async () => {
-    if (pushStatus === "denied") return;
-
+    if (pushStatus === "denied" || !token) return;
     if (pushStatus === "granted") {
-      // Unsubscribe
       try {
         const reg = await navigator.serviceWorker.ready;
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
-          const token = await getValidToken();
-          await fetch("/api/push/subscribe", {
-            method: "DELETE",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ endpoint: sub.endpoint }),
-          });
+          await fetch("/api/push/subscribe", { method: "DELETE", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ endpoint: sub.endpoint }) });
           await sub.unsubscribe();
         }
         setPushStatus("default");
@@ -351,147 +297,94 @@ export default function SettingsPage() {
       } catch (e) { console.error("Unsubscribe error:", e); }
       return;
     }
-
-    // Subscribe (status is "default" or "unsupported" in PWA mode)
     try {
-      if (!("Notification" in window)) {
-        showToast("Push not supported — open via homescreen");
-        return;
-      }
-      
+      if (!("Notification" in window)) { showToast("Push not supported — open via homescreen"); return; }
       const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        setPushStatus(permission as "default" | "denied");
-        if (permission === "denied") showToast("Push blocked — check app settings");
-        return;
-      }
+      if (permission !== "granted") { setPushStatus(permission as "default" | "denied"); if (permission === "denied") showToast("Push blocked — check app settings"); return; }
       setPushStatus("granted");
-
       const reg = await navigator.serviceWorker.ready;
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
-      
-      // Convert VAPID key to Uint8Array
       const padding = "=".repeat((4 - (vapidKey.length % 4)) % 4);
       const base64 = (vapidKey + padding).replace(/-/g, "+").replace(/_/g, "/");
       const rawData = atob(base64);
       const applicationServerKey = new Uint8Array(rawData.length);
       for (let i = 0; i < rawData.length; i++) applicationServerKey[i] = rawData.charCodeAt(i);
-
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      });
-
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
       const subJson = sub.toJSON();
-      const token = await getValidToken();
-      
-      const saveRes = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          endpoint: subJson.endpoint,
-          keys: { p256dh: subJson.keys?.p256dh, auth: subJson.keys?.auth },
-        }),
-      });
-      
-      if (saveRes.ok) {
-        showToast("Push notifications enabled! 🔔");
-      } else {
-        const err = await saveRes.json().catch(() => ({}));
-        console.error("Save push sub failed:", err);
-        showToast("Push enabled but save failed — try again");
-      }
-    } catch (e: any) {
-      console.error("Subscribe error:", e);
-      showToast("Could not enable push notifications");
-    }
+      const saveRes = await fetch("/api/push/subscribe", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ endpoint: subJson.endpoint, keys: { p256dh: subJson.keys?.p256dh, auth: subJson.keys?.auth } }) });
+      showToast(saveRes.ok ? "Push notifications enabled! 🔔" : "Push enabled but save failed — try again");
+    } catch (e: any) { console.error("Subscribe error:", e); showToast("Could not enable push notifications"); }
   };
-
-  const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
 
   // Auto-save with debounce
   const scheduleSave = useCallback((type: "wind" | "temp" | "schedule" | "alertPrefs", data?: any) => {
+    if (!token || !user) return;
+    const sb = makeSb(token);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       try {
-        const authId = getAuthId();
         if (type === "wind") {
-          await sb(`users?auth_id=eq.${encodeURIComponent(authId || "")}`, { method: "PATCH", body: { min_wind_speed: data.min, max_wind_speed: data.max } });
+          await sb(`users?auth_id=eq.${encodeURIComponent(user.auth_id)}`, { method: "PATCH", body: { min_wind_speed: data.min, max_wind_speed: data.max } });
         } else if (type === "temp") {
-          await sb(`users?auth_id=eq.${encodeURIComponent(authId || "")}`, { method: "PATCH", body: { min_temperature: data.enabled ? data.value : null, temp_unit: data.unit } });
-        } else if (type === "schedule" && userId) {
+          await sb(`users?auth_id=eq.${encodeURIComponent(user.auth_id)}`, { method: "PATCH", body: { min_temperature: data.enabled ? data.value : null, temp_unit: data.unit } });
+        } else if (type === "schedule") {
           const rows = Object.entries(data).map(([day, periods]: [string, any]) => ({
-            user_id: userId, day_of_week: parseInt(day),
+            user_id: user.id, day_of_week: parseInt(day),
             morning: periods.morning || false, afternoon: periods.afternoon || false, evening: periods.evening || false,
           }));
           await sb("alert_schedules?on_conflict=user_id,day_of_week", { method: "POST", body: rows });
-        } else if (type === "alertPrefs" && userId) {
-          await sb(`alert_preferences?user_id=eq.${userId}`, { method: "PATCH", body: { lookahead_days: data.lookahead, epic_any_day: data.epicAnyDay, updated_at: new Date().toISOString() } });
+        } else if (type === "alertPrefs") {
+          await sb(`alert_preferences?user_id=eq.${user.id}`, { method: "PATCH", body: { lookahead_days: data.lookahead, epic_any_day: data.epicAnyDay, updated_at: new Date().toISOString() } });
         }
         showToast("✓ Saved");
-      } catch (e: any) {
-        if (e.message === "auth") { window.location.href = "/login"; return; }
-        showToast("Save failed");
-      }
+      } catch { showToast("Save failed"); }
     }, 800);
-  }, [userId]);
+  }, [token, user]);
 
   // Load data
   useEffect(() => {
+    if (!user || !token) return;
+    const sb = makeSb(token);
     async function load() {
-      const email = getEmail();
-      if (!email || isTokenExpired()) { window.location.href = "/login"; return; }
-
       try {
-        const authId = getAuthId();
-        const token = await getValidToken();
-        const res = await fetch(`${SUPABASE_URL}/rest/v1/users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,name,min_wind_speed,max_wind_speed,min_temperature,temp_unit`, {
-          headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-        });
-        const users = await res.json();
+        if (user!.name) setDisplayName(user!.name);
+        setWMin(user!.min_wind_speed);
+        setWMax(user!.max_wind_speed ?? user!.min_wind_speed + 10);
 
-        if (users?.length) {
-          const u = users[0];
-          setUserId(u.id);
-          if (u.name) setDisplayName(u.name);
-          if (u.min_wind_speed != null) setWMin(u.min_wind_speed);
-          if (u.max_wind_speed != null) setWMax(u.max_wind_speed);
-          else setWMax((u.min_wind_speed || 15) + 10);
-          if (u.min_temperature != null) { setTempC(u.min_temperature); setTempEnabled(true); }
+        // min_temperature and temp_unit not in WindPingUser interface — fetch separately
+        const extra = await sb(`users?id=eq.${user!.id}&select=min_temperature,temp_unit`);
+        if (extra?.[0]) {
+          if (extra[0].min_temperature != null) { setTempC(extra[0].min_temperature); setTempEnabled(true); }
           else setTempEnabled(false);
-          if (u.temp_unit === "F") setTempUnit("F");
-
-          // Load schedule
-          const schRes = await fetch(`${SUPABASE_URL}/rest/v1/alert_schedules?user_id=eq.${u.id}`, {
-            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-          });
-          const schData = await schRes.json();
-          const sch: Record<number, Record<string, boolean>> = {};
-          for (let d = 0; d < 7; d++) sch[d] = { morning: false, afternoon: false, evening: false };
-          if (schData?.length) {
-            for (const row of schData) {
-              sch[row.day_of_week] = { morning: row.morning || false, afternoon: row.afternoon || false, evening: row.evening || false };
-            }
-          }
-          setSchedule(sch);
-
-          // Load alert preferences
-          try {
-            const apRes = await fetch(`${SUPABASE_URL}/rest/v1/alert_preferences?user_id=eq.${u.id}`, {
-              headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-            });
-            const apData = await apRes.json();
-            if (apData?.length) {
-              if (apData[0].lookahead_days != null) setLookahead(apData[0].lookahead_days);
-              if (apData[0].epic_any_day != null) setEpicAnyDay(apData[0].epic_any_day);
-            }
-          } catch {}
+          if (extra[0].temp_unit === "F") setTempUnit("F");
         }
+
+        // Schedule
+        const schData = await sb(`alert_schedules?user_id=eq.${user!.id}`);
+        const sch: Record<number, Record<string, boolean>> = {};
+        for (let d = 0; d < 7; d++) sch[d] = { morning: false, afternoon: false, evening: false };
+        if (schData?.length) {
+          for (const row of schData) {
+            sch[row.day_of_week] = { morning: row.morning || false, afternoon: row.afternoon || false, evening: row.evening || false };
+          }
+        }
+        setSchedule(sch);
+
+        // Alert preferences
+        try {
+          const apData = await sb(`alert_preferences?user_id=eq.${user!.id}`);
+          if (apData?.length) {
+            if (apData[0].lookahead_days != null) setLookahead(apData[0].lookahead_days);
+            if (apData[0].epic_any_day != null) setEpicAnyDay(apData[0].epic_any_day);
+          }
+        } catch {}
       } catch (e) { console.warn("Settings load error:", e); }
       setLoading(false);
     }
     load();
-  }, []);
+  }, [user, token]);
+
+  if (authLoading) return null;
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
@@ -515,35 +408,23 @@ export default function SettingsPage() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 onBlur={async () => {
-                  if (userId && displayName.trim()) {
-                    await sb(`users?id=eq.${userId}`, { method: "PATCH", body: { name: displayName.trim() } });
+                  if (user && token && displayName.trim()) {
+                    await makeSb(token)(`users?id=eq.${user.id}`, { method: "PATCH", body: { name: displayName.trim() } });
                     showToast("Name saved");
                   }
                 }}
                 placeholder="Je naam"
-                style={{
-                  width: "100%", padding: "10px 12px", background: C.card,
-                  border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.navy,
-                  fontSize: 14, outline: "none", boxSizing: "border-box",
-                }}
+                style={{ width: "100%", padding: "10px 12px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.navy, fontSize: 14, outline: "none", boxSizing: "border-box" }}
               />
             </div>
 
             {/* Wind Range */}
-            <Section
-              icon={Icons.wind({ color: C.sky })}
-              title="Default Wind Range"
-              subtitle="Applied as default when you save a new spot."
-            >
+            <Section icon={Icons.wind({ color: C.sky })} title="Default Wind Range" subtitle="Applied as default when you save a new spot.">
               <WindRange min={wMin} max={wMax} onChange={(mn, mx) => { setWMin(mn); setWMax(mx); scheduleSave("wind", { min: mn, max: mx }); }} />
             </Section>
 
             {/* Temperature */}
-            <Section
-              icon={Icons.thermometer({ color: C.sky })}
-              title="Minimum Temperature"
-              subtitle="Only get alerts when it's warm enough for you."
-            >
+            <Section icon={Icons.thermometer({ color: C.sky })} title="Minimum Temperature" subtitle="Only get alerts when it's warm enough for you.">
               <TempControl
                 value={tempC} enabled={tempEnabled} unit={tempUnit}
                 onValueChange={(v) => { setTempC(v); scheduleSave("temp", { value: v, enabled: tempEnabled, unit: tempUnit }); }}
@@ -553,11 +434,7 @@ export default function SettingsPage() {
             </Section>
 
             {/* Availability Schedule */}
-            <Section
-              icon={Icons.calendar({ color: C.sky })}
-              title="Your Availability"
-              subtitle="When can you go out? We'll only alert you during these times."
-            >
+            <Section icon={Icons.calendar({ color: C.sky })} title="Your Availability" subtitle="When can you go out? We'll only alert you during these times.">
               <ScheduleGrid
                 schedule={schedule}
                 onChange={(day, period) => {
@@ -571,39 +448,23 @@ export default function SettingsPage() {
             </Section>
 
             {/* Alert Settings */}
-            <Section
-              icon={Icons.bell({ color: C.sky })}
-              title="Alert Preferences"
-              subtitle="How and when W. Ping notifies you."
-            >
+            <Section icon={Icons.bell({ color: C.sky })} title="Alert Preferences" subtitle="How and when W. Ping notifies you.">
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-
-                {/* Push notifications */}
                 <div style={{ padding: "14px 16px", background: C.oceanTint, borderRadius: 12, border: "none" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700 }}>🔔 Push Notifications</div>
                       <div style={{ fontSize: 11, color: C.sub }}>
-                        {pushStatus === "granted" ? "Enabled — you'll get pinged!" 
-                         : pushStatus === "denied" ? "Blocked in browser settings" 
-                         : pushStatus === "unsupported" ? "Open via homescreen to enable"
-                         : "Get real-time alerts on your phone"}
+                        {pushStatus === "granted" ? "Enabled — you'll get pinged!" : pushStatus === "denied" ? "Blocked in browser settings" : pushStatus === "unsupported" ? "Open via homescreen to enable" : "Get real-time alerts on your phone"}
                       </div>
                     </div>
-                    <button onClick={handlePushToggle}
-                      disabled={pushStatus === "denied"}
-                      style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: pushStatus === "denied" ? "not-allowed" : "pointer", background: pushStatus === "granted" ? C.sky : C.creamDark, position: "relative", transition: "background 0.2s", opacity: pushStatus === "denied" ? 0.4 : 1 }}>
+                    <button onClick={handlePushToggle} disabled={pushStatus === "denied"} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: pushStatus === "denied" ? "not-allowed" : "pointer", background: pushStatus === "granted" ? C.sky : C.creamDark, position: "relative", transition: "background 0.2s", opacity: pushStatus === "denied" ? 0.4 : 1 }}>
                       <div style={{ position: "absolute", top: 2, left: pushStatus === "granted" ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s" }} />
                     </button>
                   </div>
-                  {pushStatus === "denied" && (
-                    <div style={{ fontSize: 10, color: C.amber, marginTop: 6 }}>
-                      Open je browser/app instellingen om meldingen toe te staan
-                    </div>
-                  )}
+                  {pushStatus === "denied" && <div style={{ fontSize: 10, color: C.amber, marginTop: 6 }}>Open je browser/app instellingen om meldingen toe te staan</div>}
                 </div>
 
-                {/* Lookahead days */}
                 <div style={{ padding: "14px 16px", background: C.card, borderRadius: 12, border: `1px solid ${C.cardBorder}` }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                     <div>
@@ -612,23 +473,19 @@ export default function SettingsPage() {
                     </div>
                     <div style={{ fontSize: 22, fontWeight: 800, color: C.sky }}>{lookahead}d</div>
                   </div>
-                  <input type="range" min={1} max={7} step={1} value={lookahead}
-                    onChange={(e) => { const v = parseInt(e.target.value); setLookahead(v); scheduleSave("alertPrefs", { lookahead: v, epicAnyDay }); }}
-                    style={{ width: "100%" }} />
+                  <input type="range" min={1} max={7} step={1} value={lookahead} onChange={(e) => { const v = parseInt(e.target.value); setLookahead(v); scheduleSave("alertPrefs", { lookahead: v, epicAnyDay }); }} style={{ width: "100%" }} />
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.sub, marginTop: 4 }}>
                     <span>1 day</span><span>7 days</span>
                   </div>
                 </div>
 
-                {/* Epic any day */}
                 <div style={{ padding: "14px 16px", background: C.epicBg, borderRadius: 12, border: "none" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: C.gold }}>🤙 Call in Sick mode</div>
                       <div style={{ fontSize: 11, color: C.sub }}>Get Epic alerts even on days you&apos;re not available</div>
                     </div>
-                    <button onClick={() => { const v = !epicAnyDay; setEpicAnyDay(v); scheduleSave("alertPrefs", { lookahead, epicAnyDay: v }); }}
-                      style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: epicAnyDay ? C.gold : C.creamDark, position: "relative", transition: "background 0.2s" }}>
+                    <button onClick={() => { const v = !epicAnyDay; setEpicAnyDay(v); scheduleSave("alertPrefs", { lookahead, epicAnyDay: v }); }} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: epicAnyDay ? C.gold : C.creamDark, position: "relative", transition: "background 0.2s" }}>
                       <div style={{ position: "absolute", top: 2, left: epicAnyDay ? 22 : 2, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "left 0.2s" }} />
                     </button>
                   </div>
@@ -638,12 +495,7 @@ export default function SettingsPage() {
 
             {/* Logout */}
             <div style={{ padding: "16px 0 24px" }}>
-              <button onClick={async () => { await clearAuth(); window.location.href = "/login"; }} style={{
-                width: "100%", padding: "13px", background: C.card,
-                border: `1px solid ${C.cardBorder}`, borderRadius: 12, color: C.muted,
-                fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex",
-                alignItems: "center", justifyContent: "center", gap: 8,
-              }}>
+              <button onClick={async () => { await clearAuth(); window.location.href = "/login"; }} style={{ width: "100%", padding: "13px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 {Icons.logout({ color: C.muted, size: 16 })} Log out
               </button>
             </div>
@@ -651,14 +503,8 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* Toast */}
       {toast && (
-        <div style={{
-          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
-          background: toast.includes("✓") ? C.green : C.amber, color: "#fff",
-          padding: "10px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-          boxShadow: "0 4px 20px rgba(0,0,0,0.1)", zIndex: 10000,
-        }}>{toast}</div>
+        <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", background: toast.includes("✓") ? C.green : C.amber, color: "#fff", padding: "10px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: "0 4px 20px rgba(0,0,0,0.1)", zIndex: 10000 }}>{toast}</div>
       )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
