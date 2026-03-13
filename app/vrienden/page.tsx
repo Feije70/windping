@@ -4,31 +4,17 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
-import { getValidToken } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
 
 const h = { fontFamily: fonts.heading };
-
-async function apiFetch(path: string, options?: RequestInit) {
-  const token = await getValidToken();
-  if (!token) return { error: "Niet ingelogd" };
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-  try {
-    const res = await fetch(path, { ...options, headers });
-    return await res.json();
-  } catch (e) {
-    console.error("apiFetch error:", e);
-    return { error: "Netwerkfout" };
-  }
-}
 
 interface Friend { id: number; name: string; friendshipId: number; }
 interface PendingReq { id: number; name: string; friendshipId: number; }
 interface SearchResult { id: number; name: string; email: string; }
 
 export default function VriendenPage() {
+  const { token, loading: authLoading } = useUser();
+
   const [friends, setFriends] = useState<Friend[]>([]);
   const [pending, setPending] = useState<PendingReq[]>([]);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
@@ -50,7 +36,23 @@ export default function VriendenPage() {
   const [inviteStatus, setInviteStatus] = useState<"ready" | "accepting" | "success" | "error" | "not_logged_in">("ready");
   const [inviteError, setInviteError] = useState("");
 
+  async function apiFetch(path: string, options?: RequestInit) {
+    if (!token) return { error: "Niet ingelogd" };
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+    try {
+      const res = await fetch(path, { ...options, headers });
+      return await res.json();
+    } catch (e) {
+      console.error("apiFetch error:", e);
+      return { error: "Netwerkfout" };
+    }
+  }
+
   const loadFriends = useCallback(async () => {
+    if (!token) return;
     try {
       const data = await apiFetch("/api/friends?type=list");
       if (!data.error) {
@@ -60,7 +62,8 @@ export default function VriendenPage() {
       }
     } catch {}
     setLoading(false);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   useEffect(() => { loadFriends(); }, [loadFriends]);
 
@@ -71,17 +74,14 @@ export default function VriendenPage() {
     if (code) {
       setInviteMode(true);
       setInviteCodeUrl(code);
-      // Fetch inviter name
       fetch(`/api/friends?type=invite_info&code=${code}`)
         .then(r => r.json())
         .then(d => { if (d.inviterName) setInviterName(d.inviterName); })
         .catch(() => {});
-      // Check if logged in
-      getValidToken().then(token => {
-        if (!token) setInviteStatus("not_logged_in");
-      });
+      if (!token && !authLoading) setInviteStatus("not_logged_in");
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, authLoading]);
 
   const acceptInviteFromUrl = async () => {
     setInviteStatus("accepting");
@@ -90,7 +90,6 @@ export default function VriendenPage() {
       body: JSON.stringify({ action: "accept_invite", code: inviteCodeUrl }),
     });
     if (data.error === "Niet ingelogd") {
-      // Store code and redirect to login
       try { localStorage.setItem("wp_invite_code", inviteCodeUrl); } catch {}
       window.location.href = "/login?redirect=/vrienden?code=" + inviteCodeUrl;
       return;
@@ -196,6 +195,9 @@ export default function VriendenPage() {
     setShowRemoveConfirm(null);
     loadFriends();
   };
+
+  // Wacht tot auth bekend is
+  if (authLoading) return null;
 
   /* ═══════════════════════════════════════
      INVITE ACCEPT VIEW (via link)
