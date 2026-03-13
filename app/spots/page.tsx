@@ -67,6 +67,17 @@ function SpotsContent() {
   const LRef = useRef<any>(null);
   const [visibleIds, setVisibleIds] = useState<Set<number>>(new Set());
 
+  // ── Moet boven de useEffects staan die hem gebruiken ──
+  const filterByBounds = useCallback(() => {
+    if (!mapRef.current) return;
+    const bounds = mapRef.current.getBounds();
+    const ids = new Set<number>();
+    markersRef.current.forEach((m: any) => {
+      if (bounds.contains(m.getLatLng())) ids.add(m._spotId);
+    });
+    setVisibleIds(ids);
+  }, []);
+
   useEffect(() => {
     if (!token) return;
     fetch(`${SUPABASE_URL}/rest/v1/spots?active=eq.true&is_private=eq.false&select=id,display_name,latitude,longitude,spot_type,level,min_wind,max_wind,good_directions,tips&order=display_name`, {
@@ -109,7 +120,7 @@ function SpotsContent() {
       .then((r) => r.json())
       .then((d) => { if (d.latitude && d.longitude) map.setView([d.latitude, d.longitude], 7); })
       .catch(() => {});
-  }, [mapReady]);
+  }, [mapReady, filterByBounds]);
 
   useEffect(() => {
     if (!mapRef.current || !LRef.current || !spots.length) return;
@@ -143,17 +154,7 @@ function SpotsContent() {
       map.fitBounds(L.featureGroup(markersRef.current).getBounds().pad(0.1));
     }
     filterByBounds();
-  }, [spots, mapReady]);
-
-  const filterByBounds = useCallback(() => {
-    if (!mapRef.current) return;
-    const bounds = mapRef.current.getBounds();
-    const ids = new Set<number>();
-    markersRef.current.forEach((m: any) => {
-      if (bounds.contains(m.getLatLng())) ids.add(m._spotId);
-    });
-    setVisibleIds(ids);
-  }, []);
+  }, [spots, mapReady, filterByBounds]);
 
   function handleLocate() {
     if (!navigator.geolocation || !mapRef.current || !LRef.current) return;
