@@ -1,34 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getAuthId, getValidToken, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
 
-export default function VisitorCTA({ sessionId }: { sessionId: number }) {
-  const [show, setShow] = useState(false);
+export default function VisitorCTA({ sessionId, createdBy }: { sessionId: number; createdBy: number }) {
+  const { user, loading: authLoading } = useUser();
 
-  useEffect(() => {
-    async function check() {
-      const authId = getAuthId();
-      if (!authId) { setShow(true); return; } // niet ingelogd → toon CTA
-      const token = await getValidToken();
-      if (!token) { setShow(true); return; }
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${sessionId}&select=created_by&limit=1`, {
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) { setShow(true); return; }
-      const data = await res.json();
-      const usersRes = await fetch(`${SUPABASE_URL}/rest/v1/users?auth_id=eq.${encodeURIComponent(authId)}&select=id`, {
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-      });
-      const users = await usersRes.json();
-      const isOwner = data?.[0]?.created_by === users?.[0]?.id;
-      setShow(!isOwner);
-    }
-    check();
-  }, [sessionId]);
-
-  if (!show) return null;
+  // Wacht op auth, dan: toon alleen als niet ingelogd of niet de owner
+  if (authLoading) return null;
+  if (user && user.id === createdBy) return null;
 
   return (
     <div style={{ background: "#1F354C", borderRadius: 16, padding: "20px", textAlign: "center" }}>

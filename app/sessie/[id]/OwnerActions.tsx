@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getAuthId, getValidToken, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
 import DeleteSessionButton from "./DeleteSessionButton";
 
 const ratingLabels: Record<number, string> = { 1: "Shit 😬", 2: "Mwah 😐", 3: "Oké 👌", 4: "Lekker! 😎", 5: "EPIC! 🤙" };
@@ -14,25 +13,10 @@ export default function OwnerActions({ sessionId, createdBy, spotName, wind, dir
   dir: string | null;
   rating: number | null;
 }) {
-  const [isOwner, setIsOwner] = useState(false);
+  const { user, loading: authLoading } = useUser();
 
-  useEffect(() => {
-    async function check() {
-      const authId = getAuthId();
-      if (!authId) return;
-      const token = await getValidToken();
-      if (!token) return;
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/users?auth_id=eq.${encodeURIComponent(authId)}&select=id`, {
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const users = await res.json();
-      if (users?.[0]?.id === createdBy) setIsOwner(true);
-    }
-    check();
-  }, [createdBy]);
-
-  if (!isOwner) return null;
+  if (authLoading || !user) return null;
+  if (user.id !== createdBy) return null;
 
   const url = `https://www.windping.com/sessie/${sessionId}`;
   const text = [

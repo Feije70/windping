@@ -163,8 +163,7 @@ export default async function ShareSessionPage({ params }: { params: Promise<{ i
             rating={session.rating}
           />
 
-          {/* CTA — alleen voor bezoekers zichtbaar (OwnerActions toont niets als je eigenaar bent) */}
-          <VisitorCTA sessionId={session.id} />
+          <VisitorCTA sessionId={session.id} createdBy={session.created_by} />
         </div>
       </div>
     </div>
