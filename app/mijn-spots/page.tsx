@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { Icons } from "@/components/Icons";
-import { getValidToken, getEmail, getAuthId, isTokenExpired, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { useUser } from "@/lib/hooks/useUser";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 import Link from "next/link";
 import HomeSpotIcon from "@/components/HomeSpotIcon";
 
@@ -15,44 +16,31 @@ interface MySpot {
   dirs: string[]; enabled: boolean; epicEnabled: boolean; isPrivate: boolean;
 }
 
-async function sbFetch(path: string) {
-  const token = await getValidToken();
-  if (!token) throw new Error("auth");
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } });
-  if (res.status === 401) throw new Error("auth");
-  if (!res.ok) throw new Error(`supabase_${res.status}`);
-  return res.json();
-}
-
-async function sbPatch(path: string, body: unknown) {
-  const token = await getValidToken();
-  if (!token) throw new Error("auth");
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    method: "PATCH", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`supabase_${res.status}`);
-}
-
-async function sbDelete(path: string) {
-  const token = await getValidToken();
-  if (!token) throw new Error("auth");
-  await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, Prefer: "return=minimal" },
-  });
-}
-
 const typeColors: Record<string, string> = { zee: "#1A6A80", meer: "#2A8A70", rivier: "#B07030" };
 const typeGrad: Record<string, string> = {
   zee: "linear-gradient(90deg,#1A6A80,#2E8FAE)", meer: "linear-gradient(90deg,#2A8A70,#3EAA8C)",
   rivier: "linear-gradient(90deg,#B07030,#E8A83E)",
 };
 
-function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: { spot: MySpot; userId: number; onDelete: () => void; isHome: boolean; onSetHome: () => void; settingHome: boolean }) {
+function MySpotCard({ spot, userId, token, onDelete, isHome, onSetHome, settingHome }: { spot: MySpot; userId: number; token: string; onDelete: () => void; isHome: boolean; onSetHome: () => void; settingHome: boolean }) {
   const [enabled, setEnabled] = useState(spot.enabled);
   const [deleting, setDeleting] = useState(false);
   const tc = typeColors[spot.type] || C.sky;
   const tg = typeGrad[spot.type] || C.sky;
+
+  async function sbPatch(path: string, body: unknown) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      method: "PATCH", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`supabase_${res.status}`);
+  }
+
+  async function sbDelete(path: string) {
+    await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+      method: "DELETE", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, Prefer: "return=minimal" },
+    });
+  }
 
   async function toggleAlert() {
     const next = !enabled;
@@ -85,11 +73,9 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
       overflow: "hidden", opacity: deleting ? 0.4 : 1, transition: "opacity 0.3s", cursor: "pointer",
       textDecoration: "none", color: "inherit",
     }}>
-      {/* Top color bar — goud als homespot */}
       <div style={{ height: 4, background: homeTopBar }} />
 
       <div style={{ padding: "16px 18px 18px" }}>
-        {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" as const }}>
             {isHome && <HomeSpotIcon size={18} />}
@@ -107,7 +93,6 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
           </div>
         </div>
 
-        {/* Homespot label — alleen als actief */}
         {isHome && (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10, padding: "5px 10px", borderRadius: 20, background: "rgba(232,168,62,0.12)", border: "1px solid rgba(232,168,62,0.3)" }}>
             <HomeSpotIcon size={13} />
@@ -115,23 +100,19 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
           </div>
         )}
 
-        {/* Wind range */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
           {Icons.wind({ color: C.sky, size: 16 })}
           <span style={{ fontSize: 13, fontWeight: 600, color: C.sky }}>{spot.windMin}–{spot.windMax} kn</span>
         </div>
 
-        {/* Directions */}
         <div style={{ marginBottom: 14, minHeight: 20, display: "flex", flexWrap: "wrap", gap: 4 }}>
           {spot.dirs.length > 0 ? spot.dirs.map((d) => (
             <span key={d} style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 6, background: `${C.sky}15`, color: C.sky }}>{d}</span>
           )) : <span style={{ color: C.sub, fontSize: 12 }}>No directions set</span>}
         </div>
 
-        {/* Footer */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12, borderTop: `1px solid ${isHome ? "rgba(232,168,62,0.2)" : C.cardBorder}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {/* Toggle */}
             <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleAlert(); }} style={{
               width: 38, height: 22, borderRadius: 22, background: enabled ? C.sky : C.creamDark,
               cursor: "pointer", position: "relative", transition: "background 0.25s",
@@ -165,34 +146,45 @@ function MySpotCard({ spot, userId, onDelete, isHome, onSetHome, settingHome }: 
 }
 
 export default function MySpotPage() {
+  const { user, token, loading: authLoading } = useUser();
+
   const [loading, setLoading] = useState(true);
   const [spots, setSpots] = useState<MySpot[]>([]);
-  const [userId, setUserId] = useState<number | null>(null);
   const [homeSpotId, setHomeSpotId] = useState<number | null>(null);
   const [settingHome, setSettingHome] = useState<number | null>(null);
 
   async function setAsHomeSpot(spotId: number) {
-    if (!userId) return;
+    if (!user || !token) return;
     setSettingHome(spotId);
     try {
-      await sbPatch(`users?id=eq.${userId}`, { home_spot_id: spotId });
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/users?id=eq.${user.id}`, {
+        method: "PATCH", headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({ home_spot_id: spotId }),
+      });
+      if (!res.ok) throw new Error(`supabase_${res.status}`);
       setHomeSpotId(spotId);
     } catch {}
     setSettingHome(null);
   }
 
   useEffect(() => {
-    async function load() {
-      const email = getEmail();
-      if (!email || isTokenExpired()) { window.location.href = "/login"; return; }
+    if (!user || !token) return;
 
+    async function load() {
       try {
-        const authId = getAuthId();
-        const users = await sbFetch(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,home_spot_id`);
-        if (!users?.length) throw new Error("no_user");
-        const uid = users[0].id;
-        setUserId(uid);
-        if (users[0].home_spot_id) setHomeSpotId(users[0].home_spot_id);
+        const uid = user!.id;
+
+        async function sbFetch(path: string) {
+          const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token!}` },
+          });
+          if (res.status === 401) throw new Error("auth");
+          if (!res.ok) throw new Error(`supabase_${res.status}`);
+          return res.json();
+        }
+
+        const userData = await sbFetch(`users?id=eq.${uid}&select=home_spot_id`);
+        if (userData?.[0]?.home_spot_id) setHomeSpotId(userData[0].home_spot_id);
 
         const userSpots = await sbFetch(`user_spots?user_id=eq.${uid}&select=spot_id`);
         if (!userSpots?.length) { setSpots([]); setLoading(false); return; }
@@ -223,13 +215,14 @@ export default function MySpotPage() {
 
         setSpots(result);
       } catch (e: any) {
-        if (e.message === "auth") { window.location.href = "/login"; return; }
         console.error("My spots error:", e);
       }
       setLoading(false);
     }
     load();
-  }, []);
+  }, [user, token]);
+
+  if (authLoading) return null;
 
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
@@ -261,7 +254,7 @@ export default function MySpotPage() {
           <>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
               {spots.map((s) => (
-                <MySpotCard key={s.id} spot={s} userId={userId!}
+                <MySpotCard key={s.id} spot={s} userId={user!.id} token={token!}
                   isHome={homeSpotId === s.id}
                   onSetHome={() => setAsHomeSpot(s.id)}
                   settingHome={settingHome === s.id}
