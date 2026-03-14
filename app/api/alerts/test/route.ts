@@ -35,9 +35,10 @@ async function verifyAdmin(req: Request): Promise<boolean> {
   const authHeader = req.headers.get("authorization") || "";
   if (!authHeader.startsWith("Bearer ")) return false;
   const token = authHeader.replace("Bearer ", "");
+  if (token === CRON_SECRET) return true;
   try {
     const payload = JSON.parse(atob(token.split(".")[1]));
-    console.log("AUTH DEBUG sub:", payload.sub, "ids:", ADMIN_AUTH_IDS); return ADMIN_AUTH_IDS.includes(payload.sub);
+    return ADMIN_AUTH_IDS.includes(payload.sub);
   } catch { return false; }
 }
 
