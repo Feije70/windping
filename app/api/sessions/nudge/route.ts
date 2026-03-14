@@ -17,11 +17,34 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://kaimbtcuye
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const CRON_SECRET = process.env.CRON_SECRET || "";
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+interface UserRow {
+  id: number;
+  email: string;
+  name: string | null;
+  auth_id: string;
+}
+
+interface NudgeResult {
+  userId: number;
+  email?: string;
+  sessions?: number;
+  emailSent?: boolean;
+  error?: string;
+}
+
+interface WebPushError {
+  statusCode?: number;
+  message?: string;
+}
+
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const key = url.searchParams.get("key");
   
-  // Allow via key, cron secret, or authorization header
   const authHeader = req.headers.get("authorization") || "";
   const isAuthorized = key === "WindPing-extra-redundancy-2026" 
     || (CRON_SECRET && authHeader === `Bearer ${CRON_SECRET}`)
@@ -39,7 +62,6 @@ export async function GET(req: NextRequest) {
   const today = new Date().toISOString().split("T")[0];
 
   try {
-    // Find "going" sessions where date has passed or is today, not yet nudged
     const { data: pendingSessions, error } = await sb
       .from("sessions")
       .select("id, created_by, spot_id, session_date, forecast_wind, forecast_dir, nudge_sent")
@@ -52,28 +74,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ message: "No pending sessions to nudge", count: 0 });
     }
 
-    // Get spot names
     const spotIds = [...new Set(pendingSessions.map(s => s.spot_id))];
-    const { data: spots } = await sb
-      .from("spots")
-      .select("id, display_name")
-      .in("id", spotIds);
+    const { data: spots } = await sb.from("spots").select("id, display_name").in("id", spotIds);
     const spotNames: Record<number, string> = {};
-    (spots || []).forEach((s: any) => { spotNames[s.id] = s.display_name; });
+    (spots as { id: number; display_name: string }[] || []).forEach(s => { spotNames[s.id] = s.display_name; });
 
-    // Get user info
     const userIds = [...new Set(pendingSessions.map(s => s.created_by))];
-    const { data: users } = await sb
-      .from("users")
-      .select("id, email, name, auth_id")
-      .in("id", userIds);
-    const userMap: Record<number, any> = {};
-    (users || []).forEach((u: any) => { userMap[u.id] = u; });
+    const { data: users } = await sb.from("users").select("id, email, name, auth_id").in("id", userIds);
+    const userMap: Record<number, UserRow> = {};
+    (users as UserRow[] || []).forEach(u => { userMap[u.id] = u; });
 
     let nudgedCount = 0;
-    const results: any[] = [];
+    const results: NudgeResult[] = [];
 
-    // Group sessions by user
     const byUser: Record<number, typeof pendingSessions> = {};
     for (const session of pendingSessions) {
       if (!byUser[session.created_by]) byUser[session.created_by] = [];
@@ -90,7 +103,6 @@ export async function GET(req: NextRequest) {
         return { spotName, wind, sessionId: s.id, date: s.session_date };
       });
 
-      // Send email
       const RESEND_API_KEY = process.env.RESEND_API_KEY;
       if (RESEND_API_KEY) {
         try {
@@ -110,7 +122,6 @@ export async function GET(req: NextRequest) {
                 </div>
                 <p style="color:#1F354C;font-size:15px;margin:0 0 6px;">${greeting},</p>
                 <p style="color:#2E8FAE;font-size:17px;font-weight:700;margin:0 0 20px;">Hoe was je sessie? 🏄</p>
-                
                 <table style="width:100%;border-collapse:collapse;background:#FFFFFF;border-radius:12px;overflow:hidden;margin-bottom:16px;box-shadow:0 1px 4px rgba(31,53,76,0.06);">
                   <thead><tr>
                     <th style="padding:8px 14px;text-align:left;color:#8A9BB0;font-size:10px;font-weight:700;letter-spacing:0.1em;border-bottom:1px solid #E8E0D8;">SPOT</th>
@@ -118,17 +129,14 @@ export async function GET(req: NextRequest) {
                   </tr></thead>
                   <tbody>${spotsHtml}</tbody>
                 </table>
-
                 <div style="text-align:center;margin:24px 0;">
                   <a href="https://www.windping.com/alert" style="display:inline-block;padding:13px 28px;background:#3EAA8C;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;font-size:14px;">Log je sessie →</a>
                 </div>
-
                 <div style="padding:14px 18px;background:#F0F7FA;border-radius:12px;margin-bottom:20px;">
                   <div style="font-size:12px;color:#6B7B8F;line-height:1.6;">
                     ⭐ Beoordeel je sessie, voeg foto's toe en houd je windsurf-geschiedenis bij.
                   </div>
                 </div>
-                
                 <p style="color:#8A9BB0;font-size:11px;margin:28px 0 0;text-align:center;line-height:1.6;">
                   <a href="https://www.windping.com/voorkeuren" style="color:#8A9BB0;text-decoration:underline;">Alert settings</a>
                   &nbsp;·&nbsp; <a href="https://www.windping.com" style="color:#8A9BB0;text-decoration:underline;">WindPing</a>
@@ -147,13 +155,12 @@ export async function GET(req: NextRequest) {
           });
 
           results.push({ userId: Number(userId), email: user.email, sessions: sessionLines.length, emailSent: true });
-        } catch (e: any) {
+        } catch (e) {
           console.error("Nudge email error:", e);
-          results.push({ userId: Number(userId), error: e.message });
+          results.push({ userId: Number(userId), error: getErrorMessage(e) });
         }
       }
 
-      // Send push
       try {
         const webpush = await import("web-push");
         webpush.setVapidDetails(
@@ -184,8 +191,9 @@ export async function GET(req: NextRequest) {
                 payload,
                 { TTL: 86400 }
               );
-            } catch (pe: any) {
-              if (pe.statusCode === 404 || pe.statusCode === 410) {
+            } catch (pe) {
+              const err = pe as WebPushError;
+              if (err.statusCode === 404 || err.statusCode === 410) {
                 await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
               }
             }
@@ -193,7 +201,6 @@ export async function GET(req: NextRequest) {
         }
       } catch (e) { console.error("Nudge push error:", e); }
 
-      // Mark sessions as nudged
       for (const session of sessions) {
         await sb.from("sessions").update({ nudge_sent: true }).eq("id", session.id);
       }
@@ -208,8 +215,8 @@ export async function GET(req: NextRequest) {
       results,
     });
 
-  } catch (e: any) {
+  } catch (e) {
     console.error("Session nudge error:", e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
