@@ -8,6 +8,10 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://kaimbtcuye
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ADMIN_AUTH_IDS = (process.env.ADMIN_AUTH_IDS || "").split(",").map(s => s.trim());
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
   if (!authHeader.startsWith("Bearer ")) {
@@ -16,7 +20,7 @@ export async function GET(req: Request) {
 
   try {
     const token = authHeader.replace("Bearer ", "");
-    const payload = JSON.parse(atob(token.split(".")[1]));
+    const payload = JSON.parse(atob(token.split(".")[1])) as { sub: string };
     const adminIds = ADMIN_AUTH_IDS.filter(id => id.length > 0);
     if (!adminIds.length || !adminIds.includes(payload.sub)) {
       return NextResponse.json({
@@ -28,8 +32,8 @@ export async function GET(req: Request) {
         }
       }, { status: 403 });
     }
-  } catch (e: any) {
-    return NextResponse.json({ error: "Invalid token", detail: e.message }, { status: 401 });
+  } catch (e) {
+    return NextResponse.json({ error: "Invalid token", detail: getErrorMessage(e) }, { status: 401 });
   }
 
   if (!SUPABASE_SERVICE_KEY) {
