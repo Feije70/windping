@@ -3,6 +3,12 @@
    Verantwoordelijk voor: bundled emails, downgrade emails, push notificaties
 ──────────────────────────────────────────────────────────── */
 
+import type {
+  DbAlertConditionsSpot,
+  HourlyWindData,
+  TideExtreme,
+  AlertType,
+} from "@/lib/types";
 import { formatDateLabel } from "./alertService";
 
 export function generateGoToken(userId: number, spotId: number, date: string): string {
@@ -17,12 +23,18 @@ export function generateGoToken(userId: number, spotId: number, date: string): s
   return Math.abs(hash).toString(36);
 }
 
+export interface BundledEmailDay {
+  targetDate: string;
+  spots: DbAlertConditionsSpot[];
+  alertType: AlertType;
+}
+
 export async function sendBundledEmail(
   to: string,
   name: string | null,
   userId: number,
-  days: { targetDate: string; spots: any[]; alertType: string }[],
-  hourlyBySpotDate: Record<string, any[]>,
+  days: BundledEmailDay[],
+  hourlyBySpotDate: Record<string, HourlyWindData[]>,
   tideBySpotDate: Record<string, { time: string; type: string }[]>
 ): Promise<void> {
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
@@ -46,9 +58,9 @@ export async function sendBundledEmail(
 
       const hours = hourlyBySpotDate[`${s.spotId}_${day.targetDate}`] || [];
       const wMin = s.userWindMin || 12;
-      const ochtend = hours.filter((h: any) => h.hour >= 6 && h.hour < 12).some((h: any) => h.wind >= wMin);
-      const middag = hours.filter((h: any) => h.hour >= 12 && h.hour < 17).some((h: any) => h.wind >= wMin);
-      const avond = hours.filter((h: any) => h.hour >= 17 && h.hour <= 21).some((h: any) => h.wind >= wMin);
+      const ochtend = hours.filter(h => h.hour >= 6 && h.hour < 12).some(h => h.wind >= wMin);
+      const middag = hours.filter(h => h.hour >= 12 && h.hour < 17).some(h => h.wind >= wMin);
+      const avond = hours.filter(h => h.hour >= 17 && h.hour <= 21).some(h => h.wind >= wMin);
 
       let whenLabel = "";
       if (hours.length > 0) {
@@ -81,17 +93,17 @@ export async function sendBundledEmail(
       if (!hours?.length) return "";
       const wMin = s.userWindMin || 12;
 
-      const hourCells = hours.map((h: any) =>
+      const hourCells = hours.map(h =>
         `<td style="padding:4px 6px;text-align:center;border-bottom:1px solid #E8E0D8;color:#6B7B8F;font-size:11px;">${h.hour}:00</td>`
       ).join("");
-      const windCells = hours.map((h: any) => {
+      const windCells = hours.map(h => {
         const color = h.wind >= wMin ? "#3EAA8C" : "#8A9BB0";
         return `<td style="padding:4px 6px;text-align:center;border-bottom:1px solid #E8E0D8;color:${color};font-weight:600;font-size:12px;">${h.wind}</td>`;
       }).join("");
-      const gustCells = hours.map((h: any) =>
+      const gustCells = hours.map(h =>
         `<td style="padding:4px 6px;text-align:center;border-bottom:1px solid #E8E0D8;color:#6B7B8F;font-size:11px;">${h.gust}</td>`
       ).join("");
-      const dirCells = hours.map((h: any) =>
+      const dirCells = hours.map(h =>
         `<td style="padding:4px 6px;text-align:center;color:#8A9BB0;font-size:10px;">${h.dir}</td>`
       ).join("");
 
@@ -158,9 +170,9 @@ export async function sendBundledEmail(
 export async function sendAlertEmail(
   to: string,
   name: string | null,
-  alertType: string,
+  alertType: AlertType,
   message: string,
-  spots: any[],
+  spots: DbAlertConditionsSpot[],
   targetDate: string
 ): Promise<void> {
   const RESEND_API_KEY = process.env.RESEND_API_KEY;
@@ -170,7 +182,7 @@ export async function sendAlertEmail(
   }
 
   const dateLabel = formatDateLabel(targetDate);
-  const subjects: Record<string, string> = {
+  const subjects: Partial<Record<AlertType, string>> = {
     heads_up: `🏄 Wind alert: ${dateLabel} ziet er goed uit!`,
     go: `✅ Go! ${dateLabel} waait het op je spot`,
     downgrade: `⬇️ Forecast update: ${dateLabel} — condities gewijzigd`,

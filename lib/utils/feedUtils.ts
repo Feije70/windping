@@ -2,6 +2,8 @@
    Feed bundeling logica voor homepage alerts
 ──────────────────────────────────────────────────────────── */
 
+import type { DbAlertHistory } from "@/lib/types";
+
 export interface FeedSpot {
   spotId: number;
   spotName: string;
@@ -26,14 +28,19 @@ export interface BundledFeedItem {
   alertType: "go" | "downgrade" | "mixed";
 }
 
-export function bundleAlertsByDate(alerts: any[]): BundledFeedItem[] {
+export function bundleAlertsByDate(alerts: DbAlertHistory[]): BundledFeedItem[] {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-  type SpotState = { type: "go"; spot: FeedSpot; ts: string } | { type: "downgrade"; spot: FeedDowngradeSpot; ts: string };
+  type SpotState =
+    | { type: "go"; spot: FeedSpot; ts: string }
+    | { type: "downgrade"; spot: FeedDowngradeSpot; ts: string };
+
   const byDate: Record<string, { spotStates: Map<string, SpotState>; latestCreatedAt: string }> = {};
 
-  const sorted = [...alerts].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const sorted = [...alerts].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
 
   for (const a of sorted) {
     const date = a.target_date;
@@ -55,14 +62,22 @@ export function bundleAlertsByDate(alerts: any[]): BundledFeedItem[] {
         const key = s.spotName || String(s.spotId);
         const existing = byDate[date].spotStates.get(key);
         if (!existing || existing.type !== "downgrade" || new Date(a.created_at) > new Date(existing.ts)) {
-          byDate[date].spotStates.set(key, { type: "go", spot: { spotId: s.spotId, spotName: s.spotName, wind: s.wind, dir: s.dir, gust: s.gust }, ts: a.created_at });
+          byDate[date].spotStates.set(key, {
+            type: "go",
+            spot: { spotId: s.spotId, spotName: s.spotName, wind: s.wind, dir: s.dir, gust: s.gust },
+            ts: a.created_at,
+          });
         }
       }
     } else if (a.alert_type === "downgrade") {
       for (const s of spots) {
         const key = s.spotName || String(s.spotId);
-        const reasons = a.conditions?.downgradeReasons?.[s.spotId] || [];
-        byDate[date].spotStates.set(key, { type: "downgrade", spot: { spotName: s.spotName, wind: s.wind, dir: s.dir, reasons }, ts: a.created_at });
+        const reasons: string[] = a.conditions?.downgradeReasons?.[s.spotId] || [];
+        byDate[date].spotStates.set(key, {
+          type: "downgrade",
+          spot: { spotName: s.spotName, wind: s.wind, dir: s.dir, reasons },
+          ts: a.created_at,
+        });
       }
     }
   }
@@ -89,7 +104,7 @@ export function bundleAlertsByDate(alerts: any[]): BundledFeedItem[] {
       else downgradeSpots.push(state.spot);
     }
 
-    let alertType: "go" | "downgrade" | "mixed" = "go";
+    let alertType: BundledFeedItem["alertType"] = "go";
     if (goSpots.length > 0 && downgradeSpots.length > 0) alertType = "mixed";
     else if (downgradeSpots.length > 0) alertType = "downgrade";
 

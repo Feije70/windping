@@ -3,6 +3,7 @@
    Verantwoordelijk voor: spot evaluatie, downgrade redenen, datum labels
 ──────────────────────────────────────────────────────────── */
 
+import type { OpenMeteoDailyResponse, DbSpot, DbIdealConditions } from "@/lib/types";
 import { degToDir, dirIndex } from "./weatherService";
 
 export const DAY_DB = [
@@ -40,7 +41,12 @@ export interface AlertToSend {
   downgradeReasons?: Record<number, string[]>;
 }
 
-export function evaluateSpot(forecast: any, dayIndex: number, spot: any, ic: any): SpotMatch {
+export function evaluateSpot(
+  forecast: OpenMeteoDailyResponse,
+  dayIndex: number,
+  spot: Pick<DbSpot, "id" | "display_name" | "good_directions">,
+  ic: Pick<DbIdealConditions, "wind_min" | "wind_max" | "directions"> | null
+): SpotMatch {
   const wind = Math.round(forecast.daily.wind_speed_10m_max[dayIndex] || 0);
   const gust = Math.round(forecast.daily.wind_gusts_10m_max[dayIndex] || 0);
   const dirDeg = forecast.daily.wind_direction_10m_dominant[dayIndex] || 0;
@@ -49,14 +55,17 @@ export function evaluateSpot(forecast: any, dayIndex: number, spot: any, ic: any
   const wMin = ic?.wind_min ?? 12;
   const wMax = ic?.wind_max ?? 35;
 
-  const rawDirs = ic?.directions?.length ? ic.directions : (spot.good_directions || []);
+  const rawDirs: string[] | boolean[] = ic?.directions?.length
+    ? ic.directions
+    : (spot.good_directions || []);
+
   let dirOk = true;
   if (rawDirs.length > 0) {
     if (typeof rawDirs[0] === "string") {
-      dirOk = rawDirs.includes(dir);
+      dirOk = (rawDirs as string[]).includes(dir);
     } else {
       const dIdx = dirIndex(dirDeg);
-      dirOk = rawDirs[dIdx] === true;
+      dirOk = (rawDirs as boolean[])[dIdx] === true;
     }
   }
 

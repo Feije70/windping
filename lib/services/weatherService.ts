@@ -3,14 +3,27 @@
    Verantwoordelijk voor: forecast data, hourly data, tide data
 ──────────────────────────────────────────────────────────── */
 
+import type {
+  OpenMeteoDailyResponse,
+  OpenMeteoHourlyResponse,
+  HourlyWindData,
+} from "@/lib/types";
+
 const OM_BASE = "https://api.open-meteo.com/v1/forecast";
 
 // In-memory caches per serverless invocation
-const forecastCache = new Map<string, any>();
-const hourlyCache = new Map<string, any>();
-const tideCache = new Map<string, any[]>();
+const forecastCache = new Map<string, OpenMeteoDailyResponse>();
+const hourlyCache = new Map<string, OpenMeteoHourlyResponse>();
+const tideCache = new Map<string, StormglassTideExtreme[]>();
 
-const DIRS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const DIRS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"] as const;
+
+// Intern type voor ruwe Stormglass API response
+interface StormglassTideExtreme {
+  time: string;
+  type: "high" | "low";
+  height: number;
+}
 
 export function degToDir(deg: number): string {
   return DIRS_16[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
@@ -20,9 +33,14 @@ export function dirIndex(deg: number): number {
   return Math.round(((deg % 360 + 360) % 360) / 22.5) % 16;
 }
 
-export async function getForecast(lat: number, lng: number, days: number): Promise<any> {
+export async function getForecast(
+  lat: number,
+  lng: number,
+  days: number
+): Promise<OpenMeteoDailyResponse> {
   const key = `${lat.toFixed(3)},${lng.toFixed(3)},${days}`;
-  if (forecastCache.has(key)) return forecastCache.get(key);
+  const cached = forecastCache.get(key);
+  if (cached) return cached;
 
   const url = `${OM_BASE}?latitude=${lat}&longitude=${lng}&daily=wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&wind_speed_unit=kn&timezone=auto&forecast_days=${days}`;
   const res = await fetch(url);
@@ -30,35 +48,40 @@ export async function getForecast(lat: number, lng: number, days: number): Promi
     const errBody = await res.text().catch(() => "");
     throw new Error(`Open-Meteo ${res.status}: ${errBody.slice(0, 200)}`);
   }
-  const data = await res.json();
+  const data: OpenMeteoDailyResponse = await res.json();
   forecastCache.set(key, data);
   return data;
 }
 
-export async function getHourlyForecast(lat: number, lng: number, days: number): Promise<any> {
+export async function getHourlyForecast(
+  lat: number,
+  lng: number,
+  days: number
+): Promise<OpenMeteoHourlyResponse> {
   const key = `hourly_${lat.toFixed(3)},${lng.toFixed(3)},${days}`;
-  if (hourlyCache.has(key)) return hourlyCache.get(key);
+  const cached = hourlyCache.get(key);
+  if (cached) return cached;
 
   const url = `${OM_BASE}?latitude=${lat}&longitude=${lng}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&daily=wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant&wind_speed_unit=kn&timezone=Europe/Amsterdam&forecast_days=${days}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Open-Meteo hourly ${res.status}`);
-  const data = await res.json();
+  const data: OpenMeteoHourlyResponse = await res.json();
   hourlyCache.set(key, data);
   return data;
 }
 
 export function getHourlyForDay(
-  hourlyData: any,
+  hourlyData: OpenMeteoHourlyResponse,
   dateStr: string
-): { hour: number; wind: number; gust: number; dir: string }[] {
+): HourlyWindData[] {
   if (!hourlyData?.hourly?.time) return [];
-  const times: string[] = hourlyData.hourly.time;
-  const winds: number[] = hourlyData.hourly.wind_speed_10m;
-  const gusts: number[] = hourlyData.hourly.wind_gusts_10m;
-  const dirs: number[] = hourlyData.hourly.wind_direction_10m;
+  const times = hourlyData.hourly.time;
+  const winds = hourlyData.hourly.wind_speed_10m;
+  const gusts = hourlyData.hourly.wind_gusts_10m;
+  const dirs = hourlyData.hourly.wind_direction_10m;
 
   const hours = [6, 9, 12, 15, 18];
-  const result: { hour: number; wind: number; gust: number; dir: string }[] = [];
+  const result: HourlyWindData[] = [];
 
   for (const h of hours) {
     const target = `${dateStr}T${h.toString().padStart(2, "0")}:00`;
@@ -84,9 +107,10 @@ export async function getTideExtremes(
   if (!stormglassKey) return [];
   const key = `tide_${lat.toFixed(2)},${lng.toFixed(2)}`;
 
-  let allExtremes: any[] = [];
-  if (tideCache.has(key)) {
-    allExtremes = tideCache.get(key)!;
+  let allExtremes: StormglassTideExtreme[] = [];
+  const cached = tideCache.get(key);
+  if (cached) {
+    allExtremes = cached;
   } else {
     try {
       const start = new Date(dateStr + "T00:00:00Z");
@@ -94,7 +118,7 @@ export async function getTideExtremes(
       const url = `https://api.stormglass.io/v2/tide/extremes/point?lat=${lat}&lng=${lng}&start=${start.toISOString()}&end=${end.toISOString()}`;
       const res = await fetch(url, { headers: { Authorization: stormglassKey } });
       if (!res.ok) return [];
-      const data = await res.json();
+      const data: { data: StormglassTideExtreme[] } = await res.json();
       allExtremes = data.data || [];
       tideCache.set(key, allExtremes);
     } catch {
@@ -103,12 +127,12 @@ export async function getTideExtremes(
   }
 
   return allExtremes
-    .filter((e: any) => {
+    .filter((e) => {
       const d = new Date(e.time);
       const nl = d.toLocaleDateString("en-CA", { timeZone: "Europe/Amsterdam" });
       return nl === dateStr;
     })
-    .map((e: any) => {
+    .map((e) => {
       const d = new Date(e.time);
       const timeStr = d.toLocaleTimeString("nl-NL", {
         timeZone: "Europe/Amsterdam",
