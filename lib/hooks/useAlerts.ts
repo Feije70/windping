@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import type { DbAlertConditions } from "@/lib/types";
 
 export interface Alert {
   id: number;
@@ -7,7 +8,7 @@ export interface Alert {
   target_date: string;
   spot_ids: number[];
   primary_spot_id: number | null;
-  conditions: any;
+  conditions: DbAlertConditions;
   delivered_email: boolean;
   delivered_push: boolean;
   is_test: boolean;

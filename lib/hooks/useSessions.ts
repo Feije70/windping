@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import type { DbPhotoCrop } from "@/lib/types";
 
 export interface Session {
   id: number;
@@ -14,7 +15,7 @@ export interface Session {
   wind_feel: string | null;
   notes: string | null;
   photo_url: string | null;
-  photo_crop: any | null;
+  photo_crop: DbPhotoCrop | null;
   image_url: string | null;
 }
 

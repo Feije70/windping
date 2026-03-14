@@ -49,7 +49,7 @@ export function useSpots({ token, onlyUserSpots = false, userId = null }: UseSpo
           );
           const userSpots = await userSpotsRes.json();
           if (!userSpots?.length) { setSpots([]); return; }
-          const ids = userSpots.map((s: any) => s.spot_id).join(",");
+          const ids = (userSpots as { spot_id: number }[]).map((s) => s.spot_id).join(",");
           url = `${SUPABASE_URL}/rest/v1/spots?id=in.(${ids})&select=id,display_name,latitude,longitude,spot_type,level,min_wind,max_wind,good_directions,tips,country,region&order=display_name`;
         } else {
           url = `${SUPABASE_URL}/rest/v1/spots?active=eq.true&is_private=eq.false&select=id,display_name,latitude,longitude,spot_type,level,min_wind,max_wind,good_directions,tips,country,region&order=display_name`;
@@ -57,8 +57,8 @@ export function useSpots({ token, onlyUserSpots = false, userId = null }: UseSpo
         const res = await fetch(url, { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } });
         if (!res.ok) throw new Error(`Spots fetch failed: ${res.status}`);
         setSpots(await res.json() || []);
-      } catch (e: any) {
-        setError(e.message);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
       } finally {
         setLoading(false);
       }
