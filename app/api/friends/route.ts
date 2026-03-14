@@ -16,6 +16,10 @@ function sb() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 }
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "sb_publishable_ds6_HWMJEYxEnvrnEefeRg_q2T-ROO_";
 
 async function getUserId(req: NextRequest): Promise<number | null> {
@@ -36,6 +40,18 @@ function generateCode(): string {
   return code;
 }
 
+interface FriendItem {
+  id: number;
+  name: string;
+  friendshipId: number | undefined;
+}
+
+interface PendingItem {
+  id: number;
+  name: string;
+  friendshipId: number | undefined;
+}
+
 /* ── GET: List friends + activity + search ── */
 export async function GET(req: NextRequest) {
   try {
@@ -43,12 +59,10 @@ export async function GET(req: NextRequest) {
     const type = url.searchParams.get("type") || "list";
     const supabase = sb();
 
-    // SEARCH USERS — requires auth but handles it gracefully
     if (type === "search") {
       const q = url.searchParams.get("q") || "";
       if (q.length < 3) return NextResponse.json({ results: [] });
 
-      // Get current user (optional for filtering)
       let currentUserId: number | null = null;
       try { currentUserId = await getUserId(req); } catch {}
 
@@ -78,13 +92,12 @@ export async function GET(req: NextRequest) {
         .map(u => ({
           id: u.id,
           name: u.name || u.email?.split("@")[0] || "Gebruiker",
-          email: u.email ? u.email.replace(/^(.)(.*)(@.*)$/, (_: string, a: string, b: string, c: string) => a + '*'.repeat(Math.min(b.length, 4)) + c) : "",
+          email: u.email ? u.email.replace(/^(.)(.*)(@.*)$/, (_m: string, a: string, b: string, c: string) => a + "*".repeat(Math.min(b.length, 4)) + c) : "",
         }));
 
       return NextResponse.json({ results });
     }
 
-    // INVITE INFO — get inviter name from code (no auth needed)
     if (type === "invite_info") {
       const code = url.searchParams.get("code") || "";
       if (!code) return NextResponse.json({ inviterName: null });
@@ -101,7 +114,7 @@ export async function GET(req: NextRequest) {
         .eq("id", invite.created_by)
         .single();
       return NextResponse.json({
-        inviterName: user?.name || user?.email?.split("@")[0] || "Iemand",
+        inviterName: (user as { name: string | null; email: string | null } | null)?.name || (user as { name: string | null; email: string | null } | null)?.email?.split("@")[0] || "Iemand",
       });
     }
 
@@ -116,7 +129,6 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === "feed") {
-      // Volledige vrienden-feed — alle sessies, geen tijdslimiet
       const { data: friendships } = await supabase
         .from("friendships")
         .select("user_id, friend_id")
@@ -126,15 +138,13 @@ export async function GET(req: NextRequest) {
       const friendIds = (friendships || []).map(f => f.user_id === userId ? f.friend_id : f.user_id);
       if (friendIds.length === 0) return NextResponse.json({ sessions: [], unreadCount: 0 });
 
-      // Haal last_seen_feed op
       const { data: userData } = await supabase
         .from("users")
         .select("last_seen_feed")
         .eq("id", userId)
         .single();
-      const lastSeen = userData?.last_seen_feed || null;
+      const lastSeen = (userData as { last_seen_feed: string | null } | null)?.last_seen_feed || null;
 
-      // Haal verborgen sessies op
       const { data: hiddenData } = await supabase
         .from("hidden_sessions")
         .select("session_id")
@@ -150,7 +160,7 @@ export async function GET(req: NextRequest) {
         .limit(50);
 
       const spotIds = [...new Set((sessions || []).map(s => s.spot_id))];
-      let spotMap: Record<number, string> = {};
+      const spotMap: Record<number, string> = {};
       if (spotIds.length > 0) {
         const { data: spots } = await supabase.from("spots").select("id, display_name").in("id", spotIds);
         (spots || []).forEach(sp => { spotMap[sp.id] = sp.display_name; });
@@ -183,18 +193,15 @@ export async function GET(req: NextRequest) {
         }));
 
       const unreadCount = activity.filter(a => a.isNew).length;
-
       return NextResponse.json({ sessions: activity, unreadCount, lastSeen });
     }
 
     if (type === "mark_seen") {
-      // Wordt aangeroepen als gebruiker de feed opent
       await supabase.from("users").update({ last_seen_feed: new Date().toISOString() }).eq("id", userId);
       return NextResponse.json({ ok: true });
     }
 
     if (type === "activity") {
-      // Get friend IDs
       const { data: friendships } = await supabase
         .from("friendships")
         .select("user_id, friend_id")
@@ -204,18 +211,16 @@ export async function GET(req: NextRequest) {
       const friendIds = (friendships || []).map(f => f.user_id === userId ? f.friend_id : f.user_id);
       if (friendIds.length === 0) return NextResponse.json({ activity: [] });
 
-      // Haal verborgen sessies op
       const { data: hiddenDataA } = await supabase
         .from("hidden_sessions")
         .select("session_id")
         .eq("user_id", userId);
       const hiddenIdsA = new Set((hiddenDataA || []).map(h => h.session_id));
 
-      // Get recent "going" sessions from friends
       const since = new Date();
       since.setDate(since.getDate() - 3);
 
-      const { data: sessions, error: sessError } = await supabase
+      const { data: sessions } = await supabase
         .from("sessions")
         .select("id, created_by, spot_id, session_date, status, going_at, rating, gear_type, gear_size, forecast_wind, forecast_dir, photo_url, photo_crop, notes")
         .in("created_by", friendIds)
@@ -224,23 +229,14 @@ export async function GET(req: NextRequest) {
         .order("created_at", { ascending: false })
         .limit(20);
 
-      // Get spot names separately
       const spotIds = [...new Set((sessions || []).map(s => s.spot_id))];
-      let spotMap: Record<number, string> = {};
+      const spotMap: Record<number, string> = {};
       if (spotIds.length > 0) {
-        const { data: spots } = await supabase
-          .from("spots")
-          .select("id, display_name")
-          .in("id", spotIds);
+        const { data: spots } = await supabase.from("spots").select("id, display_name").in("id", spotIds);
         (spots || []).forEach(sp => { spotMap[sp.id] = sp.display_name; });
       }
 
-      // Get friend names
-      const { data: users } = await supabase
-        .from("users")
-        .select("id, name, email")
-        .in("id", friendIds);
-
+      const { data: users } = await supabase.from("users").select("id, name, email").in("id", friendIds);
       const nameMap: Record<number, string> = {};
       (users || []).forEach(u => { nameMap[u.id] = u.name || u.email?.split("@")[0] || "Vriend"; });
 
@@ -283,8 +279,7 @@ export async function GET(req: NextRequest) {
     const pendingSent = (friendships || [])
       .filter(f => f.user_id === userId && f.status === "pending");
 
-    // Get user details for friends
-    let friends: any[] = [];
+    let friends: FriendItem[] = [];
     if (friendUserIds.length > 0) {
       const { data: users } = await supabase
         .from("users")
@@ -300,8 +295,7 @@ export async function GET(req: NextRequest) {
       }));
     }
 
-    // Get names for pending requests
-    let pendingList: any[] = [];
+    let pendingList: PendingItem[] = [];
     if (pendingReceived.length > 0) {
       const ids = pendingReceived.map(p => p.user_id);
       const { data: users } = await supabase.from("users").select("id, name, email").in("id", ids);
@@ -312,7 +306,6 @@ export async function GET(req: NextRequest) {
       }));
     }
 
-    // Get user's active invite code
     const { data: invites } = await supabase
       .from("friend_invites")
       .select("code, expires_at")
@@ -329,9 +322,9 @@ export async function GET(req: NextRequest) {
       inviteCode: invites?.[0]?.code || null,
       totalFriends: friends.length,
     });
-  } catch (e: any) {
+  } catch (e) {
     console.error("GET /api/friends error:", e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
 
@@ -341,11 +334,10 @@ export async function POST(req: NextRequest) {
     const userId = await getUserId(req);
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await req.json();
+    const body = await req.json() as { action: string; code?: string; friendshipId?: number; friendId?: number };
     const { action } = body;
     const supabase = sb();
 
-    // CREATE INVITE CODE
     if (action === "create_invite") {
       const code = generateCode();
       const { data, error } = await supabase
@@ -357,7 +349,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ code: data.code, expiresAt: data.expires_at });
     }
 
-    // ACCEPT INVITE CODE
     if (action === "accept_invite") {
       const { code } = body;
       if (!code) return NextResponse.json({ error: "Code required" }, { status: 400 });
@@ -373,7 +364,6 @@ export async function POST(req: NextRequest) {
       if (!invite) return NextResponse.json({ error: "Code ongeldig of verlopen" }, { status: 404 });
       if (invite.created_by === userId) return NextResponse.json({ error: "Je kunt je eigen code niet gebruiken" }, { status: 400 });
 
-      // Check if already friends or pending
       const { data: existing } = await supabase
         .from("friendships")
         .select("id, status")
@@ -382,75 +372,52 @@ export async function POST(req: NextRequest) {
 
       if (existing?.length) {
         if (existing[0].status === "accepted") {
-          // Already friends — not an error, just confirm
           const { data: friend } = await supabase.from("users").select("name, email").eq("id", invite.created_by).single();
           return NextResponse.json({
             success: true,
-            friendName: friend?.name || friend?.email?.split("@")[0] || "Vriend",
+            friendName: (friend as { name: string | null; email: string | null } | null)?.name || (friend as { name: string | null; email: string | null } | null)?.email?.split("@")[0] || "Vriend",
           });
         }
-        // Pending → upgrade to accepted
         await supabase.from("friendships").update({ status: "accepted", accepted_at: new Date().toISOString() }).eq("id", existing[0].id);
         await supabase.from("friend_invites").update({ used_by: userId, used_at: new Date().toISOString() }).eq("id", invite.id);
         const { data: friend } = await supabase.from("users").select("name, email").eq("id", invite.created_by).single();
         return NextResponse.json({
           success: true,
-          friendName: friend?.name || friend?.email?.split("@")[0] || "Vriend",
+          friendName: (friend as { name: string | null; email: string | null } | null)?.name || (friend as { name: string | null; email: string | null } | null)?.email?.split("@")[0] || "Vriend",
         });
       }
 
-      // Create friendship (auto-accepted via invite)
       const { error: friendError } = await supabase
         .from("friendships")
-        .insert({
-          user_id: invite.created_by,
-          friend_id: userId,
-          status: "accepted",
-          accepted_at: new Date().toISOString(),
-        });
+        .insert({ user_id: invite.created_by, friend_id: userId, status: "accepted", accepted_at: new Date().toISOString() });
       if (friendError) throw friendError;
 
-      // Mark invite as used
-      await supabase
-        .from("friend_invites")
-        .update({ used_by: userId, used_at: new Date().toISOString() })
-        .eq("id", invite.id);
+      await supabase.from("friend_invites").update({ used_by: userId, used_at: new Date().toISOString() }).eq("id", invite.id);
 
-      // Get friend name
-      const { data: friend } = await supabase
-        .from("users")
-        .select("name, email")
-        .eq("id", invite.created_by)
-        .single();
-
+      const { data: friend } = await supabase.from("users").select("name, email").eq("id", invite.created_by).single();
       return NextResponse.json({
         success: true,
-        friendName: friend?.name || friend?.email?.split("@")[0] || "Vriend",
+        friendName: (friend as { name: string | null; email: string | null } | null)?.name || (friend as { name: string | null; email: string | null } | null)?.email?.split("@")[0] || "Vriend",
       });
     }
 
-    // ACCEPT PENDING REQUEST
     if (action === "accept_request") {
       const { friendshipId } = body;
       if (!friendshipId) return NextResponse.json({ error: "friendshipId required" }, { status: 400 });
-
       const { error } = await supabase
         .from("friendships")
         .update({ status: "accepted", accepted_at: new Date().toISOString() })
         .eq("id", friendshipId)
         .eq("friend_id", userId);
-
       if (error) throw error;
       return NextResponse.json({ success: true });
     }
 
-    // SEND FRIEND REQUEST (to existing user)
     if (action === "send_request") {
       const { friendId } = body;
       if (!friendId) return NextResponse.json({ error: "friendId required" }, { status: 400 });
       if (friendId === userId) return NextResponse.json({ error: "Je kunt jezelf niet toevoegen" }, { status: 400 });
 
-      // Check if already friends or pending
       const { data: existing } = await supabase
         .from("friendships")
         .select("id, status")
@@ -459,7 +426,6 @@ export async function POST(req: NextRequest) {
 
       if (existing?.length) {
         if (existing[0].status === "accepted") return NextResponse.json({ success: true, alreadyFriends: true });
-        // If THEY sent a pending request to ME, accept it
         const row = existing[0];
         await supabase.from("friendships").update({ status: "accepted", accepted_at: new Date().toISOString() }).eq("id", row.id);
         return NextResponse.json({ success: true, friendshipId: row.id });
@@ -470,15 +436,14 @@ export async function POST(req: NextRequest) {
         .insert({ user_id: userId, friend_id: friendId, status: "pending" })
         .select()
         .single();
-
       if (error) throw error;
       return NextResponse.json({ success: true, friendshipId: data.id });
     }
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
-  } catch (e: any) {
+  } catch (e) {
     console.error("POST /api/friends error:", e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
 
@@ -501,8 +466,8 @@ export async function DELETE(req: NextRequest) {
 
     if (error) throw error;
     return NextResponse.json({ success: true });
-  } catch (e: any) {
+  } catch (e) {
     console.error("DELETE /api/friends error:", e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
