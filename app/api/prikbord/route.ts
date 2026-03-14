@@ -4,7 +4,11 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://jdgqbxpgkf
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 
-async function sbAdmin(path: string, method = "GET", body?: any) {
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+async function sbAdmin(path: string, method = "GET", body?: unknown) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
     headers: {
@@ -23,13 +27,11 @@ async function sbAdmin(path: string, method = "GET", body?: any) {
 }
 
 const BLOCKED_WORDS = [
-  // Nederlands
   "kut", "lul", "pik", "neuken", "neuk", "fikken", "flikken", "hoer", "slet", "teef",
   "klootzak", "eikel", "godverdomme", "godver", "verdomme", "kanker", "kankerlijer",
   "tyfus", "tering", "pest", "cholera", "aids", "mongool", "idioot", "debiel", "sukkel",
   "stomkop", "donder op", "rot op", "lazer op", "opzouten", "likken", "pijpen", "tieten",
   "kont", "reet", "kak", "stront", "schijt", "poepen",
-  // Engels
   "fuck", "shit", "ass", "bitch", "cunt", "cock", "dick", "pussy", "bastard", "whore",
   "nigger", "faggot", "retard",
 ];
@@ -37,16 +39,13 @@ const BLOCKED_WORDS = [
 function containsBlockedWord(text: string): boolean {
   const lower = text.toLowerCase();
   return BLOCKED_WORDS.some(word => {
-    // Hele woord match (niet als onderdeel van een ander woord)
     const regex = new RegExp(`(^|\\s|[^a-z])${word}($|\\s|[^a-z])`, "i");
     return regex.test(lower);
   });
 }
 
 async function moderateContent(content: string, type: string): Promise<"ok" | "flagged" | "blocked"> {
-  if (!ANTHROPIC_API_KEY) return "ok"; // geen key → altijd ok (dev mode)
-
-  // Harde woordenlijst filter — altijd geblokkeerd ongeacht AI
+  if (!ANTHROPIC_API_KEY) return "ok";
   if (containsBlockedWord(content)) return "blocked";
 
   try {
@@ -90,31 +89,34 @@ Antwoord met ALLEEN één woord: OK, FLAGGED, of BLOCKED`,
       }),
     });
 
-    if (!res.ok) return "ok"; // bij API fout → doorlaten
-    const data = await res.json();
+    if (!res.ok) return "ok";
+    const data = await res.json() as { content: { text: string }[] };
     const verdict = data.content?.[0]?.text?.trim().toUpperCase();
 
     if (verdict === "BLOCKED") return "blocked";
     if (verdict === "FLAGGED") return "flagged";
     return "ok";
   } catch {
-    return "ok"; // bij fout → doorlaten
+    return "ok";
   }
 }
 
-// POST /api/prikbord — nieuwe post indienen + modereren
 export async function POST(req: NextRequest) {
   try {
-    const { spot_id, user_id, author_name, type, content } = await req.json();
+    const { spot_id, user_id, author_name, type, content } = await req.json() as {
+      spot_id: number;
+      user_id: number;
+      author_name: string;
+      type: string;
+      content: string;
+    };
 
     if (!spot_id || !user_id || !content?.trim()) {
       return NextResponse.json({ error: "missing_fields" }, { status: 400 });
     }
 
-    // AI moderatie
     const status = await moderateContent(content.trim(), type);
 
-    // Post opslaan
     const [post] = await sbAdmin("spot_posts", "POST", {
       spot_id, user_id, author_name, type,
       content: content.trim(),
@@ -126,24 +128,25 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ post, flagged: status === "flagged" });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
 
-// POST /api/prikbord/report — post melden
 export async function PUT(req: NextRequest) {
   try {
-    const { post_id, user_id, reason } = await req.json();
+    const { post_id, user_id, reason } = await req.json() as {
+      post_id: number;
+      user_id: number;
+      reason?: string;
+    };
 
     if (!post_id || !user_id) {
       return NextResponse.json({ error: "missing_fields" }, { status: 400 });
     }
 
-    // Sla melding op
     await sbAdmin("post_reports", "POST", { post_id, user_id, reason: reason || null });
 
-    // Zet post op flagged als die nog ok was
     await fetch(`${SUPABASE_URL}/rest/v1/spot_posts?id=eq.${post_id}&status=eq.ok`, {
       method: "PATCH",
       headers: {
@@ -155,11 +158,9 @@ export async function PUT(req: NextRequest) {
       body: JSON.stringify({ status: "flagged" }),
     });
 
-    // Haal post op voor email context
-    const posts = await sbAdmin(`spot_posts?id=eq.${post_id}&select=content,author_name,type,spot_id`);
+    const posts = await sbAdmin(`spot_posts?id=eq.${post_id}&select=content,author_name,type,spot_id`) as { content: string; author_name: string; type: string; spot_id: number }[];
     const post = posts?.[0];
 
-    // Email notificatie naar admin
     const resendKey = process.env.RESEND_API_KEY;
     if (resendKey && post) {
       await fetch("https://api.resend.com/emails", {
@@ -180,16 +181,14 @@ export async function PUT(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    // Duplicate report (al gemeld door deze user) → gewoon ok teruggeven
-    if (e.message?.includes("409") || e.message?.includes("unique")) {
+  } catch (e) {
+    if (getErrorMessage(e).includes("409") || getErrorMessage(e).includes("unique")) {
       return NextResponse.json({ ok: true, already_reported: true });
     }
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
 
-// DELETE /api/prikbord?id=X&user_id=Y — eigen post verwijderen
 export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -198,7 +197,6 @@ export async function DELETE(req: NextRequest) {
 
     if (!id || !userId) return NextResponse.json({ error: "missing_fields" }, { status: 400 });
 
-    // Alleen eigen post verwijderen
     await fetch(`${SUPABASE_URL}/rest/v1/spot_posts?id=eq.${id}&user_id=eq.${userId}`, {
       method: "DELETE",
       headers: {
@@ -208,7 +206,7 @@ export async function DELETE(req: NextRequest) {
     });
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
