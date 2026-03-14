@@ -7,9 +7,12 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 export const config = { api: { bodyParser: false } };
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export async function POST(req: NextRequest) {
   try {
-    // Check service key
     if (!SUPABASE_SERVICE_KEY) {
       console.error("SUPABASE_SERVICE_ROLE_KEY is not set");
       return NextResponse.json({ error: "Server configuration error: missing service key" }, { status: 500 });
@@ -23,14 +26,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    console.log("Upload request:", { 
-      name: file.name, 
-      type: file.type, 
-      size: file.size,
-      sessionId 
-    });
+    console.log("Upload request:", { name: file.name, type: file.type, size: file.size, sessionId });
 
-    // Check file size (max 4MB to stay under Vercel limit)
     if (file.size > 4 * 1024 * 1024) {
       return NextResponse.json({ error: "Foto is te groot (max 4MB). Kies een kleinere foto." }, { status: 400 });
     }
@@ -55,23 +52,18 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       console.error("Supabase storage error:", JSON.stringify(error));
-      return NextResponse.json({ 
-        error: `Storage fout: ${error.message}`,
-        details: error 
-      }, { status: 500 });
+      return NextResponse.json({ error: `Storage fout: ${error.message}`, details: error }, { status: 500 });
     }
 
     console.log("Upload success:", data);
 
-    const { data: urlData } = supabase.storage
-      .from("session-photos")
-      .getPublicUrl(filePath);
+    const { data: urlData } = supabase.storage.from("session-photos").getPublicUrl(filePath);
 
     console.log("Public URL:", urlData.publicUrl);
 
     return NextResponse.json({ url: urlData.publicUrl });
-  } catch (e: any) {
+  } catch (e) {
     console.error("Upload route exception:", e);
-    return NextResponse.json({ error: e.message || "Onbekende fout" }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
