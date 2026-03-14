@@ -6,7 +6,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { getEmail, getAuthId, getValidToken, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { getValidToken, SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from "@/lib/supabase";
 import { bundleAlertsByDate, BundledFeedItem } from "@/lib/utils/feedUtils";
 import { SessionStats, RecentSession } from "@/app/components/SessionStatsSection";
 
@@ -78,9 +78,10 @@ export function useHomepage() {
 
   const loadData = useCallback(async () => {
     try {
-      const email = getEmail();
+      const { data: { session } } = await supabase.auth.getSession();
+      const email = session?.user?.email;
       if (!email) return;
-      const authId = getAuthId();
+      const authId = session?.user?.id;
       const users = await sbGet(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,name,min_wind_speed,max_wind_speed,welcome_shown,home_spot_id`);
       if (!users?.length) return;
       const user = users[0];

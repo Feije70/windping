@@ -9,7 +9,7 @@ import HomeSpotIcon from "@/components/HomeSpotIcon";
 import Prikbord from "@/components/Prikbord";
 import { Logo } from "@/components/Logo";
 import { WPing } from "@/components/WPing";
-import { getEmail, isTokenExpired, getAuthId, getValidToken, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
+import { getValidToken, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from "@/lib/supabase";
 import { RATINGS, RATING_COLORS, WIND_FEELS } from "@/lib/constants/session";
 import { bundleAlertsByDate } from "@/lib/utils/feedUtils";
 import { RatingIcon, PropIcon, WindFeelIcon } from "@/app/components/SessionIcons";
@@ -131,9 +131,10 @@ function Dashboard() {
 
   const loadData = useCallback(async () => {
     try {
-      const email = getEmail();
+      const { data: { session } } = await supabase.auth.getSession();
+      const email = session?.user?.email;
       if (!email) return;
-      const authId = getAuthId();
+      const authId = session?.user?.id;
       const users = await sbGet(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,name,min_wind_speed,max_wind_speed,welcome_shown,home_spot_id`);
       if (!users?.length) return;
       const user = users[0];
@@ -1353,8 +1354,9 @@ function Dashboard() {
 export default function HomePage() {
   const [view, setView] = useState<"loading" | "landing" | "dashboard">("loading");
   useEffect(() => {
-    const email = getEmail();
-    setView(email && !isTokenExpired() ? "dashboard" : "landing");
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setView(session?.user ? "dashboard" : "landing");
+    });
   }, []);
   if (view === "loading") return (<div style={{ background: C.cream, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><Logo variant="icon" size={48} animated /></div>);
   if (view === "dashboard") return <Dashboard />;
