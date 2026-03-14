@@ -126,7 +126,7 @@ export default function AdminPage() {
     if (!selectedUser) return;
     setLoading(true); setEvalResult(null);
     try {
-      const result = await apiPost("/api/alerts/test", { action: "evaluate", userId: selectedUser });
+      const result = await apiPost("/api/alerts/test", { action: "evaluate", userId: selectedUser }, token || undefined);
       setEvalResult({ ...result, mode: "preview" });
       loadData();
     } catch (e: any) { setEvalResult({ error: e.message }); }
@@ -153,7 +153,7 @@ export default function AdminPage() {
     if (!selectedUser) return;
     setLoading(true); setTestResult(null);
     try {
-      const result = await apiPost("/api/alerts/test", { action: "send_test", userId: selectedUser, alertType: selectedAlertType, spotId: selectedSpot });
+      const result = await apiPost("/api/alerts/test", { action: "send_test", userId: selectedUser, alertType: selectedAlertType, spotId: selectedSpot }, token || undefined);
       setTestResult(result);
       loadData();
     } catch (e: any) { setTestResult({ error: e.message }); }
@@ -162,7 +162,7 @@ export default function AdminPage() {
 
   const clearTestAlerts = async () => {
     setLoading(true);
-    await apiPost("/api/alerts/test", { action: "clear_test" });
+    await apiPost("/api/alerts/test", { action: "clear_test" }, token || undefined);
     loadData();
     setLoading(false);
   };
@@ -171,7 +171,7 @@ export default function AdminPage() {
     if (!selectedUser) return;
     setLoading(true); setTestResult(null);
     try {
-      const result = await apiPost("/api/alerts/test", { action: "test_push", userId: selectedUser });
+      const result = await apiPost("/api/alerts/test", { action: "test_push", userId: selectedUser }, token || undefined);
       setTestResult(result);
     } catch (e: any) { setTestResult({ error: e.message }); }
     setLoading(false);
