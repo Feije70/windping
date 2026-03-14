@@ -10,6 +10,16 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+interface WebPushError {
+  statusCode?: number;
+  message?: string;
+  body?: string;
+}
+
 export async function POST(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
   const cronSecret = process.env.CRON_SECRET || "";
@@ -31,7 +41,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "VAPID keys not configured" }, { status: 500 });
   }
 
-  const body = await req.json();
+  const body = await req.json() as { userId: number; title?: string; message?: string; url?: string; alertType?: string };
   const { userId, title, message, url, alertType } = body;
 
   if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
@@ -49,7 +59,7 @@ export async function POST(req: Request) {
   };
 
   const payload = JSON.stringify({
-    title: title || `${emojis[alertType] || "🏄"} WindPing`,
+    title: title || `${emojis[alertType ?? ""] || "🏄"} WindPing`,
     body: message || "Je hebt een nieuwe wind alert!",
     url: url || "/alert",
   });
@@ -67,16 +77,17 @@ export async function POST(req: Request) {
           payload
         );
         sent++;
-      } catch (e: any) {
-        console.error("Push failed:", sub.endpoint.slice(0, 50), e.statusCode, e.body || e.message);
-        if (e.statusCode === 404 || e.statusCode === 410) {
+      } catch (e) {
+        const err = e as WebPushError;
+        console.error("Push failed:", sub.endpoint.slice(0, 50), err.statusCode, err.body || getErrorMessage(e));
+        if (err.statusCode === 404 || err.statusCode === 410) {
           await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
         }
         failed++;
       }
     }
-  } catch (e: any) {
-    return NextResponse.json({ error: "web-push failed", detail: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: "web-push failed", detail: getErrorMessage(e) }, { status: 500 });
   }
 
   return NextResponse.json({ sent, failed, total: subs.length });
