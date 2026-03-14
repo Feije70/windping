@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
 import { Icons } from "@/components/Icons";
@@ -11,71 +11,30 @@ import { Logo } from "@/components/Logo";
 import { WPing } from "@/components/WPing";
 import { getValidToken, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from "@/lib/supabase";
 import { RATINGS, RATING_COLORS, WIND_FEELS } from "@/lib/constants/session";
-import { bundleAlertsByDate } from "@/lib/utils/feedUtils";
 import { RatingIcon, PropIcon, WindFeelIcon } from "@/app/components/SessionIcons";
-import { SessionStats, RecentSession } from "@/app/components/SessionStatsSection";
 import { LandingPage } from "@/app/components/LandingPage";
+import { useHomepage } from "@/lib/hooks/useHomepage";
 
 const h = { fontFamily: fonts.heading };
 const OM_BASE = "https://api.open-meteo.com/v1/forecast";
-
 const DIRS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
 function degToDir(deg: number) { return DIRS_16[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16]; }
-
-
-
-
-
-
-
-
-
-async function sbPatch(path: string, body: any) {
-  const token = await getValidToken();
-  await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    method: "PATCH",
-    headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=minimal" },
-    body: JSON.stringify(body),
-  });
-}
-
-async function sbGet(path: string) {
-  const token = await getValidToken();
-  const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers });
-  if (!res.ok) throw new Error(`${res.status}`);
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
-}
-
-
-
 
 /* ═══════════════════════════════════════════════════════════
    DASHBOARD
    ═══════════════════════════════════════════════════════════ */
 
-interface SpotSummary { id: number; name: string; ws: number; wd: number; match: "go" | "maybe" | "no"; }
-
 function Dashboard() {
-  const [userName, setUserName] = useState("");
-  const [userId, setUserId] = useState<number | null>(null);
-  const [spots, setSpots] = useState<SpotSummary[]>([]);
-
-  const [loading, setLoading] = useState(true);
-  const [paused, setPaused] = useState(false);
-  const [showPause, setShowPause] = useState(false);
-  const [pauseUntil, setPauseUntil] = useState("");
-  const [pauseOption, setPauseOption] = useState<"24h" | "48h" | "1w" | "2w" | "custom">("24h");
-  const [recentAlerts, setRecentAlerts] = useState<any[]>([]);
-  const [sessionStats, setSessionStats] = useState<SessionStats>({ total_sessions: 0, total_spots: 0, current_streak: 0, longest_streak: 0, avg_rating: null, favorite_spot_id: null, last_session_date: null, season_sessions: 0, badges: [] });
-  const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
-  const [spotNames, setSpotNames] = useState<Record<number, string>>({});
-  const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
-  const [friendActivity, setFriendActivity] = useState<any[]>([]);
-  const [showWelcome, setShowWelcome] = useState(false);
-  const [allSpots, setAllSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
+  const {
+    userName, userId, spots, loading,
+    paused, setPaused, showPause, setShowPause, pauseUntil, setPauseUntil,
+    pauseOption, setPauseOption,
+    sessionStats, recentSessions, spotNames,
+    friendActivity, showWelcome, allSpots, allPublicSpots,
+    homeSpotId, homeSpotName, homeSpotPosts, setHomeSpotPosts,
+    goingSessions, goSpots, feedItems, greeting,
+    loadData, handleIkGa, handleSkipHome,
+  } = useHomepage();
 
   // Spot picker bottomsheet (bij meerdere go-spots)
   const [pickerSpots, setPickerSpots] = useState<any[] | null>(null);
@@ -83,7 +42,6 @@ function Dashboard() {
 
   // Handmatige sessie modal
   const [showManualSession, setShowManualSession] = useState(false);
-
 
   // Lees spot terug van spot-select pagina via localStorage
   useEffect(() => {
@@ -103,6 +61,7 @@ function Dashboard() {
     checkSpotFromStorage();
     return () => { window.removeEventListener("focus", checkSpotFromStorage); window.removeEventListener("popstate", checkSpotFromStorage); };
   }, []);
+
   const [manualSpotId, setManualSpotId] = useState<number | "">("");
   const [manualDate, setManualDate] = useState(new Date().toISOString().split("T")[0]);
   const [manualWeather, setManualWeather] = useState<{wind: number; gust: number; dir: number; dirStr: string} | null>(null);
@@ -121,210 +80,9 @@ function Dashboard() {
   const [manualPhotoUrl, setManualPhotoUrl] = useState<string | null>(null);
   const [manualPhotoUploading, setManualPhotoUploading] = useState(false);
   const [manualError, setManualError] = useState("");
-  const [allPublicSpots, setAllPublicSpots] = useState<{id: number; name: string; lat: number; lng: number}[]>([]);
-  const [homeSpotId, setHomeSpotId] = useState<number | null>(null);
-  const [homeSpotName, setHomeSpotName] = useState<string>("");
-  const [homeSpotPosts, setHomeSpotPosts] = useState<any[]>([]);
 
-  const goSpots = spots.filter(s => s.match === "go");
   const matchColors: Record<string, string> = { go: C.green, maybe: C.gold, no: C.amber };
 
-  const loadData = useCallback(async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const email = session?.user?.email;
-      if (!email) return;
-      const authId = session?.user?.id;
-      const users = await sbGet(`users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,name,min_wind_speed,max_wind_speed,welcome_shown,home_spot_id`);
-      if (!users?.length) return;
-      const user = users[0];
-      setUserName(user.name || email.split("@")[0]);
-      setUserId(user.id);
-      // Show welcome message first time on homepage
-      if (!user.welcome_shown) {
-        setShowWelcome(true);
-        sbPatch(`users?id=eq.${user.id}`, { welcome_shown: true }).catch(() => {});
-      }
-      try {
-        const pauseData = await sbGet(`user_settings?user_id=eq.${user.id}&select=alerts_paused_until`);
-        if (pauseData?.[0]?.alerts_paused_until) {
-          const until = new Date(pauseData[0].alerts_paused_until);
-          if (until > new Date()) { setPaused(true); setPauseUntil(until.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" })); }
-        }
-      } catch {}
-      const userSpots = await sbGet(`user_spots?user_id=eq.${user.id}&select=spot_id`);
-      
-      // Onboarding check: redirect if not set up
-      try {
-        const prefs = await sbGet(`alert_preferences?user_id=eq.${user.id}&select=id`);
-        const needsOnboarding = !user.name || !userSpots?.length || !prefs?.length;
-        if (needsOnboarding) { window.location.href = "/onboarding"; return; }
-      } catch {}
-      
-      if (!userSpots?.length) { setLoading(false); return; }
-      const ids = userSpots.map((x: any) => x.spot_id);
-
-      // Auto-set homespot: als 1 spot en nog geen homespot → stil instellen
-      let currentHomeSpotId = user.home_spot_id || null;
-      console.log("[homespot] user.home_spot_id:", user.home_spot_id, "ids:", ids);
-      if (!currentHomeSpotId && ids.length >= 1) {
-        currentHomeSpotId = ids[0];
-        console.log("[homespot] auto-setting to:", currentHomeSpotId);
-        try { 
-          await sbPatch(`users?id=eq.${user.id}`, { home_spot_id: currentHomeSpotId });
-          console.log("[homespot] patch ok");
-        } catch (e) { 
-          console.error("[homespot] patch failed:", e);
-        }
-      }
-      if (currentHomeSpotId) {
-        setHomeSpotId(currentHomeSpotId);
-        console.log("[homespot] loading posts for spot:", currentHomeSpotId);
-        // Laad prikbord posts voor homespot
-        try {
-          const posts = await sbGet(`spot_posts?spot_id=eq.${currentHomeSpotId}&order=created_at.desc&limit=3&select=id,type,content,author_name,created_at,wind_speed,wind_dir`);
-          console.log("[homespot] posts:", posts);
-          setHomeSpotPosts(posts || []);
-          const spotInfo = await sbGet(`spots?id=eq.${currentHomeSpotId}&select=display_name`);
-          if (spotInfo?.[0]) setHomeSpotName(spotInfo[0].display_name);
-        } catch (e) { 
-          console.error("[homespot] posts load failed:", e);
-        }
-      } else {
-        console.log("[homespot] no homespot set, skipping preview");
-      }
-      const [spotsData, condsData] = await Promise.all([
-        sbGet(`spots?id=in.(${ids.join(",")})&select=id,display_name,latitude,longitude,good_directions`),
-        sbGet(`ideal_conditions?user_id=eq.${user.id}&spot_id=in.(${ids.join(",")})&select=spot_id,wind_min,wind_max,directions`),
-      ]);
-      const names: Record<number, string> = {};
-      (spotsData || []).forEach((s: any) => { names[s.id] = s.display_name; });
-      
-      // Haal ook namen op van spots in recente sessies die niet in user_spots zitten
-      try {
-        const sessRes2 = await sbGet(`sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=spot_id`);
-        const sessionSpotIds = (sessRes2 || []).map((s: any) => s.spot_id).filter((id: number) => !names[id]);
-        if (sessionSpotIds.length > 0) {
-          const extraSpots = await sbGet(`spots?id=in.(${sessionSpotIds.join(",")})&select=id,display_name`);
-          (extraSpots || []).forEach((s: any) => { names[s.id] = s.display_name; });
-        }
-      } catch {}
-      
-      setSpotNames(names);
-      setAllSpots((spotsData || []).filter((s: any) => s.latitude && s.longitude).map((s: any) => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude })));
-      // Load ALL public spots for manual session spot picker
-      try {
-        const publicSpots = await sbGet(`spots?select=id,display_name,latitude,longitude&order=display_name.asc`);
-        setAllPublicSpots((publicSpots || []).filter((s: any) => s.latitude && s.longitude).map((s: any) => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude })));
-      } catch {}
-      const conds: Record<number, any> = {};
-      (condsData || []).forEach((ic: any) => { conds[ic.spot_id] = ic; });
-      const valid = (spotsData || []).filter((s: any) => s.latitude && s.longitude);
-      const results: SpotSummary[] = [];
-      await Promise.all(valid.map(async (s: any) => {
-        try {
-          const res = await fetch(`${OM_BASE}?latitude=${s.latitude}&longitude=${s.longitude}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&timezone=auto`);
-          const w = await res.json();
-          const ws = Math.round(w.current?.wind_speed_10m || 0);
-          const wd = w.current?.wind_direction_10m || 0;
-          const ic = conds[s.id];
-          const wMin = ic?.wind_min ?? 15;
-          const wMax = ic?.wind_max ?? 25;
-          const dirs = ic?.directions?.length ? ic.directions : (s.good_directions || []);
-          const dirOk = dirs.length === 0 || dirs.includes(degToDir(wd));
-          const speedOk = ws >= wMin && ws <= wMax;
-          results.push({ id: s.id, name: s.display_name, ws, wd, match: speedOk && dirOk ? "go" : speedOk || dirOk ? "maybe" : "no" });
-        } catch {}
-      }));
-      results.sort((a, b) => { const o: Record<string, number> = { go: 0, maybe: 1, no: 2 }; return o[a.match] - o[b.match]; });
-      setSpots(results);
-      try {
-        const since = new Date(); since.setDate(since.getDate() - 7);
-        const alertData = await sbGet(`alert_history?user_id=eq.${user.id}&target_date=gte.${since.toISOString().split("T")[0]}&order=created_at.desc&limit=20`);
-        setRecentAlerts(alertData || []);
-      } catch {}
-      try {
-        const token = await getValidToken();
-        if (token) {
-          const sessRes = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,photo_url,notes`, {
-            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-          });
-          if (sessRes.ok) setRecentSessions(await sessRes.json() || []);
-          const statsRes = await fetch(`${SUPABASE_URL}/rest/v1/user_stats?user_id=eq.${user.id}&select=*`, {
-            headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-          });
-          if (statsRes.ok) {
-            const statsData = await statsRes.json();
-            if (statsData?.[0]) {
-              const s = statsData[0];
-              const badges = typeof s.badges === "string" ? JSON.parse(s.badges) : (s.badges || []);
-              setSessionStats({ ...s, badges });
-              setEarnedBadges(badges);
-            }
-          }
-        }
-      } catch (e) { console.error("Session stats load error:", e); }
-      // Load friend activity
-      try {
-        const token = await getValidToken();
-        if (token) {
-          const actRes = await fetch("/api/friends?type=activity", {
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-          });
-          if (actRes.ok) {
-            const actData = await actRes.json();
-            setFriendActivity(actData.activity || []);
-          }
-        }
-      } catch (e) { console.error("Friend activity load error:", e); }
-    } catch (e) { console.error(e); }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { loadData(); }, [loadData]);
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Goedemorgen" : hour < 18 ? "Goedemiddag" : "Goedenavond";
-  const feedItems = bundleAlertsByDate(recentAlerts);
-
-  // State voor going-sessies op homepage (spotName → session)
-  const [goingSessions, setGoingSessions] = useState<Record<string, any>>({});
-
-  // Handler: "Ik ga!" — sla going op in DB, toon status op kaart
-  const handleIkGa = async (spotName: string, spotId?: number, date?: string, wind?: number, gust?: number, dir?: string) => {
-    if (!spotId || !date || !userId) return;
-    const key = `${spotId}_${date}`;
-    const token = await getValidToken();
-    if (!token) return;
-    try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
-        method: "POST",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "return=representation" },
-        body: JSON.stringify({ created_by: userId, spot_id: spotId, session_date: date, status: "going", going_at: new Date().toISOString(), forecast_wind: wind || 0, forecast_gust: gust || 0, forecast_dir: dir || "" }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setGoingSessions(prev => ({ ...prev, [key]: data[0] || data }));
-      }
-    } catch (e) { console.error("Ik ga error:", e); }
-  };
-
-  // Handler: "Toch niet" — verwijder sessie
-  const handleSkipHome = async (spotId: number, date: string) => {
-    const key = `${spotId}_${date}`;
-    const session = goingSessions[key];
-    if (!session) return;
-    const token = await getValidToken();
-    if (!token) return;
-    try {
-      await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${session.id}`, {
-        method: "DELETE",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-      });
-      setGoingSessions(prev => { const next = { ...prev }; delete next[key]; return next; });
-    } catch {}
-  };
-
-  // Fetch weer voor handmatige sessie
   const fetchManualWeather = async (spotId: number, date: string) => {
     const spot = allSpots.find(s => s.id === spotId);
     if (!spot) return;
@@ -334,7 +92,7 @@ function Dashboard() {
       const url = `${OM_BASE}?latitude=${spot.lat}&longitude=${spot.lng}&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m&wind_speed_unit=kn&timezone=Europe/Amsterdam&start_date=${date}&end_date=${date}`;
       const res = await fetch(url);
       const data = await res.json();
-      const midday = 12; // gebruik middagwaarden
+      const midday = 12;
       const wind = Math.round(data.hourly.wind_speed_10m[midday] || 0);
       const gust = Math.round(data.hourly.wind_gusts_10m[midday] || 0);
       const dir = Math.round(data.hourly.wind_direction_10m[midday] || 0);
@@ -415,19 +173,13 @@ function Dashboard() {
     setManualSaving(false);
   };
 
-
   return (
     <div style={{ background: C.cream, minHeight: "100vh", color: C.navy }}>
       <NavBar />
 
       <div style={{ maxWidth: 480, margin: "0 auto", padding: "0 0 100px" }}>
 
-        {/* ══════════════════════════════════════════
-            HEADER — open, licht, uitnodigend
-            ══════════════════════════════════════════ */}
         <div style={{ padding: "28px 16px 0" }}>
-
-          {/* Greeting + Go-badge */}
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10, gap: 12 }}>
             <div>
               <div style={{ fontSize: 12, color: C.muted, fontWeight: 500, marginBottom: 3, letterSpacing: "0.3px" }}>{greeting}</div>
@@ -435,7 +187,6 @@ function Dashboard() {
                 {userName ? userName.split(" ")[0] : ""}
               </h2>
             </div>
-            {/* Alleen tonen als er Go-spots zijn — groen badge */}
             {!loading && goSpots.length > 0 && (
               <div style={{ flexShrink: 0, background: "linear-gradient(135deg, #1A5F7A 0%, #2E8FAE 100%)", borderRadius: 16, padding: "9px 14px", textAlign: "center", boxShadow: "0 4px 14px rgba(46,143,174,0.30)" }}>
                 <div style={{ fontSize: 30, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-1px" }}>{goSpots[0].ws}</div>
@@ -444,18 +195,16 @@ function Dashboard() {
             )}
           </div>
 
-          {/* Status tekst */}
           <p style={{ fontSize: 13, color: C.sub, margin: "0 0 16px", lineHeight: 1.5 }}>
             {loading ? "Even kijken…" :
               goSpots.length > 0
                 ? <><span style={{ fontWeight: 700, color: C.green }}>{goSpots.length > 1 ? `${goSpots.length} spots` : goSpots[0].name}</span> {goSpots.length > 1 ? "zijn" : "is"} nu Go — <a href="/alert" style={{ color: C.sky, textDecoration: "none", fontWeight: 600 }}>bekijk je alert →</a></>
-                : recentAlerts.some(a => a.alert_type === "go")
+                : feedItems.some((i: any) => i.alertType === "go")
                   ? <><span style={{ fontWeight: 600, color: C.navy }}>Er komen Go-dagen aan</span> — check je alerts</>
                   : spots.length > 0 ? "Vandaag even geen wind op je spots"
                   : "Voeg spots toe om te beginnen"}
           </p>
 
-          {/* Wind Check kaart — grote duidelijke windgetallen */}
           {!loading && spots.length > 0 && (
             <Link href="/check" style={{ display: "block", padding: "14px 16px", background: C.card, borderRadius: 16, textDecoration: "none", boxShadow: "0 2px 12px rgba(31,53,76,0.07)", border: `1.5px solid ${C.cardBorder}`, marginBottom: 20 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -470,9 +219,7 @@ function Dashboard() {
                   const isMaybe = s.match === "maybe";
                   const col = isGo ? "#2A9B76" : isMaybe ? "#D4860B" : C.muted;
                   const bg = isGo ? "#C8F0E0" : isMaybe ? "#FDEFC8" : C.cream;
-                  const border = isGo ? "1.5px solid rgba(42,155,118,0.30)"
-                    : isMaybe ? "1.5px solid rgba(212,134,11,0.25)"
-                    : `1.5px solid ${C.cardBorder}`;
+                  const border = isGo ? "1.5px solid rgba(42,155,118,0.30)" : isMaybe ? "1.5px solid rgba(212,134,11,0.25)" : `1.5px solid ${C.cardBorder}`;
                   return (
                     <div key={s.id} style={{ background: bg, borderRadius: 12, padding: "8px 4px 6px", textAlign: "center", border }}>
                       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 1, marginBottom: 2 }}>
@@ -492,61 +239,26 @@ function Dashboard() {
 
         <div style={{ padding: "0 16px" }}>
 
-        {/* Quick actions — 2 groot + 4 klein */}
         <div style={{ marginBottom: 24 }}>
-          {/* Groot: Sessie+ en Mijn Spots */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-            <button onClick={() => { setShowManualSession(true); setManualStep("pick"); }} style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "14px 12px", background: `linear-gradient(135deg, #0D4A63, #2E8FAE)`,
-              border: "none", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
-              boxShadow: "0 4px 12px rgba(46,143,174,0.28)",
-            }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14"/>
-              </svg>
+            <button onClick={() => { setShowManualSession(true); setManualStep("pick"); }} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 12px", background: `linear-gradient(135deg, #0D4A63, #2E8FAE)`, border: "none", borderRadius: 14, cursor: "pointer", fontFamily: "inherit", boxShadow: "0 4px 12px rgba(46,143,174,0.28)" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14"/></svg>
               <span style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Sessie +</span>
             </button>
-            <Link href="/mijn-spots" style={{
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              padding: "14px 12px", background: C.card,
-              border: `1.5px solid #2E8FAE`, borderRadius: 14, textDecoration: "none",
-              boxShadow: "0 2px 8px rgba(46,143,174,0.10)",
-            }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/>
-                <circle cx="12" cy="10" r="3"/>
-              </svg>
+            <Link href="/mijn-spots" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "14px 12px", background: C.card, border: `1.5px solid #2E8FAE`, borderRadius: 14, textDecoration: "none", boxShadow: "0 2px 8px rgba(46,143,174,0.10)" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.sky} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
               <span style={{ fontSize: 14, fontWeight: 700, color: C.sky }}>Mijn Spots</span>
             </Link>
           </div>
 
-          {/* Klein: Vrienden, Spot toevoegen, Pauzeer, Instellingen */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
             {[
-              {
-                label: "Vrienden", href: "/vrienden", color: C.purple,
-                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.purple} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              },
-              {
-                label: "Spot +", href: "/add-spot", color: C.amber,
-                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><path d="M12 7v6M9 10h6"/></svg>
-              },
-              {
-                label: paused ? "Gepauzeerd" : "Pauzeer", onClick: () => setShowPause(!showPause),
-                color: showPause || paused ? C.gold : C.muted,
-                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={showPause || paused ? C.gold : C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-              },
-              {
-                label: "Instellingen", href: "/voorkeuren", color: C.sub,
-                icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-              },
+              { label: "Vrienden", href: "/vrienden", color: C.purple, icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.purple} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+              { label: "Spot +", href: "/add-spot", color: C.amber, icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><path d="M12 7v6M9 10h6"/></svg> },
+              { label: paused ? "Gepauzeerd" : "Pauzeer", onClick: () => setShowPause(!showPause), color: showPause || paused ? C.gold : C.muted, icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={showPause || paused ? C.gold : C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg> },
+              { label: "Instellingen", href: "/voorkeuren", color: C.sub, icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
             ].map((a: any) => {
-              const style: any = {
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                gap: 5, padding: "10px 4px", background: C.card, border: `1px solid ${C.cardBorder}`,
-                borderRadius: 12, cursor: "pointer", textDecoration: "none", boxShadow: C.cardShadow,
-              };
+              const style: any = { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 4px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, cursor: "pointer", textDecoration: "none", boxShadow: C.cardShadow };
               const label = <span style={{ fontSize: 10, fontWeight: 600, color: a.color, textAlign: "center" as const, lineHeight: 1.2 }}>{a.label}</span>;
               if (a.href) return <Link key={a.label} href={a.href} style={style}>{a.icon}{label}</Link>;
               return <button key={a.label} onClick={a.onClick} style={{ ...style, fontFamily: "inherit" }}>{a.icon}{label}</button>;
@@ -554,7 +266,6 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Pause options */}
         {showPause && !paused && (
           <div style={{ marginBottom: 20, padding: "16px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 14, boxShadow: C.cardShadow }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
@@ -567,7 +278,6 @@ function Dashboard() {
           </div>
         )}
 
-        {/* Paused banner */}
         {paused && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", background: C.epicBg, border: "1px solid rgba(212,146,46,0.2)", borderRadius: 14, marginBottom: 20 }}>
             <span style={{ fontSize: 18 }}>⏸️</span>
@@ -579,11 +289,8 @@ function Dashboard() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════════
-            ZONE 1 — JOUW ALERTS
-            ══════════════════════════════════════════ */}
+        {/* ══ ZONE 1 — JOUW ALERTS ══ */}
         <div style={{ marginBottom: 32 }}>
-          {/* Sectie header */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={C.navy} strokeWidth="2.2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -604,15 +311,12 @@ function Dashboard() {
                 <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.6 }}>Voeg spots toe en stel je windvoorkeuren in. WindPing waarschuwt je als het Go is.</div>
               </div>
             </div>
-          ) : 
-            feedItems.map((item) => {
-              const isGo = item.alertType === "go" || item.alertType === "mixed";
+          ) :
+            feedItems.map((item: any) => {
               const isEpic = item.goSpots.some((s: any) => s.wind >= 25);
               return (
                 <div key={item.targetDate} style={{ background: C.card, borderRadius: 18, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 12, border: `1.5px solid ${C.cardBorder}` }}>
-                  {/* Groene gradient header — visuele impact behouden, iets compacter */}
                   <div style={{ background: "linear-gradient(135deg, #08303F 0%, #0E5470 45%, #1A7A9E 100%)", padding: "13px 16px 11px", position: "relative", overflow: "hidden" }}>
-                    {/* Wave SVG achtergrond */}
                     <svg style={{ position: "absolute", right: -10, top: -5, opacity: 0.08, pointerEvents: "none" }} width="120" height="80" viewBox="0 0 120 80">
                       <path d="M5 40 Q30 10 65 35 Q100 60 120 25" stroke="white" strokeWidth="12" fill="none" strokeLinecap="round"/>
                       <path d="M0 65 Q25 40 55 58 Q85 76 120 50" stroke="white" strokeWidth="8" fill="none" strokeLinecap="round"/>
@@ -634,17 +338,13 @@ function Dashboard() {
                         </div>
                       </div>
                       <div style={{ flexShrink: 0, textAlign: "center" }}>
-                        <div style={{ fontSize: 38, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-2px" }}>
-                          {Math.max(...item.goSpots.map((s: any) => s.wind))}
-                        </div>
+                        <div style={{ fontSize: 38, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-2px" }}>{Math.max(...item.goSpots.map((s: any) => s.wind))}</div>
                         <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.55)", letterSpacing: "1px", marginTop: 1 }}>KNOPEN</div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Body */}
                   <div style={{ padding: "11px 14px 12px" }}>
-                    {/* Meerdere spots: compacte lijst */}
                     {item.goSpots.length > 1 && (
                       <div style={{ marginBottom: 10 }}>
                         {item.goSpots.map((s: any) => (
@@ -659,12 +359,9 @@ function Dashboard() {
                       </div>
                     )}
 
-                    {/* Ik ga / Je gaat / Details */}
                     {(() => {
-                      // Check going status voor deze alert (eerste spot of gekozen spot)
                       const goingSpot = item.goSpots.find((s: any) => goingSessions[`${s.spotId}_${item.targetDate}`]);
                       const session = goingSpot ? goingSessions[`${goingSpot.spotId}_${item.targetDate}`] : null;
-
                       if (session?.status === "going") {
                         return (
                           <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
@@ -673,49 +370,36 @@ function Dashboard() {
                               <span style={{ fontSize: 13, fontWeight: 700, color: C.green }}>Je gaat!</span>
                               {goingSpot && item.goSpots.length > 1 && <span style={{ fontSize: 11, color: C.muted }}>· {goingSpot.spotName}</span>}
                             </div>
-                            <button onClick={() => handleSkipHome(goingSpot!.spotId, item.targetDate)}
-                              style={{ padding: "10px 14px", background: C.cream, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.sub, fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>
-                              Toch niet
-                            </button>
-                            <Link href="/alert" style={{ padding: "10px 14px", background: C.oceanTint, border: `1px solid rgba(46,143,174,0.15)`, borderRadius: 10, color: C.sky, fontSize: 13, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                              Details
-                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                            </Link>
+                            <button onClick={() => handleSkipHome(goingSpot!.spotId, item.targetDate)} style={{ padding: "10px 14px", background: C.cream, border: `1px solid ${C.cardBorder}`, borderRadius: 10, color: C.sub, fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>Toch niet</button>
+                            <Link href="/alert" style={{ padding: "10px 14px", background: C.oceanTint, border: `1px solid rgba(46,143,174,0.15)`, borderRadius: 10, color: C.sky, fontSize: 13, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>Details<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></Link>
                           </div>
                         );
                       }
-
                       return (
                         <div style={{ display: "flex", alignItems: "stretch", gap: 8 }}>
                           {item.goSpots.length === 1 ? (
                             <a href="#" onClick={(e) => { e.preventDefault(); const s = item.goSpots[0]; handleIkGa(s.spotName, s.spotId, item.targetDate, s.wind, s.gust, s.dir); }} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", cursor: "pointer" }}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                              Ik ga!
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Ik ga!
                             </a>
                           ) : (
                             <a href="#" onClick={(e) => { e.preventDefault(); setPickerSpots(item.goSpots); setPickerCallback(() => (spotName: string) => { const s = item.goSpots.find((x: any) => x.spotName === spotName); if (s) handleIkGa(s.spotName, s.spotId, item.targetDate, s.wind, s.gust, s.dir); }); }} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", cursor: "pointer" }}>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                              Ik ga!
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Ik ga!
                             </a>
                           )}
                           <Link href="/alert" style={{ flex: 1, padding: "10px", background: C.oceanTint, border: `1px solid rgba(46,143,174,0.15)`, borderRadius: 10, color: C.sky, fontSize: 13, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-                            Details
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                            Details<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                           </Link>
                         </div>
                       );
                     })()}
 
-                    {/* Downgrade sectie */}
                     {item.downgradeSpots.length > 0 && (
                       <div style={{ marginTop: 10, padding: "8px 12px", background: "#FEF2F2", borderRadius: 10, border: "1px solid rgba(220,38,38,0.12)" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
                           <span style={{ fontSize: 11, fontWeight: 700, color: "#DC2626" }}>Alert ingetrokken</span>
                         </div>
-                        <div style={{ fontSize: 11, color: "#EF4444" }}>
-                          {item.downgradeSpots.map((s: any) => `${s.spotName} ${s.wind}kn`).join(" · ")}
-                        </div>
+                        <div style={{ fontSize: 11, color: "#EF4444" }}>{item.downgradeSpots.map((s: any) => `${s.spotName} ${s.wind}kn`).join(" · ")}</div>
                       </div>
                     )}
                   </div>
@@ -725,10 +409,7 @@ function Dashboard() {
           }
         </div>
 
-        {/* ══════════════════════════════════════════
-            ZONE 2 — CREW
-            ══════════════════════════════════════════ */}
-        {/* ── Feed scheiding ── */}
+        {/* ══ ZONE 2 — FEED ══ */}
         <div style={{ height: 1, background: C.cardBorder, margin: "4px 0 0" }} />
         <div style={{ marginLeft: -16, marginRight: -16, marginBottom: 32, padding: "24px 16px 20px", background: "#E4D9CB" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
@@ -755,11 +436,8 @@ function Dashboard() {
                 const ratingColors: Record<number, string> = { 1: C.terra, 2: C.terra, 3: C.gold, 4: C.sky, 5: C.green };
                 return (
                   <div key={a.id} style={{ background: C.card, borderRadius: 16, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 10, border: `1.5px solid ${C.cardBorder}` }}>
-                    {/* Header */}
                     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px 10px" }}>
-                      <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-                        {a.friendName.charAt(0).toUpperCase()}
-                      </div>
+                      <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{a.friendName.charAt(0).toUpperCase()}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{a.friendName}</div>
                         <div style={{ fontSize: 11, color: C.muted }}>{a.status === "completed" ? "Gisteren" : "Gaat"} · {a.spotName}</div>
@@ -767,7 +445,6 @@ function Dashboard() {
                       {a.rating && <div style={{ fontSize: 12, fontWeight: 800, color: ratingColors[a.rating], background: `${ratingColors[a.rating]}15`, padding: "3px 9px", borderRadius: 8, flexShrink: 0 }}>{ratingLabels[a.rating]}</div>}
                       {a.status === "going" && <div style={{ fontSize: 11, fontWeight: 700, color: C.green, background: `${C.green}15`, padding: "3px 9px", borderRadius: 8, flexShrink: 0 }}>Gaat!</div>}
                     </div>
-                    {/* Photo */}
                     {a.photoUrl && (
                       <div style={{ width: "100%", aspectRatio: "16/9", overflow: "hidden", position: "relative" }}>
                         <img src={a.photoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: a.photoCrop || "50% 50%", display: "block" }} />
@@ -780,15 +457,9 @@ function Dashboard() {
                         )}
                       </div>
                     )}
-                    {/* Gear / notes */}
                     {(a.gearType || a.notes) && (
                       <div style={{ padding: "9px 14px 12px", borderTop: `1px solid ${C.cardBorder}`, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" as const }}>
-                        {a.gearType && (
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                            <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.sky, flexShrink: 0 }} />
-                            <span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>{a.gearType.replace(/-/g, " ")}{a.gearSize ? ` ${a.gearSize}m²` : ""}</span>
-                          </div>
-                        )}
+                        {a.gearType && <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><div style={{ width: 5, height: 5, borderRadius: "50%", background: C.sky, flexShrink: 0 }} /><span style={{ fontSize: 12, fontWeight: 600, color: C.sub }}>{a.gearType.replace(/-/g, " ")}{a.gearSize ? ` ${a.gearSize}m²` : ""}</span></div>}
                         {(a.gearType || a.gearSize) && a.notes && <span style={{ color: C.muted, fontSize: 12 }}>·</span>}
                         {a.notes && <span style={{ fontSize: 12, color: C.muted }}>{a.notes}</span>}
                       </div>
@@ -796,12 +467,10 @@ function Dashboard() {
                   </div>
                 );
               })}
-
             </>
           )}
         </div>
 
-        {/* ── Prikbord homespot preview ── */}
         {homeSpotId && (
           <div style={{ marginBottom: 24 }}>
             <div style={{ height: 1, background: C.cardBorder, margin: "4px 0 20px" }} />
@@ -812,22 +481,12 @@ function Dashboard() {
               </div>
               <a href={`/spot?id=${homeSpotId}`} style={{ fontSize: 12, fontWeight: 700, color: C.sky, textDecoration: "none" }}>Bekijk spot →</a>
             </div>
-            <Prikbord
-              spotId={homeSpotId}
-              spotName={homeSpotName}
-              userId={userId}
-              userName={userName}
-              posts={homeSpotPosts}
-              onPostAdded={(post) => setHomeSpotPosts(prev => [post, ...prev])}
-              compact={true}
-            />
+            <Prikbord spotId={homeSpotId} spotName={homeSpotName} userId={userId} userName={userName} posts={homeSpotPosts} onPostAdded={(post) => setHomeSpotPosts((prev: any[]) => [post, ...prev])} compact={true} />
           </div>
         )}
 
-        {/* ── W. Ping scheiding */}
         <div style={{ height: 1, background: C.cardBorder, margin: "4px 0 24px" }} />
 
-        {/* W. Ping message — prominent karakter */}
         <div style={{ marginBottom: 24 }}>
           <div style={{ padding: "20px 18px 18px", background: `linear-gradient(135deg, ${C.oceanTint} 0%, #E8F6FA 100%)`, borderRadius: 20, border: "1.5px solid rgba(46,143,174,0.18)", boxShadow: "0 4px 20px rgba(46,143,174,0.10)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
@@ -844,13 +503,7 @@ function Dashboard() {
                   <div style={{ fontWeight: 700, color: C.navy, marginBottom: 6 }}>Welkom bij WindPing, {userName}! 🤙</div>
                   <div style={{ marginBottom: 10 }}>Fijn dat je er bent. Dit kun je allemaal doen:</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                    {[
-                      [Icons.wind, "Check", "zie de huidige wind op al je spots"],
-                      [Icons.mapPin, "Spots", "voeg je favoriete spots toe"],
-                      [Icons.calendar, "Sessies", "log je sessies en bekijk je stats"],
-                      [Icons.users, "Vrienden", "nodig je maten uit en deel sessies"],
-                      [Icons.bell, "Alerts", "ik ping je automatisch als het waait"],
-                    ].map(([icon, title, desc]: any) => (
+                    {[[Icons.wind, "Check", "zie de huidige wind op al je spots"], [Icons.mapPin, "Spots", "voeg je favoriete spots toe"], [Icons.calendar, "Sessies", "log je sessies en bekijk je stats"], [Icons.users, "Vrienden", "nodig je maten uit en deel sessies"], [Icons.bell, "Alerts", "ik ping je automatisch als het waait"]].map(([icon, title, desc]: any) => (
                       <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
                         <span style={{ flexShrink: 0 }}>{icon({ color: C.sky, size: 14 })}</span>
                         <span><strong>{title}</strong> — {desc}</span>
@@ -871,7 +524,6 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* ── SESSIES sectie scheiding ── */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
           <div style={{ flex: 1, height: 1, background: `linear-gradient(to right, ${C.cardBorder}, transparent)` }} />
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -881,17 +533,11 @@ function Dashboard() {
           <div style={{ flex: 1, height: 1, background: `linear-gradient(to left, ${C.cardBorder}, transparent)` }} />
         </div>
 
-        {/* ── Sessie snelkoppeling ── */}
         <div style={{ marginBottom: 16 }}>
           <Link href="/mijn-sessies" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", background: C.card, borderRadius: 16, textDecoration: "none", boxShadow: C.cardShadow, border: `1.5px solid ${C.cardBorder}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 44, height: 44, borderRadius: 13, background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                {/* Golf/surf icoon */}
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
-                  <path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
-                  <path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/>
-                </svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2"/></svg>
               </div>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: C.navy, lineHeight: 1.2 }}>Mijn sessies</div>
@@ -906,22 +552,17 @@ function Dashboard() {
           </Link>
         </div>
 
-                </div>{/* end inner padding div */}
+        </div>{/* end inner padding div */}
 
         {/* ── SPOT PICKER BOTTOMSHEET ── */}
         {pickerSpots && (
           <div onClick={() => setPickerSpots(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
             <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 480, background: C.cream, borderRadius: "22px 22px 0 0", padding: "0 0 32px", boxShadow: "0 -8px 40px rgba(0,0,0,0.18)" }}>
-              {/* Handle */}
-              <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
-                <div style={{ width: 36, height: 4, borderRadius: 2, background: C.cardBorder }} />
-              </div>
-              {/* Titel */}
+              <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: C.cardBorder }} /></div>
               <div style={{ padding: "10px 20px 16px" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: "1px", marginBottom: 4 }}>WAAR GA JE NAARTOE?</div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: C.navy }}>Kies je spot</div>
               </div>
-              {/* Spots */}
               <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 8 }}>
                 {pickerSpots.map((s: any) => (
                   <button key={s.spotName} onClick={() => { if (pickerCallback) pickerCallback(s.spotName); setPickerSpots(null); }} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 14, cursor: "pointer" }}>
@@ -941,10 +582,7 @@ function Dashboard() {
                   </button>
                 ))}
               </div>
-              {/* Annuleer */}
-              <button onClick={() => setPickerSpots(null)} style={{ width: "calc(100% - 32px)", margin: "12px 16px 0", padding: "12px", background: "transparent", border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 13, fontWeight: 600, color: C.muted, cursor: "pointer" }}>
-                Annuleer
-              </button>
+              <button onClick={() => setPickerSpots(null)} style={{ width: "calc(100% - 32px)", margin: "12px 16px 0", padding: "12px", background: "transparent", border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 13, fontWeight: 600, color: C.muted, cursor: "pointer" }}>Annuleer</button>
             </div>
           </div>
         )}
@@ -964,14 +602,11 @@ function Dashboard() {
               onClick={(e) => { if (e.target === e.currentTarget) { setShowManualSession(false); resetManualSession(); } }}>
               <div style={{ background: C.cream, borderRadius: "20px 20px 20px 20px", width: "100%", maxWidth: 480, padding: "24px 20px 48px", maxHeight: "85vh", overflowY: "auto" }}>
 
-                {/* Header */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
                   <span style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 20, color: C.navy, letterSpacing: 0.5 }}>Sessie loggen</span>
-                  <button onClick={() => { setShowManualSession(false); resetManualSession(); }}
-                    style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: C.muted, lineHeight: 1 }}>×</button>
+                  <button onClick={() => { setShowManualSession(false); resetManualSession(); }} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: C.muted, lineHeight: 1 }}>×</button>
                 </div>
 
-                {/* Progress bar */}
                 {manualStep !== "pick" && (
                   <div style={{ display: "flex", gap: 4, marginBottom: 24 }}>
                     {[1,2,3,4,5,6].map(s => (
@@ -980,11 +615,8 @@ function Dashboard() {
                   </div>
                 )}
 
-                {manualError && (
-                  <div style={{ padding: "10px 14px", background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 10, fontSize: 12, color: "#DC2626", marginBottom: 16 }}>{manualError}</div>
-                )}
+                {manualError && <div style={{ padding: "10px 14px", background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 10, fontSize: 12, color: "#DC2626", marginBottom: 16 }}>{manualError}</div>}
 
-                {/* ── SAVED: Sessie opgeslagen + deel ── */}
                 {(manualStep as any) === "saved" && (
                   <div style={{ textAlign: "center", padding: "8px 0 16px" }}>
                     <div style={{ fontSize: 48, marginBottom: 12 }}>🤙</div>
@@ -993,43 +625,23 @@ function Dashboard() {
                       {manualWeather ? `${manualWeather.wind}kn ${manualWeather.dirStr} · ` : ""}
                       {allSpots.find(s => s.id === manualSpotId)?.name || ""}
                     </div>
-
                     {savedSessionId && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
-                        <button
-                          onClick={() => {
-                            const spotName = allSpots.find(s => s.id === manualSpotId)?.name || "een spot";
-                            const wind = manualWeather ? `${manualWeather.wind}kn ${manualWeather.dirStr}` : "";
-                            const text = `🤙 Net een sessie gelogd op ${spotName}${wind ? ` · ${wind}` : ""} — bekijk hem op WindPing!`;
-                            const url = `https://www.windping.com/sessie/${savedSessionId}`;
-                            if ((navigator as any).share) {
-                              (navigator as any).share({ title: "WindPing sessie", text, url }).catch(() => {});
-                            } else {
-                              navigator.clipboard.writeText(`${text} ${url}`);
-                            }
-                          }}
-                          style={{ width: "100%", padding: "14px", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-                          Deel sessie 🤙
-                        </button>
-                        <a
-                          href={`https://wa.me/?text=${encodeURIComponent(`🤙 Net een sessie gelogd op ${allSpots.find(s => s.id === manualSpotId)?.name || "een spot"}${manualWeather ? ` · ${manualWeather.wind}kn ${manualWeather.dirStr}` : ""} — https://www.windping.com/sessie/${savedSessionId}`)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ display: "block", width: "100%", padding: "14px", background: "#25D366", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer", textDecoration: "none", boxSizing: "border-box" }}>
-                          Stuur via WhatsApp
-                        </a>
+                        <button onClick={() => {
+                          const spotName = allSpots.find(s => s.id === manualSpotId)?.name || "een spot";
+                          const wind = manualWeather ? `${manualWeather.wind}kn ${manualWeather.dirStr}` : "";
+                          const text = `🤙 Net een sessie gelogd op ${spotName}${wind ? ` · ${wind}` : ""} — bekijk hem op WindPing!`;
+                          const url = `https://www.windping.com/sessie/${savedSessionId}`;
+                          if ((navigator as any).share) { (navigator as any).share({ title: "WindPing sessie", text, url }).catch(() => {}); }
+                          else { navigator.clipboard.writeText(`${text} ${url}`); }
+                        }} style={{ width: "100%", padding: "14px", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>Deel sessie 🤙</button>
+                        <a href={`https://wa.me/?text=${encodeURIComponent(`🤙 Net een sessie gelogd op ${allSpots.find(s => s.id === manualSpotId)?.name || "een spot"}${manualWeather ? ` · ${manualWeather.wind}kn ${manualWeather.dirStr}` : ""} — https://www.windping.com/sessie/${savedSessionId}`)}`} target="_blank" rel="noopener noreferrer" style={{ display: "block", width: "100%", padding: "14px", background: "#25D366", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer", textDecoration: "none", boxSizing: "border-box" }}>Stuur via WhatsApp</a>
                       </div>
                     )}
-
-                    <button
-                      onClick={() => { setShowManualSession(false); resetManualSession(); }}
-                      style={{ width: "100%", padding: "12px", background: "rgba(31,53,76,0.06)", color: C.navy, border: "none", borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-                      Klaar
-                    </button>
+                    <button onClick={() => { setShowManualSession(false); resetManualSession(); }} style={{ width: "100%", padding: "12px", background: "rgba(31,53,76,0.06)", color: C.navy, border: "none", borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Klaar</button>
                   </div>
                 )}
 
-                {/* ── PICK: Spot + datum ── */}
                 {manualStep === "pick" && (
                   <>
                     <div style={{ marginBottom: 16 }}>
@@ -1043,18 +655,9 @@ function Dashboard() {
                         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                           <div style={{ display: "flex", flexDirection: "column", gap: 6, background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, overflow: "hidden" }}>
                             {allSpots.length > 0 ? (
-                              <>
-                                <div style={{ padding: "8px 14px 4px", fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.5 }}>MIJN SPOTS</div>
-                                {allSpots.map(s => (
-                                  <button key={s.id} onClick={() => setManualSpotId(s.id)}
-                                    style={{ padding: "10px 14px", textAlign: "left", background: "none", border: "none", borderTop: `1px solid ${C.cardBorder}`, cursor: "pointer", fontSize: 14, fontWeight: 600, color: C.navy }}>
-                                    {s.name}
-                                  </button>
-                                ))}
-                              </>
-                            ) : (
-                              <div style={{ padding: "12px 14px", fontSize: 13, color: C.muted }}>Geen eigen spots</div>
-                            )}
+                              <><div style={{ padding: "8px 14px 4px", fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.5 }}>MIJN SPOTS</div>
+                              {allSpots.map(s => (<button key={s.id} onClick={() => setManualSpotId(s.id)} style={{ padding: "10px 14px", textAlign: "left", background: "none", border: "none", borderTop: `1px solid ${C.cardBorder}`, cursor: "pointer", fontSize: 14, fontWeight: 600, color: C.navy }}>{s.name}</button>))}</>
+                            ) : <div style={{ padding: "12px 14px", fontSize: 13, color: C.muted }}>Geen eigen spots</div>}
                           </div>
                           <a href="/spot-select" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, textDecoration: "none" }}>
                             <span style={{ fontSize: 14, fontWeight: 600, color: C.navy }}>Andere spot kiezen</span>
@@ -1065,19 +668,12 @@ function Dashboard() {
                     </div>
                     <div style={{ marginBottom: 24 }}>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>DATUM</label>
-                      <input type="date" value={manualDate} max={new Date().toISOString().split("T")[0]}
-                        onChange={e => setManualDate(e.target.value)}
-                        style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy, boxSizing: "border-box", outline: "none" }} />
+                      <input type="date" value={manualDate} max={new Date().toISOString().split("T")[0]} onChange={e => setManualDate(e.target.value)} style={{ width: "100%", padding: "12px 14px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, color: C.navy, boxSizing: "border-box", outline: "none" }} />
                     </div>
-                    <button onClick={async () => { if (!manualSpotId) return; await fetchManualWeather(Number(manualSpotId), manualDate); setManualStep(1); }}
-                      disabled={!manualSpotId}
-                      style={{ width: "100%", padding: "14px", background: manualSpotId ? C.sky : C.cardBorder, border: "none", borderRadius: 12, color: "#FFF", fontSize: 15, fontWeight: 700, cursor: manualSpotId ? "pointer" : "not-allowed", opacity: manualSpotId ? 1 : 0.6 }}>
-                      Volgende →
-                    </button>
+                    <button onClick={async () => { if (!manualSpotId) return; await fetchManualWeather(Number(manualSpotId), manualDate); setManualStep(1); }} disabled={!manualSpotId} style={{ width: "100%", padding: "14px", background: manualSpotId ? C.sky : C.cardBorder, border: "none", borderRadius: 12, color: "#FFF", fontSize: 15, fontWeight: 700, cursor: manualSpotId ? "pointer" : "not-allowed", opacity: manualSpotId ? 1 : 0.6 }}>Volgende →</button>
                   </>
                 )}
 
-                {/* ── STEP 1: Rating ── */}
                 {manualStep === 1 && (
                   <div style={{ animation: "fadeUp 0.3s ease" }}>
                     <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Hoe was het?</h2>
@@ -1085,24 +681,14 @@ function Dashboard() {
                     {(manualWeatherLoading || manualWeather) && (
                       <div style={{ textAlign: "center", marginBottom: 16 }}>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 16px", background: C.goBg, borderRadius: 20, fontSize: 13 }}>
-                          {manualWeatherLoading
-                            ? <span style={{ color: C.muted }}>Weerdata ophalen...</span>
-                            : <><span style={{ fontWeight: 800, color: C.green }}>{manualWeather!.wind}kn</span><span style={{ color: C.sub }}>{manualWeather!.dirStr}</span><span style={{ color: C.muted, fontSize: 11 }}> · gusts {manualWeather!.gust}kn</span></>
-                          }
+                          {manualWeatherLoading ? <span style={{ color: C.muted }}>Weerdata ophalen...</span>
+                            : <><span style={{ fontWeight: 800, color: C.green }}>{manualWeather!.wind}kn</span><span style={{ color: C.sub }}>{manualWeather!.dirStr}</span><span style={{ color: C.muted, fontSize: 11 }}> · gusts {manualWeather!.gust}kn</span></>}
                         </div>
                       </div>
                     )}
                     <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 28 }}>
                       {RATINGS.map(r => (
-                        <button key={r.value} onClick={() => { setManualRating(r.value); setTimeout(() => setManualStep(2), 280); }} style={{
-                          width: 58, padding: "14px 0", borderRadius: 16,
-                          border: `2px solid ${manualRating === r.value ? RATING_COLORS[r.value] : C.cardBorder}`,
-                          background: manualRating === r.value ? `${RATING_COLORS[r.value]}12` : C.card,
-                          cursor: "pointer", transition: "all 0.2s",
-                          transform: manualRating === r.value ? "scale(1.12)" : "scale(1)",
-                          boxShadow: manualRating === r.value ? `0 6px 20px ${RATING_COLORS[r.value]}35` : C.cardShadow,
-                          display: "flex", flexDirection: "column", alignItems: "center",
-                        }}>
+                        <button key={r.value} onClick={() => { setManualRating(r.value); setTimeout(() => setManualStep(2), 280); }} style={{ width: 58, padding: "14px 0", borderRadius: 16, border: `2px solid ${manualRating === r.value ? RATING_COLORS[r.value] : C.cardBorder}`, background: manualRating === r.value ? `${RATING_COLORS[r.value]}12` : C.card, cursor: "pointer", transition: "all 0.2s", transform: manualRating === r.value ? "scale(1.12)" : "scale(1)", boxShadow: manualRating === r.value ? `0 6px 20px ${RATING_COLORS[r.value]}35` : C.cardShadow, display: "flex", flexDirection: "column", alignItems: "center" }}>
                           <RatingIcon value={r.value} selected={manualRating === r.value} size={32} />
                           <div style={{ fontSize: 9, fontWeight: 800, color: manualRating === r.value ? RATING_COLORS[r.value] : C.muted, marginTop: 6 }}>{r.label}</div>
                         </button>
@@ -1111,21 +697,13 @@ function Dashboard() {
                   </div>
                 )}
 
-                {/* ── STEP 2: Propulsion ── */}
                 {manualStep === 2 && (
                   <div style={{ animation: "fadeUp 0.3s ease" }}>
                     <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Wat reed je?</h2>
                     <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 20px" }}>Kite, wing of sail?</p>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                       {(["kite","wing","zeil"] as const).map(p => (
-                        <button key={p} onClick={() => { setManualPropulsion(p); setManualStep(p === "kite" ? 4 : 3); }} style={{
-                          padding: "22px 10px", borderRadius: 16,
-                          border: `2px solid ${manualPropulsion === p ? C.sky : C.cardBorder}`,
-                          background: manualPropulsion === p ? `${C.sky}12` : C.card,
-                          cursor: "pointer", transition: "all 0.2s",
-                          boxShadow: manualPropulsion === p ? `0 4px 16px ${C.sky}25` : C.cardShadow,
-                          display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
-                        }}>
+                        <button key={p} onClick={() => { setManualPropulsion(p); setManualStep(p === "kite" ? 4 : 3); }} style={{ padding: "22px 10px", borderRadius: 16, border: `2px solid ${manualPropulsion === p ? C.sky : C.cardBorder}`, background: manualPropulsion === p ? `${C.sky}12` : C.card, cursor: "pointer", transition: "all 0.2s", boxShadow: manualPropulsion === p ? `0 4px 16px ${C.sky}25` : C.cardShadow, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                           <PropIcon id={p} selected={manualPropulsion === p} />
                           <div style={{ fontSize: 13, fontWeight: 700, color: manualPropulsion === p ? C.sky : C.navy }}>{p === "zeil" ? "Sail" : p.charAt(0).toUpperCase() + p.slice(1)}</div>
                         </button>
@@ -1135,57 +713,30 @@ function Dashboard() {
                   </div>
                 )}
 
-                {/* ── STEP 3: Foil or Board ── */}
                 {manualStep === 3 && (
                   <div style={{ animation: "fadeUp 0.3s ease" }}>
                     <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Foil of board?</h2>
                     <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 20px" }}>Wat had je onder je voeten?</p>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                      <button onClick={() => { setManualBoardOrFoil("foil"); setManualStep(5); }} style={{
-                        padding: "28px 16px", borderRadius: 16,
-                        border: `2px solid ${manualBoardOrFoil === "foil" ? C.sky : C.cardBorder}`,
-                        background: manualBoardOrFoil === "foil" ? `${C.sky}12` : C.card,
-                        cursor: "pointer", transition: "all 0.2s",
-                        display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
-                      }}>
-                        <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
-                          <line x1="26" y1="8" x2="26" y2="40" stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="2.5" strokeLinecap="round"/>
-                          <path d="M10 34 L42 34" stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="2.5" strokeLinecap="round"/>
-                          <rect x="19" y="5" width="14" height="6" rx="3" fill={manualBoardOrFoil === "foil" ? `${C.sky}20` : "#B0BAC520"} stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="1.5"/>
-                        </svg>
+                      <button onClick={() => { setManualBoardOrFoil("foil"); setManualStep(5); }} style={{ padding: "28px 16px", borderRadius: 16, border: `2px solid ${manualBoardOrFoil === "foil" ? C.sky : C.cardBorder}`, background: manualBoardOrFoil === "foil" ? `${C.sky}12` : C.card, cursor: "pointer", transition: "all 0.2s", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                        <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><line x1="26" y1="8" x2="26" y2="40" stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="2.5" strokeLinecap="round"/><path d="M10 34 L42 34" stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="2.5" strokeLinecap="round"/><rect x="19" y="5" width="14" height="6" rx="3" fill={manualBoardOrFoil === "foil" ? `${C.sky}20` : "#B0BAC520"} stroke={manualBoardOrFoil === "foil" ? C.sky : "#B0BAC5"} strokeWidth="1.5"/></svg>
                         <div style={{ fontSize: 15, fontWeight: 700, color: manualBoardOrFoil === "foil" ? C.sky : C.navy }}>Foil</div>
                       </button>
-                      <button onClick={() => { setManualBoardOrFoil("board"); setManualStep(4); }} style={{
-                        padding: "28px 16px", borderRadius: 16,
-                        border: `2px solid ${manualBoardOrFoil === "board" ? C.sky : C.cardBorder}`,
-                        background: manualBoardOrFoil === "board" ? `${C.sky}12` : C.card,
-                        cursor: "pointer", transition: "all 0.2s",
-                        display: "flex", flexDirection: "column", alignItems: "center", gap: 12,
-                      }}>
-                        <svg width="52" height="52" viewBox="0 0 52 52" fill="none">
-                          <path d="M26 8 Q38 10 40 26 Q38 42 26 44 Q14 42 12 26 Q14 10 26 8Z" fill={manualBoardOrFoil === "board" ? `${C.sky}15` : "#B0BAC515"} stroke={manualBoardOrFoil === "board" ? C.sky : "#B0BAC5"} strokeWidth="1.8"/>
-                        </svg>
+                      <button onClick={() => { setManualBoardOrFoil("board"); setManualStep(4); }} style={{ padding: "28px 16px", borderRadius: 16, border: `2px solid ${manualBoardOrFoil === "board" ? C.sky : C.cardBorder}`, background: manualBoardOrFoil === "board" ? `${C.sky}12` : C.card, cursor: "pointer", transition: "all 0.2s", display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                        <svg width="52" height="52" viewBox="0 0 52 52" fill="none"><path d="M26 8 Q38 10 40 26 Q38 42 26 44 Q14 42 12 26 Q14 10 26 8Z" fill={manualBoardOrFoil === "board" ? `${C.sky}15` : "#B0BAC515"} stroke={manualBoardOrFoil === "board" ? C.sky : "#B0BAC5"} strokeWidth="1.8"/></svg>
                         <div style={{ fontSize: 15, fontWeight: 700, color: manualBoardOrFoil === "board" ? C.sky : C.navy }}>Board</div>
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* ── STEP 4: Board type ── */}
                 {manualStep === 4 && (
                   <div style={{ animation: "fadeUp 0.3s ease" }}>
                     <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Welk type board?</h2>
-                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 16px" }}>
-                      {manualPropulsion === "zeil" ? "Windsurf board type" : manualPropulsion === "wing" ? "Board onder de wing" : "Kite board type"}
-                    </p>
+                    <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 16px" }}>{manualPropulsion === "zeil" ? "Windsurf board type" : manualPropulsion === "wing" ? "Board onder de wing" : "Kite board type"}</p>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       {manualBoardTypesForProp.map(bt => (
-                        <button key={bt.id} onClick={() => { setManualBoardType(bt.id); setManualStep(5); }} style={{
-                          padding: "16px 20px", borderRadius: 14, textAlign: "left",
-                          border: `2px solid ${manualBoardType === bt.id ? C.sky : C.cardBorder}`,
-                          background: manualBoardType === bt.id ? `${C.sky}10` : C.card,
-                          cursor: "pointer", transition: "all 0.2s",
-                        }}>
+                        <button key={bt.id} onClick={() => { setManualBoardType(bt.id); setManualStep(5); }} style={{ padding: "16px 20px", borderRadius: 14, textAlign: "left", border: `2px solid ${manualBoardType === bt.id ? C.sky : C.cardBorder}`, background: manualBoardType === bt.id ? `${C.sky}10` : C.card, cursor: "pointer", transition: "all 0.2s" }}>
                           <div style={{ fontSize: 15, fontWeight: 700, color: manualBoardType === bt.id ? C.sky : C.navy }}>{bt.label}</div>
                         </button>
                       ))}
@@ -1194,76 +745,50 @@ function Dashboard() {
                   </div>
                 )}
 
-                {/* ── STEP 5: Maten ── */}
                 {manualStep === 5 && (
                   <div style={{ animation: "fadeUp 0.3s ease" }}>
                     <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Maten</h2>
                     <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 20px" }}>Optioneel — wat had je op?</p>
                     <div style={{ marginBottom: 20 }}>
-                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>
-                        {manualPropulsion === "kite" ? "KITE (m²)" : manualPropulsion === "wing" ? "WING (m²)" : "ZEIL (m²)"}
-                      </label>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>{manualPropulsion === "kite" ? "KITE (m²)" : manualPropulsion === "wing" ? "WING (m²)" : "ZEIL (m²)"}</label>
                       <div style={{ position: "relative" }}>
-                        <input type="text" inputMode="decimal" value={manualSailSize}
-                          onChange={e => setManualSailSize(e.target.value.replace(/[^0-9.,]/g,"").replace(",","."))}
-                          placeholder={manualPropulsion === "zeil" ? "7.6" : manualPropulsion === "wing" ? "5.0" : "12"}
-                          style={{ width: "100%", padding: "13px 48px 13px 16px", borderRadius: 12, border: `1.5px solid ${manualSailSize ? C.sky : C.cardBorder}`, fontSize: 16, color: C.navy, background: C.card, boxSizing: "border-box", outline: "none" }} />
+                        <input type="text" inputMode="decimal" value={manualSailSize} onChange={e => setManualSailSize(e.target.value.replace(/[^0-9.,]/g,"").replace(",","."))} placeholder={manualPropulsion === "zeil" ? "7.6" : manualPropulsion === "wing" ? "5.0" : "12"} style={{ width: "100%", padding: "13px 48px 13px 16px", borderRadius: 12, border: `1.5px solid ${manualSailSize ? C.sky : C.cardBorder}`, fontSize: 16, color: C.navy, background: C.card, boxSizing: "border-box", outline: "none" }} />
                         <span style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: C.muted, pointerEvents: "none" }}>m²</span>
                       </div>
                     </div>
                     <div style={{ marginBottom: 24 }}>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>BOARD LENGTE (cm)</label>
                       <div style={{ position: "relative" }}>
-                        <input type="text" inputMode="numeric" value={manualBoardLength}
-                          onChange={e => setManualBoardLength(e.target.value.replace(/[^0-9]/g,""))}
-                          placeholder={manualPropulsion === "zeil" ? "245" : "138"}
-                          style={{ width: "100%", padding: "13px 48px 13px 16px", borderRadius: 12, border: `1.5px solid ${manualBoardLength ? C.sky : C.cardBorder}`, fontSize: 16, color: C.navy, background: C.card, boxSizing: "border-box", outline: "none" }} />
+                        <input type="text" inputMode="numeric" value={manualBoardLength} onChange={e => setManualBoardLength(e.target.value.replace(/[^0-9]/g,""))} placeholder={manualPropulsion === "zeil" ? "245" : "138"} style={{ width: "100%", padding: "13px 48px 13px 16px", borderRadius: 12, border: `1.5px solid ${manualBoardLength ? C.sky : C.cardBorder}`, fontSize: 16, color: C.navy, background: C.card, boxSizing: "border-box", outline: "none" }} />
                         <span style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", fontSize: 14, color: C.muted, pointerEvents: "none" }}>cm</span>
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 10 }}>
                       <button onClick={() => setManualStep(manualBoardOrFoil === "foil" ? 3 : 4)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
-                      <button onClick={() => setManualStep(6)} style={{ flex: 1, padding: "14px", background: C.sky, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-                        {manualSailSize || manualBoardLength ? "Volgende →" : "Overslaan →"}
-                      </button>
+                      <button onClick={() => setManualStep(6)} style={{ flex: 1, padding: "14px", background: C.sky, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>{manualSailSize || manualBoardLength ? "Volgende →" : "Overslaan →"}</button>
                     </div>
                   </div>
                 )}
 
-                {/* ── STEP 6: Details + samenvatting ── */}
                 {manualStep === 6 && (
                   <div style={{ animation: "fadeUp 0.3s ease" }}>
                     <h2 style={{ fontFamily: "Bebas Neue, sans-serif", fontSize: 22, textAlign: "center", margin: "0 0 4px", color: C.navy }}>Details</h2>
                     <p style={{ textAlign: "center", fontSize: 13, color: C.sub, margin: "0 0 16px" }}>Hoe voelde het op het water?</p>
-
-                    {/* Wind feel */}
                     <div style={{ marginBottom: 20 }}>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 8, letterSpacing: 0.5 }}>HOE VOELDE DE WIND?</label>
                       <div style={{ display: "flex", gap: 8 }}>
                         {WIND_FEELS.map(w => (
-                          <button key={w.id} onClick={() => setManualWindFeel(manualWindFeel === w.id ? null : w.id)} style={{
-                            flex: 1, padding: "12px 6px", borderRadius: 12,
-                            border: `2px solid ${manualWindFeel === w.id ? C.sky : C.cardBorder}`,
-                            background: manualWindFeel === w.id ? `${C.sky}12` : C.card,
-                            cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center",
-                          }}>
+                          <button key={w.id} onClick={() => setManualWindFeel(manualWindFeel === w.id ? null : w.id)} style={{ flex: 1, padding: "12px 6px", borderRadius: 12, border: `2px solid ${manualWindFeel === w.id ? C.sky : C.cardBorder}`, background: manualWindFeel === w.id ? `${C.sky}12` : C.card, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center" }}>
                             <WindFeelIcon id={w.id} selected={manualWindFeel === w.id} size={26} />
                             <div style={{ fontSize: 9, fontWeight: 700, color: manualWindFeel === w.id ? C.sky : C.muted, marginTop: 4 }}>{w.label}</div>
                           </button>
                         ))}
                       </div>
                     </div>
-
-                    {/* Notes */}
                     <div style={{ marginBottom: 20 }}>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6, letterSpacing: 0.5 }}>NOTITIES (optioneel)</label>
-                      <textarea value={manualNotes} onChange={e => setManualNotes(e.target.value)}
-                        placeholder="Hoe was het water? Iets bijzonders? Tips voor de volgende keer?"
-                        rows={3}
-                        style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${C.cardBorder}`, fontSize: 14, color: C.navy, background: C.card, resize: "vertical", boxSizing: "border-box", lineHeight: 1.5, outline: "none", fontFamily: "DM Sans, sans-serif" }} />
+                      <textarea value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Hoe was het water? Iets bijzonders? Tips voor de volgende keer?" rows={3} style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1.5px solid ${C.cardBorder}`, fontSize: 14, color: C.navy, background: C.card, resize: "vertical", boxSizing: "border-box", lineHeight: 1.5, outline: "none", fontFamily: "DM Sans, sans-serif" }} />
                     </div>
-
-                    {/* Foto */}
                     <div style={{ marginBottom: 20 }}>
                       <label style={{ fontSize: 11, fontWeight: 700, color: C.sub, display: "block", marginBottom: 6, letterSpacing: 0.5 }}>FOTO (optioneel)</label>
                       {manualPhotoUrl ? (
@@ -1272,44 +797,35 @@ function Dashboard() {
                           <button onClick={() => setManualPhotoUrl(null)} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", cursor: "pointer", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
                         </div>
                       ) : (
-                        <div onClick={() => { if (!manualPhotoUploading) document.getElementById("manual-photo-input")?.click(); }}
-                          style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "24px 16px", borderRadius: 12, border: `2px dashed ${C.cardBorder}`, background: C.card, cursor: manualPhotoUploading ? "not-allowed" : "pointer" }}>
-                          {manualPhotoUploading ? (
-                            <><div style={{ width: 20, height: 20, border: `2px solid ${C.cardBorder}`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite" }} /><div style={{ fontSize: 13, color: C.muted }}>Uploaden...</div></>
-                          ) : (
-                            <><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><div style={{ fontSize: 13, color: C.muted, fontWeight: 600 }}>Tik om foto toe te voegen</div></>
-                          )}
+                        <div onClick={() => { if (!manualPhotoUploading) document.getElementById("manual-photo-input")?.click(); }} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "24px 16px", borderRadius: 12, border: `2px dashed ${C.cardBorder}`, background: C.card, cursor: manualPhotoUploading ? "not-allowed" : "pointer" }}>
+                          {manualPhotoUploading ? (<><div style={{ width: 20, height: 20, border: `2px solid ${C.cardBorder}`, borderTopColor: C.sky, borderRadius: "50%", animation: "spin 0.6s linear infinite" }} /><div style={{ fontSize: 13, color: C.muted }}>Uploaden...</div></>)
+                            : (<><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.muted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><div style={{ fontSize: 13, color: C.muted, fontWeight: 600 }}>Tik om foto toe te voegen</div></>)}
                         </div>
                       )}
-                      <input id="manual-photo-input" type="file" accept="image/*" style={{ display: "none" }}
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          setManualPhotoUploading(true);
-                          setManualError("");
-                          try {
-                            const formData = new FormData();
-                            formData.append("file", file);
-                            formData.append("session_id", "temp_" + Date.now());
-                            const res = await fetch("/api/upload", { method: "POST", body: formData });
-                            const data = await res.json();
-                            if (res.ok && data.url) { setManualPhotoUrl(data.url); }
-                            else { setManualError(`Foto upload mislukt: ${data.error || "onbekend"}`); }
-                          } catch { setManualError("Foto upload mislukt."); }
-                          setManualPhotoUploading(false);
-                          e.target.value = "";
-                        }} />
+                      <input id="manual-photo-input" type="file" accept="image/*" style={{ display: "none" }} onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setManualPhotoUploading(true);
+                        setManualError("");
+                        try {
+                          const formData = new FormData();
+                          formData.append("file", file);
+                          formData.append("session_id", "temp_" + Date.now());
+                          const res = await fetch("/api/upload", { method: "POST", body: formData });
+                          const data = await res.json();
+                          if (res.ok && data.url) { setManualPhotoUrl(data.url); }
+                          else { setManualError(`Foto upload mislukt: ${data.error || "onbekend"}`); }
+                        } catch { setManualError("Foto upload mislukt."); }
+                        setManualPhotoUploading(false);
+                        e.target.value = "";
+                      }} />
                     </div>
-
-                    {/* Samenvatting */}
                     <div style={{ padding: "14px 16px", background: C.card, borderRadius: 14, boxShadow: C.cardShadow, marginBottom: 20, border: `1px solid ${C.cardBorder}` }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 10, letterSpacing: 0.5 }}>SAMENVATTING</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         {manualRating && <RatingIcon value={manualRating} selected={true} size={36} />}
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>
-                            {[...allSpots, ...otherSpots].find(s => s.id === manualSpotId)?.name}
-                          </div>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{[...allSpots, ...otherSpots].find(s => s.id === manualSpotId)?.name}</div>
                           <div style={{ fontSize: 12, color: C.sub, marginTop: 2, lineHeight: 1.5 }}>
                             {new Date(manualDate + "T12:00:00").toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" })}
                             {manualPropulsion && ` · ${manualPropulsion === "zeil" ? "windsurf" : manualPropulsion}`}
@@ -1323,11 +839,9 @@ function Dashboard() {
                         {manualRating && <div style={{ fontSize: 12, fontWeight: 800, color: RATING_COLORS[manualRating], minWidth: 44, textAlign: "right" }}>{RATINGS.find(r => r.value === manualRating)?.label}</div>}
                       </div>
                     </div>
-
                     <div style={{ display: "flex", gap: 10 }}>
                       <button onClick={() => setManualStep(5)} style={{ padding: "14px", background: C.card, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", width: 60 }}>←</button>
-                      <button onClick={handleManualSessionSave} disabled={manualSaving || manualPhotoUploading}
-                        style={{ flex: 1, padding: "14px", background: C.sky, color: "#FFF", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: (manualSaving || manualPhotoUploading) ? "not-allowed" : "pointer", opacity: (manualSaving || manualPhotoUploading) ? 0.6 : 1 }}>
+                      <button onClick={handleManualSessionSave} disabled={manualSaving || manualPhotoUploading} style={{ flex: 1, padding: "14px", background: C.sky, color: "#FFF", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: (manualSaving || manualPhotoUploading) ? "not-allowed" : "pointer", opacity: (manualSaving || manualPhotoUploading) ? 0.6 : 1 }}>
                         {manualSaving ? "Opslaan..." : "✓ Log sessie"}
                       </button>
                     </div>
@@ -1339,7 +853,6 @@ function Dashboard() {
           );
         })()}
 
-        {/* Logout */}
         <div style={{ padding: "0 16px" }}>
           <button onClick={async () => { await clearAuth(); window.location.href = "/login"; }} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "13px", background: "none", border: `1px solid ${C.cardBorder}`, borderRadius: 12, color: C.muted, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>

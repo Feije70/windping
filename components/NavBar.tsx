@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { colors as C, fonts } from "@/lib/design";
 import { Icons } from "@/components/Icons";
 import { Logo } from "@/components/Logo";
-import { clearAuth, getEmail, isTokenExpired } from "@/lib/supabase";
+import { clearAuth, supabase } from "@/lib/supabase";
 
 const navItems = [
   { href: "/", label: "Home", icon: Icons.home },
@@ -26,8 +26,9 @@ export default function NavBar() {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const email = getEmail();
-    setLoggedIn(!!email && !isTokenExpired());
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setLoggedIn(!!session?.user);
+    });
   }, []);
 
   if (loggedIn === null) return null;

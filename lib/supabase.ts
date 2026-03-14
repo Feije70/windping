@@ -26,42 +26,6 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 
 /* ── Auth helpers (same API surface — all pages keep working) ── */
 
-export function getToken(): string | null {
-  try {
-    const raw = localStorage.getItem("wp_supabase_auth");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed?.access_token || null;
-  } catch { return null; }
-}
-
-export function getEmail(): string | null {
-  try {
-    const raw = localStorage.getItem("wp_supabase_auth");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed?.user?.email || null;
-  } catch { return null; }
-}
-
-export function getAuthId(): string | null {
-  try {
-    const raw = localStorage.getItem("wp_supabase_auth");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed?.user?.id || null;
-  } catch { return null; }
-}
-
-export function isTokenExpired(token?: string | null): boolean {
-  const t = token || getToken();
-  if (!t) return true;
-  try {
-    const payload = JSON.parse(atob(t.split(".")[1]));
-    return !payload.exp || payload.exp * 1000 < Date.now();
-  } catch { return true; }
-}
-
 export async function getValidToken(): Promise<string | null> {
   // Try official Supabase client first
   try {

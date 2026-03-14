@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { colors as C, fonts } from "@/lib/design";
 import { Logo } from "@/components/Logo";
-import { supabase, isTokenExpired } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 const h = { fontFamily: fonts.heading };
 
