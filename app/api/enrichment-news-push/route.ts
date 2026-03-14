@@ -7,6 +7,50 @@ const CRON_KEY = "WindPing-cron-key-2026";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://www.windping.com";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "feijekooistra@hotmail.com";
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/* ── Lokale interfaces ── */
+
+interface EnrichItem {
+  spot_id: number;
+  news_score: number | null;
+  news_push_blocked: boolean;
+  categories: Record<string, Record<string, string | null>> | null;
+  scanned_at: string | null;
+  last_news_push_at: string | null;
+}
+
+interface SpotItem {
+  id: number;
+  display_name: string;
+  country: string | null;
+  region: string | null;
+}
+
+interface UserSpotItem {
+  user_id: number;
+  spot_id: number;
+}
+
+interface PrefsItem {
+  user_id: number;
+  push_nieuws: boolean | null;
+  notify_push: boolean | null;
+}
+
+interface SubsItem {
+  user_id: number;
+  subscription: unknown;
+}
+
+interface PushLogItem {
+  user_id: number;
+  spot_id: number;
+  spot_name: string;
+}
+
 async function sbFetch(path: string, options: RequestInit = {}) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
@@ -19,18 +63,11 @@ async function sbFetch(path: string, options: RequestInit = {}) {
   });
 }
 
-function getNewsText(enrich: any, spot: any): string {
+function getNewsText(enrich: EnrichItem, spot: SpotItem | undefined): string {
   const cats = enrich.categories || {};
   const isNL = spot?.country === "NL" || spot?.country === "Netherlands" || spot?.country === "Nederland";
   const layer = isNL ? (cats.nl || cats.en || cats) : (cats.en || cats.nl || cats);
-  return layer?.news || "";
-}
-
-function scoreLabel(score: number): string {
-  if (score >= 9) return "🔥 Zeer relevant";
-  if (score >= 7) return "✅ Relevant";
-  if (score >= 5) return "🟡 Matig";
-  return "⬇️ Laag";
+  return (layer as Record<string, string | null>)?.news || "";
 }
 
 export async function GET(req: NextRequest) {
@@ -42,62 +79,62 @@ export async function GET(req: NextRequest) {
   const sendEmail = searchParams.get("email") !== "false";
 
   try {
-    // 1. Haal alle spots op met nieuws-score (alle scores, voor overzicht-email)
+    // 1. Haal alle spots op met nieuws-score
     const enrichRes = await sbFetch(
       "spot_enrichment?news_score=not.is.null&select=spot_id,news_score,news_push_blocked,categories,scanned_at,last_news_push_at&order=news_score.desc"
     );
-    const enrichData = await enrichRes.json();
+    const enrichData = await enrichRes.json() as EnrichItem[];
     if (!Array.isArray(enrichData) || enrichData.length === 0) {
       return NextResponse.json({ pushed: 0, message: "Geen spots met nieuws score" });
     }
 
     // Filter op spots met daadwerkelijke nieuwstekst
-    const spotsWithScore = enrichData.filter((e: any) => {
+    const spotsWithScore = enrichData.filter(e => {
       const cats = e.categories || {};
-      const layer = cats.nl || cats.en || cats;
-      return layer?.news && layer.news.trim().length > 10;
+      const layer = cats.nl || cats.en || (cats as Record<string, Record<string, string | null>>);
+      return (layer as Record<string, string | null>)?.news && ((layer as Record<string, string | null>).news ?? "").trim().length > 10;
     });
 
     if (spotsWithScore.length === 0) {
       return NextResponse.json({ pushed: 0, message: "Geen spots met nieuwsinhoud" });
     }
 
-    const spotIds = spotsWithScore.map((e: any) => e.spot_id);
+    const spotIds = spotsWithScore.map(e => e.spot_id);
 
     // 2. Haal spot namen op
     const spotsRes = await sbFetch(`spots?id=in.(${spotIds.join(",")})&select=id,display_name,country,region`);
-    const spotsData = await spotsRes.json();
-    const spotMap: Record<number, any> = {};
-    if (Array.isArray(spotsData)) spotsData.forEach((s: any) => { spotMap[s.id] = s; });
+    const spotsData = await spotsRes.json() as SpotItem[];
+    const spotMap: Record<number, SpotItem> = {};
+    if (Array.isArray(spotsData)) spotsData.forEach(s => { spotMap[s.id] = s; });
 
     // Splits: te pushen (score >= 7, niet geblokkeerd) vs gefilterd
-    const tePushen = spotsWithScore.filter((e: any) => (e.news_score || 0) >= 7 && !e.news_push_blocked);
-    const geblokkeerd = spotsWithScore.filter((e: any) => e.news_push_blocked);
-    const telaagScore = spotsWithScore.filter((e: any) => (e.news_score || 0) < 7 && !e.news_push_blocked);
+    const tePushen = spotsWithScore.filter(e => (e.news_score || 0) >= 7 && !e.news_push_blocked);
+    const geblokkeerd = spotsWithScore.filter(e => e.news_push_blocked);
+    const telaagScore = spotsWithScore.filter(e => (e.news_score || 0) < 7 && !e.news_push_blocked);
 
-    const pushSpotIds = tePushen.map((e: any) => e.spot_id);
+    const pushSpotIds = tePushen.map(e => e.spot_id);
 
     // 3. Haal gebruikers op voor te-pushen spots
     let totalPushed = 0;
-    const pushLog: any[] = [];
+    const pushLog: PushLogItem[] = [];
 
     if (pushSpotIds.length > 0) {
       const userSpotsRes = await sbFetch(`user_spots?spot_id=in.(${pushSpotIds.join(",")})&select=user_id,spot_id`);
-      const userSpots = await userSpotsRes.json();
+      const userSpots = await userSpotsRes.json() as UserSpotItem[];
 
       if (Array.isArray(userSpots) && userSpots.length > 0) {
-        const userIds = [...new Set(userSpots.map((us: any) => us.user_id))];
+        const userIds = [...new Set(userSpots.map(us => us.user_id))];
 
         const prefsRes = await sbFetch(`alert_preferences?user_id=in.(${userIds.join(",")})&select=user_id,push_nieuws,notify_push`);
-        const prefsData = await prefsRes.json();
-        const prefsMap: Record<number, any> = {};
-        if (Array.isArray(prefsData)) prefsData.forEach((p: any) => { prefsMap[p.user_id] = p; });
+        const prefsData = await prefsRes.json() as PrefsItem[];
+        const prefsMap: Record<number, PrefsItem> = {};
+        if (Array.isArray(prefsData)) prefsData.forEach(p => { prefsMap[p.user_id] = p; });
 
         const subsRes = await sbFetch(`push_subscriptions?user_id=in.(${userIds.join(",")})&select=user_id,subscription`);
-        const subsData = await subsRes.json();
-        const subsMap: Record<number, any[]> = {};
+        const subsData = await subsRes.json() as SubsItem[];
+        const subsMap: Record<number, unknown[]> = {};
         if (Array.isArray(subsData)) {
-          subsData.forEach((s: any) => {
+          subsData.forEach(s => {
             if (!subsMap[s.user_id]) subsMap[s.user_id] = [];
             subsMap[s.user_id].push(s.subscription);
           });
@@ -111,7 +148,7 @@ export async function GET(req: NextRequest) {
           const subs = subsMap[user_id];
           if (!subs || subs.length === 0) continue;
 
-          const enrich = tePushen.find((e: any) => e.spot_id === spot_id);
+          const enrich = tePushen.find(e => e.spot_id === spot_id);
           if (!enrich) continue;
           const spot = spotMap[spot_id];
           const newsText = getNewsText(enrich, spot);
@@ -138,7 +175,7 @@ export async function GET(req: NextRequest) {
     }
 
     // 4. Update last_news_push_at voor gepushte spots
-    const pushedSpotIds = [...new Set(pushLog.map((p: any) => p.spot_id))];
+    const pushedSpotIds = [...new Set(pushLog.map(p => p.spot_id))];
     if (pushedSpotIds.length > 0) {
       await sbFetch(`spot_enrichment?spot_id=in.(${pushedSpotIds.join(",")})`, {
         method: "PATCH",
@@ -148,7 +185,6 @@ export async function GET(req: NextRequest) {
     }
 
     // 5. Reset: news_score = null + news_push_blocked = false voor alle spots met score
-    // Zodat volgende maandag schoon begint
     await sbFetch(`spot_enrichment?news_score=not.is.null`, {
       method: "PATCH",
       headers: { Prefer: "return=minimal" },
@@ -159,8 +195,7 @@ export async function GET(req: NextRequest) {
     if (sendEmail && RESEND_API_KEY && spotsWithScore.length > 0) {
       const datumStr = new Date().toLocaleDateString("nl-NL", { weekday: "long", day: "numeric", month: "long" });
 
-      // Bouw HTML email
-      const rowsGepusht = tePushen.map((e: any) => {
+      const rowsGepusht = tePushen.map(e => {
         const spot = spotMap[e.spot_id];
         const news = getNewsText(e, spot);
         return `
@@ -171,7 +206,7 @@ export async function GET(req: NextRequest) {
           </tr>`;
       }).join("");
 
-      const rowsGefilterd = telaagScore.map((e: any) => {
+      const rowsGefilterd = telaagScore.map(e => {
         const spot = spotMap[e.spot_id];
         const news = getNewsText(e, spot);
         return `
@@ -182,7 +217,7 @@ export async function GET(req: NextRequest) {
           </tr>`;
       }).join("");
 
-      const rowsGeblokkeerd = geblokkeerd.map((e: any) => {
+      const rowsGeblokkeerd = geblokkeerd.map(e => {
         const spot = spotMap[e.spot_id];
         return `
           <tr style="border-bottom:1px solid #E8E0D8;opacity:0.6">
@@ -199,7 +234,6 @@ export async function GET(req: NextRequest) {
             <div style="color:#8AB0C8;font-size:13px;margin-top:4px">${datumStr} — push verstuurd om 18:00</div>
           </div>
           <div style="background:#fff;padding:20px 24px;border-radius:0 0 12px 12px">
-
             <div style="display:flex;gap:16px;margin-bottom:20px">
               <div style="flex:1;background:#ECFAF4;border-radius:10px;padding:14px;text-align:center">
                 <div style="font-size:28px;font-weight:800;color:#065F46">${tePushen.length}</div>
@@ -218,7 +252,6 @@ export async function GET(req: NextRequest) {
                 <div style="font-size:12px;color:#6B7B8F;margin-top:4px">Push notificaties</div>
               </div>
             </div>
-
             ${tePushen.length > 0 ? `
             <h3 style="color:#1F354C;font-size:14px;font-weight:800;margin:20px 0 8px">✅ Gepusht naar gebruikers</h3>
             <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -229,7 +262,6 @@ export async function GET(req: NextRequest) {
               </tr></thead>
               <tbody>${rowsGepusht}</tbody>
             </table>` : ""}
-
             ${telaagScore.length > 0 ? `
             <h3 style="color:#1F354C;font-size:14px;font-weight:800;margin:20px 0 8px">🟡 Niet gepusht (score &lt; 7)</h3>
             <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -240,7 +272,6 @@ export async function GET(req: NextRequest) {
               </tr></thead>
               <tbody>${rowsGefilterd}</tbody>
             </table>` : ""}
-
             ${geblokkeerd.length > 0 ? `
             <h3 style="color:#1F354C;font-size:14px;font-weight:800;margin:20px 0 8px">🔕 Geblokkeerd door admin</h3>
             <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -251,7 +282,6 @@ export async function GET(req: NextRequest) {
               </tr></thead>
               <tbody>${rowsGeblokkeerd}</tbody>
             </table>` : ""}
-
             <div style="margin-top:24px;padding:14px;background:#EFF8FB;border-radius:8px;font-size:12px;color:#2E8FAE">
               Scores zijn gereset. Volgende maandag begint de scan opnieuw schoon.
             </div>
@@ -282,7 +312,7 @@ export async function GET(req: NextRequest) {
       email_sent: sendEmail && !!RESEND_API_KEY,
     });
 
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
