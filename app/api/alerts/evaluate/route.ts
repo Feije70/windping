@@ -35,11 +35,78 @@ import {
   sendBundledEmail,
   sendAlertEmail,
 } from "@/lib/services/notificationService";
+import type {
+  DbIdealConditions,
+  HourlyWindData,
+} from "@/lib/types";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://kaimbtcuyemwzvhsqwgu.supabase.co";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const CRON_SECRET = process.env.CRON_SECRET || "";
 const STORMGLASS_KEY = process.env.STORMGLASS_API_KEY || "";
+
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/* ── Lokale interfaces ── */
+
+interface WebPushError {
+  statusCode?: number;
+  message?: string;
+  body?: string;
+}
+
+interface SpotRow {
+  id: number;
+  display_name: string;
+  latitude: number;
+  longitude: number;
+  good_directions: string[] | null;
+  spot_type?: string | null;
+}
+
+interface ConditionsPayload {
+  spots: SpotMatch[];
+  previousConditions?: Record<number, SpotCondition>;
+  downgradeReasons?: Record<number, string[]>;
+  tides?: Record<string, { time: string; type: string }[]>;
+}
+
+interface ResultItem {
+  userId: number;
+  email?: string;
+  name?: string;
+  alertType?: string;
+  targetDate?: string;
+  message?: string;
+  spots?: SpotMatch[];
+  notifyEmail?: boolean;
+  notifyPush?: boolean;
+  skipped?: string;
+  evalLog?: string[];
+  debugMeta?: Record<string, unknown>;
+  debug?: DebugSpot[];
+  _spotsRef?: SpotRow[];
+  _prefs?: Record<string, unknown>;
+  conditions?: ConditionsPayload;
+}
+
+interface DebugSpot {
+  spot: string;
+  date?: string;
+  dayOfWeek?: string;
+  available?: boolean;
+  wind?: number;
+  dir?: string;
+  windOk?: boolean;
+  dirOk?: boolean;
+  inRange?: boolean;
+  userWindMin?: number;
+  userWindMax?: number;
+  configuredDirs?: string[];
+  error?: string;
+}
 
 /* ── MAIN HANDLER ── */
 export async function POST(req: Request) {
@@ -69,7 +136,7 @@ export async function POST(req: Request) {
   const startTime = Date.now();
   const now = new Date();
   const today = now.toISOString().split("T")[0];
-  const results: any[] = [];
+  const results: ResultItem[] = [];
 
   try {
     // 1. Get users with alert prefs
@@ -88,7 +155,7 @@ export async function POST(req: Request) {
     if (usersErr) throw usersErr;
     if (!users?.length) return NextResponse.json({ message: "No users with alert prefs", results: [] });
 
-    const globalTideCache: Record<string, { time: string; type: string; height?: number }[]> = {};
+    const globalTideCache: Record<string, { time: string; type: string }[]> = {};
 
     for (const user of users) {
       const prefs = Array.isArray(user.alert_preferences) ? user.alert_preferences[0] : user.alert_preferences;
@@ -104,10 +171,10 @@ export async function POST(req: Request) {
         .from("user_spots").select("spot_id").eq("user_id", user.id);
 
       if (!userSpots?.length) {
-        results.push({ userId: user.id, skipped: "no spots", debug_userSpots: userSpots, debug_usError: usError?.message });
+        results.push({ userId: user.id, skipped: "no spots", debug_userSpots: userSpots, debug_usError: usError?.message } as ResultItem & Record<string, unknown>);
         continue;
       }
-      const spotIds = userSpots.map((x: any) => x.spot_id);
+      const spotIds = (userSpots as { spot_id: number }[]).map(x => x.spot_id);
 
       const [{ data: spots, error: spError }, { data: conditions }] = await Promise.all([
         sb.from("spots").select("id, display_name, latitude, longitude, good_directions").in("id", spotIds),
@@ -115,12 +182,12 @@ export async function POST(req: Request) {
       ]);
 
       if (!spots?.length) {
-        results.push({ userId: user.id, skipped: "no spots data", debug_spotIds: spotIds, debug_spError: spError?.message });
+        results.push({ userId: user.id, skipped: "no spots data", debug_spotIds: spotIds, debug_spError: spError?.message } as ResultItem & Record<string, unknown>);
         continue;
       }
 
-      const condsMap: Record<number, any> = {};
-      (conditions || []).forEach((c: any) => { condsMap[c.spot_id] = c; });
+      const condsMap: Record<number, DbIdealConditions> = {};
+      (conditions as DbIdealConditions[] || []).forEach(c => { condsMap[c.spot_id] = c; });
 
       // 3. Get existing alerts for dedup + snapshot comparison
       const { data: existingAlerts } = await sb
@@ -146,12 +213,19 @@ export async function POST(req: Request) {
 
         if (!isAvailable && !prefs.epic_any_day) continue;
 
-        const prevAlerts = (existingAlerts || []).filter((a: any) => a.target_date === dateStr);
-        const hadHeadsUp = prevAlerts.some((a: any) => a.alert_type === "heads_up");
-        const hadGo = prevAlerts.some((a: any) => a.alert_type === "go");
-        const hadDowngrade = prevAlerts.some((a: any) => a.alert_type === "downgrade");
+        interface ExistingAlert {
+          alert_type: string;
+          target_date: string;
+          spot_ids: number[];
+          conditions: { spots: { spotId: number; spotName: string; wind: number; gust: number; dir: string; dirDeg: number }[]; downgradeReasons?: Record<number, string[]> } | null;
+          primary_spot_id: number | null;
+        }
+        const prevAlerts = ((existingAlerts as ExistingAlert[]) || []).filter(a => a.target_date === dateStr);
+        const hadHeadsUp = prevAlerts.some(a => a.alert_type === "heads_up");
+        const hadGo = prevAlerts.some(a => a.alert_type === "go");
+        const hadDowngrade = prevAlerts.some(a => a.alert_type === "downgrade");
 
-        const prevPositive = prevAlerts.find((a: any) => a.alert_type === "go" || a.alert_type === "heads_up");
+        const prevPositive = prevAlerts.find(a => a.alert_type === "go" || a.alert_type === "heads_up");
         const prevConditions: Record<number, SpotCondition> = {};
         if (prevPositive?.conditions?.spots) {
           for (const s of prevPositive.conditions.spots) {
@@ -160,8 +234,8 @@ export async function POST(req: Request) {
         }
 
         const spotResults: SpotMatch[] = [];
-        const spotErrors: any[] = [];
-        for (const spot of spots) {
+        const spotErrors: { spot: string; err: string }[] = [];
+        for (const spot of spots as SpotRow[]) {
           if (!spot.latitude || !spot.longitude) {
             spotErrors.push({ spot: spot.display_name, err: "no coords" });
             continue;
@@ -169,8 +243,8 @@ export async function POST(req: Request) {
           try {
             const forecast = await getForecast(spot.latitude, spot.longitude, lookahead + 1);
             spotResults.push(evaluateSpot(forecast, d, spot, condsMap[spot.id]));
-          } catch (e: any) {
-            spotErrors.push({ spot: spot.display_name, err: e.message });
+          } catch (e) {
+            spotErrors.push({ spot: spot.display_name, err: getErrorMessage(e) });
           }
         }
 
@@ -233,7 +307,7 @@ export async function POST(req: Request) {
           ...(s.changed ? { changed: true, prevWind: s.prevWind, prevDir: s.prevDir } : {}),
         }));
 
-        const conditionsPayload: any = { spots: spotData };
+        const conditionsPayload: ConditionsPayload = { spots: spotData as SpotMatch[] };
         if (alert.type === "downgrade") {
           conditionsPayload.previousConditions = alert.previousConditions;
           conditionsPayload.downgradeReasons = alert.downgradeReasons;
@@ -280,17 +354,18 @@ export async function POST(req: Request) {
         results.push({
           userId: user.id, email: user.email, name: user.name,
           alertType: alert.type, targetDate: alert.targetDate,
-          message, spots: spotData,
+          message, spots: spotData as SpotMatch[],
           notifyEmail: prefs.notify_email, notifyPush: prefs.notify_push,
-          _spotsRef: spots, _prefs: prefs,
+          _spotsRef: spots as SpotRow[], _prefs: prefs,
+          conditions: conditionsPayload,
         });
       }
 
       if (!alertsToSend.length) {
-        const debugSpots: any[] = [];
+        const debugSpots: DebugSpot[] = [];
         const debugMeta = { spotCount: spots?.length || 0, spotIds, lookahead: prefs.lookahead_days || 3 };
 
-        for (const spot of spots || []) {
+        for (const spot of spots as SpotRow[] || []) {
           if (!spot.latitude || !spot.longitude) {
             debugSpots.push({ spot: spot.display_name, error: "no coordinates" });
             continue;
@@ -311,11 +386,11 @@ export async function POST(req: Request) {
                 wind: result.wind, dir: result.dir,
                 windOk: result.windOk, dirOk: result.dirOk, inRange: result.inRange,
                 userWindMin: result.userWindMin, userWindMax: result.userWindMax,
-                configuredDirs: condsMap[spot.id]?.directions || [],
+                configuredDirs: condsMap[spot.id]?.directions as string[] || [],
               });
             }
-          } catch (e: any) {
-            debugSpots.push({ spot: spot.display_name, error: e.message });
+          } catch (e) {
+            debugSpots.push({ spot: spot.display_name, error: getErrorMessage(e) });
           }
         }
         results.push({ userId: user.id, skipped: "no matching conditions", debugMeta, evalLog, debug: debugSpots });
@@ -324,7 +399,7 @@ export async function POST(req: Request) {
 
     // 6. Send bundled emails + push for non-test alerts
     if (!isTest) {
-      const byUser: Record<number, any[]> = {};
+      const byUser: Record<number, ResultItem[]> = {};
       for (const r of results) {
         if (!r.alertType) continue;
         if (!byUser[r.userId]) byUser[r.userId] = [];
@@ -338,15 +413,15 @@ export async function POST(req: Request) {
 
         // Tides ophalen voor zee-spots
         if (goAlerts.length > 0) {
-          const spotsRef = first._spotsRef || [];
+          const spotsRef = (first._spotsRef || []) as SpotRow[];
           for (const alert of goAlerts) {
             for (const s of alert.spots || []) {
-              const spot = spotsRef.find((sp: any) => sp.id === s.spotId);
+              const spot = spotsRef.find(sp => sp.id === s.spotId);
               if (spot?.latitude && spot?.longitude && spot?.spot_type?.toLowerCase() === "zee") {
                 const key = `${s.spotId}_${alert.targetDate}`;
                 if (!globalTideCache[key]) {
                   try {
-                    globalTideCache[key] = await getTideExtremes(spot.latitude, spot.longitude, alert.targetDate, STORMGLASS_KEY);
+                    globalTideCache[key] = await getTideExtremes(spot.latitude, spot.longitude, alert.targetDate!, STORMGLASS_KEY);
                   } catch {}
                 }
               }
@@ -355,7 +430,7 @@ export async function POST(req: Request) {
 
           // Tides opslaan in alert_history
           for (const alert of goAlerts) {
-            const tidesForAlert: Record<string, any[]> = {};
+            const tidesForAlert: Record<string, { time: string; type: string }[]> = {};
             for (const s of alert.spots || []) {
               const key = `${s.spotId}_${alert.targetDate}`;
               if (globalTideCache[key]?.length) tidesForAlert[s.spotId] = globalTideCache[key];
@@ -375,19 +450,19 @@ export async function POST(req: Request) {
         // Bundled go/heads_up email
         if (goAlerts.length > 0 && first.notifyEmail && first.email) {
           try {
-            const hourlyBySpotDate: Record<string, any[]> = {};
-            const spotsRef = first._spotsRef || [];
+            const hourlyBySpotDate: Record<string, HourlyWindData[]> = {};
+            const spotsRef = (first._spotsRef || []) as SpotRow[];
             const userPrefs = first._prefs || {};
 
             for (const alert of goAlerts) {
               for (const s of alert.spots || []) {
-                const spot = spotsRef.find((sp: any) => sp.id === s.spotId);
+                const spot = spotsRef.find(sp => sp.id === s.spotId);
                 if (spot?.latitude && spot?.longitude) {
                   const key = `${s.spotId}_${alert.targetDate}`;
                   if (!hourlyBySpotDate[key]) {
                     try {
-                      const hourly = await getHourlyForecast(spot.latitude, spot.longitude, (userPrefs.lookahead_days || 3) + 1);
-                      hourlyBySpotDate[key] = getHourlyForDay(hourly, alert.targetDate);
+                      const hourly = await getHourlyForecast(spot.latitude, spot.longitude, ((userPrefs.lookahead_days as number) || 3) + 1);
+                      hourlyBySpotDate[key] = getHourlyForDay(hourly, alert.targetDate!);
                     } catch {}
                   }
                 }
@@ -395,8 +470,8 @@ export async function POST(req: Request) {
             }
 
             await sendBundledEmail(
-              first.email, first.name, Number(uid),
-              goAlerts.map(a => ({ targetDate: a.targetDate, spots: a.spots, alertType: a.alertType })),
+              first.email, first.name ?? null, Number(uid),
+              goAlerts.map(a => ({ targetDate: a.targetDate!, spots: a.spots!, alertType: a.alertType! as "go" | "heads_up" | "downgrade" })),
               hourlyBySpotDate,
               globalTideCache
             );
@@ -417,7 +492,7 @@ export async function POST(req: Request) {
         for (const alert of downgradeAlerts) {
           if (first.notifyEmail && first.email) {
             try {
-              await sendAlertEmail(first.email, first.name, alert.alertType, alert.message, alert.spots, alert.targetDate);
+              await sendAlertEmail(first.email, first.name ?? null, alert.alertType! as "go" | "heads_up" | "downgrade", alert.message!, alert.spots!, alert.targetDate!);
               await sb.from("alert_history")
                 .update({ delivered_email: true })
                 .eq("user_id", Number(uid))
@@ -445,16 +520,16 @@ export async function POST(req: Request) {
               .eq("user_id", Number(uid));
 
             if (subs?.length) {
-              const dayLabels = goAlerts.map(a => formatDateLabel(a.targetDate));
+              const dayLabels = goAlerts.map(a => formatDateLabel(a.targetDate!));
               const allSpots = userResults.flatMap(a => (a.spots || []));
-              const uniqueSpots = [...new Map(allSpots.map((s: any) => [s.spotId, s])).values()];
+              const uniqueSpots = [...new Map(allSpots.map(s => [s.spotId, s])).values()];
 
               const pushTitle = goAlerts.length > 0
                 ? `✅ ${dayLabels.join(" en ")} ${dayLabels.length > 1 ? "zijn" : "is"} Go!`
                 : downgradeAlerts.length > 0 ? `⬇️ Forecast verslechterd` : "WindPing Alert";
 
               const pushBody = uniqueSpots
-                .map((s: any) => `${s.spotName}: ${s.wind}kn ${s.dir}`)
+                .map(s => `${s.spotName}: ${s.wind}kn ${s.dir}`)
                 .join(" · ");
 
               const payload = JSON.stringify({ title: pushTitle, body: pushBody, url: "/alert" });
@@ -468,9 +543,10 @@ export async function POST(req: Request) {
                     { TTL: 86400 }
                   );
                   pushSent = true;
-                } catch (pe: any) {
-                  console.error("Push send error:", pe.statusCode || pe.message);
-                  if (pe.statusCode === 404 || pe.statusCode === 410) {
+                } catch (pe) {
+                  const err = pe as WebPushError;
+                  console.error("Push send error:", err.statusCode || getErrorMessage(pe));
+                  if (err.statusCode === 404 || err.statusCode === 410) {
                     await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
                   }
                 }
@@ -510,9 +586,9 @@ export async function POST(req: Request) {
       results,
     });
 
-  } catch (err: any) {
+  } catch (err) {
     console.error("Alert engine error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(err) }, { status: 500 });
   }
 }
 
