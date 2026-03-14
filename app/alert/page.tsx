@@ -5,6 +5,8 @@ import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { useUser } from "@/lib/hooks/useUser";
 import { useAlertPage } from "@/lib/hooks/useAlertPage";
+import type { DbAlertHistory, DbAlertConditionsSpot, HourlyWindData, TideExtreme } from "@/lib/types";
+import type { LogForm } from "@/lib/hooks/useAlertPage";
 
 const h = { fontFamily: fonts.heading };
 
@@ -78,14 +80,14 @@ export default function AlertPage() {
 
         {sortedFutureDates.map((date) => {
           const dateAlerts = alertsByDate[date];
-          const goAlerts = dateAlerts.filter((a: any) => a.alert_type === "go" || a.alert_type === "heads_up");
-          const downgradeAlerts = dateAlerts.filter((a: any) => a.alert_type === "downgrade");
+          const goAlerts = dateAlerts.filter((a: DbAlertHistory) => a.alert_type === "go" || a.alert_type === "heads_up");
+          const downgradeAlerts = dateAlerts.filter((a: DbAlertHistory) => a.alert_type === "downgrade");
           const allSpots = Object.values(
-            goAlerts.flatMap((a: any) => a.conditions?.spots || []).reduce((acc: any, spot: any) => {
+            goAlerts.flatMap((a: DbAlertHistory) => a.conditions?.spots || []).reduce((acc: Record<number, DbAlertConditionsSpot>, spot: DbAlertConditionsSpot) => {
               if (!acc[spot.spotId] || spot.wind > acc[spot.spotId].wind) acc[spot.spotId] = spot;
               return acc;
-            }, {} as Record<number, any>)
-          ) as any[];
+            }, {} as Record<number, DbAlertConditionsSpot>)
+          ) as DbAlertConditionsSpot[];
 
           return (
             <div key={date} style={{ marginBottom: 28 }}>
@@ -94,7 +96,7 @@ export default function AlertPage() {
                 {goAlerts.length > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: C.green, background: C.goBg, padding: "2px 8px", borderRadius: 6, letterSpacing: "0.5px" }}>GO</span>}
               </div>
 
-              {allSpots.map((spot: any, i: number) => {
+              {allSpots.map((spot: DbAlertConditionsSpot, i: number) => {
                 const hours = hourlyData[`${spot.spotId}_${date}`] || [];
                 const wMin = spot.userWindMin || 12;
                 const daypart = getDaypartLabel(hours, wMin);
@@ -176,7 +178,7 @@ export default function AlertPage() {
                               {tide.station && <span style={{ fontSize: 9, color: C.muted, marginLeft: "auto" }}>{tide.station}</span>}
                             </div>
                             <div style={{ display: "flex", gap: 5, overflowX: "auto" }}>
-                              {tide.extremes.slice(0, 8).map((ex: any, idx: number) => {
+                              {tide.extremes.slice(0, 8).map((ex: TideExtreme, idx: number) => {
                                 const t = new Date(ex.time);
                                 const isHW = ex.type === "high";
                                 const timeStr = t.toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" });
@@ -201,8 +203,8 @@ export default function AlertPage() {
                 );
               })}
 
-              {downgradeAlerts.flatMap((a: any, i: number) =>
-                (a.conditions?.spots || []).map((s: any, j: number) => {
+              {downgradeAlerts.flatMap((a: DbAlertHistory, i: number) =>
+                (a.conditions?.spots || []).map((s: DbAlertConditionsSpot, j: number) => {
                   const reasons = a.conditions?.downgradeReasons?.[s.spotId] || [];
                   return (
                     <div key={`dg-${i}-${j}`} style={{ background: "#FEF2F2", border: "1.5px solid rgba(220,38,38,0.12)", borderRadius: 18, overflow: "hidden", marginBottom: 10 }}>
@@ -245,20 +247,20 @@ export default function AlertPage() {
             </div>
             {sortedPastDates.map((date) => {
               const dateAlerts = alertsByDate[date];
-              const goAlerts = dateAlerts.filter((a: any) => a.alert_type === "go" || a.alert_type === "heads_up");
-              const downgradeAlerts = dateAlerts.filter((a: any) => a.alert_type === "downgrade");
+              const goAlerts = dateAlerts.filter((a: DbAlertHistory) => a.alert_type === "go" || a.alert_type === "heads_up");
+              const downgradeAlerts = dateAlerts.filter((a: DbAlertHistory) => a.alert_type === "downgrade");
               const allSpots = Object.values(
-                goAlerts.flatMap((a: any) => a.conditions?.spots || []).reduce((acc: any, spot: any) => {
+                goAlerts.flatMap((a: DbAlertHistory) => a.conditions?.spots || []).reduce((acc: Record<number, DbAlertConditionsSpot>, spot: DbAlertConditionsSpot) => {
                   if (!acc[spot.spotId] || spot.wind > acc[spot.spotId].wind) acc[spot.spotId] = spot;
                   return acc;
-                }, {} as Record<number, any>)
-              ) as any[];
+                }, {} as Record<number, DbAlertConditionsSpot>)
+              ) as DbAlertConditionsSpot[];
               return (
                 <div key={date} style={{ marginBottom: 20, opacity: 0.85 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
                     <span style={{ ...h, fontSize: 15, fontWeight: 700, color: C.sub }}>{formatDateLabel(date)}</span>
                   </div>
-                  {allSpots.map((spot: any, i: number) => {
+                  {allSpots.map((spot: DbAlertConditionsSpot, i: number) => {
                     const key = `${spot.spotId}_${date}`;
                     const hours = hourlyData[key] || [];
                     const wMin = spot.userWindMin || 12;
@@ -285,7 +287,7 @@ export default function AlertPage() {
                           <div style={{ padding: "12px 14px" }}>
                             <div style={{ overflowX: "auto" }}>
                               <div style={{ display: "grid", gridTemplateColumns: `repeat(${hours.length}, 1fr)`, gap: 2, minWidth: 320 }}>
-                                {hours.map((hr: any) => (
+                                {hours.map((hr: HourlyWindData) => (
                                   <div key={hr.hour} style={{ textAlign: "center" }}>
                                     <div style={{ fontSize: 9, color: C.muted, marginBottom: 3 }}>{hr.hour}u</div>
                                     <div style={{ fontSize: 16, fontWeight: 900, color: hr.wind >= wMin ? C.green : C.sub }}>{hr.wind}</div>
@@ -297,14 +299,14 @@ export default function AlertPage() {
                               <div style={{ fontSize: 9, color: C.muted, marginTop: 8 }}>kn · gust · richting</div>
                             </div>
                             {(() => {
-                              const session = Object.values(goingSessions).find((s: any) => s.spot_id === spot.spotId && s.session_date === date);
+                              const session = Object.values(goingSessions).find(s => s.spot_id === spot.spotId && s.session_date === date);
                               if (!session) return null;
                               return (
                                 <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", background: C.goBg, borderRadius: 8 }}>
                                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                                   <span style={{ fontSize: 11, fontWeight: 600, color: C.green }}>
-                                    {(session as any).status === "completed" ? "Sessie gelogd" : "Je was gegaan"}
-                                    {(session as any).rating ? ` · ${"★".repeat((session as any).rating)}` : ""}
+                                    {session?.status === "completed" ? "Sessie gelogd" : "Je was gegaan"}
+                                    {session?.rating ? ` · ${"★".repeat(session.rating)}` : ""}
                                   </span>
                                 </div>
                               );
@@ -317,8 +319,8 @@ export default function AlertPage() {
                       </div>
                     );
                   })}
-                  {downgradeAlerts.flatMap((a: any, i: number) =>
-                    (a.conditions?.spots || []).map((s: any, j: number) => (
+                  {downgradeAlerts.flatMap((a: DbAlertHistory, i: number) =>
+                    (a.conditions?.spots || []).map((s: DbAlertConditionsSpot, j: number) => (
                       <div key={`pdg-${i}-${j}`} style={{ background: "#FEF2F2", borderRadius: 14, border: "1.5px solid rgba(220,38,38,0.1)", marginBottom: 8, overflow: "hidden" }}>
                         <div style={{ background: "#EF4444", padding: "8px 14px", display: "flex", alignItems: "center", gap: 6 }}>
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
@@ -350,7 +352,7 @@ export default function AlertPage() {
               <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Hoe was het?</div>
               <div style={{ display: "flex", gap: 8 }}>
                 {[1, 2, 3, 4, 5].map(n => (
-                  <button key={n} onClick={() => setLogForm((f: any) => ({ ...f, rating: n }))}
+                  <button key={n} onClick={() => setLogForm((f: LogForm) => ({ ...f, rating: n }))}
                     style={{ width: 44, height: 44, borderRadius: 12, border: `2px solid ${logForm.rating >= n ? C.gold : C.cardBorder}`, background: logForm.rating >= n ? C.epicBg : C.cream, fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {logForm.rating >= n ? "⭐" : "☆"}
                   </button>
@@ -362,7 +364,7 @@ export default function AlertPage() {
               <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>De wind was...</div>
               <div style={{ display: "flex", gap: 8 }}>
                 {([["te_weinig", "Te weinig"], ["perfect", "Perfect"], ["te_veel", "Te veel"]] as const).map(([val, label]) => (
-                  <button key={val} onClick={() => setLogForm((f: any) => ({ ...f, wind_feel: val }))}
+                  <button key={val} onClick={() => setLogForm((f: LogForm) => ({ ...f, wind_feel: val }))}
                     style={{ flex: 1, padding: "10px", borderRadius: 10, border: `2px solid ${logForm.wind_feel === val ? C.sky : C.cardBorder}`, background: logForm.wind_feel === val ? C.oceanTint : C.cream, color: logForm.wind_feel === val ? C.sky : C.sub, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                     {label}
                   </button>
@@ -374,7 +376,7 @@ export default function AlertPage() {
               <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Gear</div>
               <div style={{ display: "flex", gap: 8 }}>
                 {([["kite", "Kite"], ["windsurf", "Windsurf"], ["wing", "Wing"], ["sup", "SUP"]] as const).map(([val, label]) => (
-                  <button key={val} onClick={() => setLogForm((f: any) => ({ ...f, gear_type: val }))}
+                  <button key={val} onClick={() => setLogForm((f: LogForm) => ({ ...f, gear_type: val }))}
                     style={{ flex: 1, padding: "10px 6px", borderRadius: 10, border: `2px solid ${logForm.gear_type === val ? C.sky : C.cardBorder}`, background: logForm.gear_type === val ? C.oceanTint : C.cream, color: logForm.gear_type === val ? C.sky : C.sub, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     {label}
                   </button>
@@ -386,7 +388,7 @@ export default function AlertPage() {
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Maat</div>
                 <input type="text" placeholder={logForm.gear_type === "kite" ? "bijv. 12m" : logForm.gear_type === "windsurf" ? "bijv. 5.3m" : "bijv. 5m"}
-                  value={logForm.gear_size} onChange={e => setLogForm((f: any) => ({ ...f, gear_size: e.target.value }))}
+                  value={logForm.gear_size} onChange={e => setLogForm((f: LogForm) => ({ ...f, gear_size: e.target.value }))}
                   style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.cardBorder}`, background: C.cream, fontSize: 14, color: C.navy, outline: "none" }} />
               </div>
             )}
@@ -395,7 +397,7 @@ export default function AlertPage() {
               <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Duur (optioneel)</div>
               <div style={{ display: "flex", gap: 8 }}>
                 {([30, 60, 90, 120, 180]).map(min => (
-                  <button key={min} onClick={() => setLogForm((f: any) => ({ ...f, duration_minutes: min }))}
+                  <button key={min} onClick={() => setLogForm((f: LogForm) => ({ ...f, duration_minutes: min }))}
                     style={{ flex: 1, padding: "9px 4px", borderRadius: 10, border: `2px solid ${logForm.duration_minutes === min ? C.sky : C.cardBorder}`, background: logForm.duration_minutes === min ? C.oceanTint : C.cream, color: logForm.duration_minutes === min ? C.sky : C.sub, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                     {min < 60 ? `${min}m` : `${min / 60}u`}{min === 90 ? "½" : ""}
                   </button>
@@ -422,7 +424,7 @@ export default function AlertPage() {
 
             <div style={{ marginBottom: 24 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Notitie (optioneel)</div>
-              <textarea value={logForm.notes} onChange={e => setLogForm((f: any) => ({ ...f, notes: e.target.value }))}
+              <textarea value={logForm.notes} onChange={e => setLogForm((f: LogForm) => ({ ...f, notes: e.target.value }))}
                 placeholder="Hoe was het op het water?" rows={2}
                 style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${C.cardBorder}`, background: C.cream, fontSize: 13, color: C.navy, outline: "none", resize: "none", fontFamily: "inherit" }} />
             </div>
