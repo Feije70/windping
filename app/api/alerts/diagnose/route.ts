@@ -7,15 +7,73 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://kaimbtcuyemwzvhsqwgu.supabase.co";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
-const CRON_SECRET = process.env.CRON_SECRET || "";
 
 const DAY_DB: Record<number, string> = { 0: "available_sun", 1: "available_mon", 2: "available_tue", 3: "available_wed", 4: "available_thu", 5: "available_fri", 6: "available_sat" };
 const DAY_NL: Record<number, string> = { 0: "Zo", 1: "Ma", 2: "Di", 3: "Wo", 4: "Do", 5: "Vr", 6: "Za" };
 
-async function getForecast(lat: number, lon: number, days: number) {
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/* ── Lokale interfaces ── */
+
+interface ForecastData {
+  hourly: {
+    time: string[];
+    windspeed_10m: number[];
+    winddirection_10m: number[];
+    windgusts_10m: number[];
+  };
+}
+
+interface SpotRow {
+  id: number;
+  display_name: string;
+  latitude: number | null;
+  longitude: number | null;
+  good_directions: string[] | null;
+}
+
+interface ConditionRow {
+  spot_id: number;
+  wind_min: number | null;
+  wind_max: number | null;
+  wind_directions: string[] | null;
+}
+
+interface SpotResult {
+  spotId: number;
+  spotName: string;
+  wind?: number;
+  gust?: number;
+  dir?: string;
+  dirDeg?: number;
+  inRange?: boolean;
+  windOk?: boolean;
+  dirOk?: boolean;
+  minWind?: number;
+  maxWind?: number;
+  preferredDirs?: string[];
+  reasons?: string[];
+  userConditions?: { windMin: number; windMax: number; directions: string[] };
+  error?: string;
+}
+
+interface ExistingAlert {
+  alert_type: string;
+  target_date: string;
+  spot_ids: number[];
+  primary_spot_id: number | null;
+  created_at: string;
+  delivered_email: boolean;
+  delivered_push: boolean;
+  delivery_error: string | null;
+}
+
+async function getForecast(lat: number, lon: number, days: number): Promise<ForecastData> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=windspeed_10m,winddirection_10m,windgusts_10m&wind_speed_unit=kn&forecast_days=${days}&timezone=UTC`;
   const res = await fetch(url);
-  return await res.json();
+  return await res.json() as ForecastData;
 }
 
 function degToDir(deg: number): string {
@@ -23,7 +81,12 @@ function degToDir(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
-function evaluateSpot(forecast: any, dayOffset: number, spot: any, cond: any) {
+function evaluateSpot(
+  forecast: ForecastData,
+  dayOffset: number,
+  spot: SpotRow,
+  cond: ConditionRow | undefined
+): Omit<SpotResult, "userConditions"> {
   const times: string[] = forecast.hourly?.time || [];
   const winds: number[] = forecast.hourly?.windspeed_10m || [];
   const dirs: number[] = forecast.hourly?.winddirection_10m || [];
@@ -61,8 +124,7 @@ function evaluateSpot(forecast: any, dayOffset: number, spot: any, cond: any) {
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.replace("Bearer ", "");
-  
-  // Auth check
+
   let isAdmin = false;
   try {
     const payload = JSON.parse(atob(token.split(".")[1]));
@@ -80,7 +142,6 @@ export async function GET(req: NextRequest) {
   const today = now.toISOString().split("T")[0];
 
   try {
-    // Get user + prefs
     const { data: user } = await sb.from("users").select(`
       id, email, name,
       alert_preferences(
@@ -95,20 +156,18 @@ export async function GET(req: NextRequest) {
     const prefs = Array.isArray(user.alert_preferences) ? user.alert_preferences[0] : user.alert_preferences;
     if (!prefs) return NextResponse.json({ error: "No alert preferences found" }, { status: 404 });
 
-    // Get user spots + conditions
     const { data: userSpots } = await sb.from("user_spots").select("spot_id").eq("user_id", userId);
     if (!userSpots?.length) return NextResponse.json({ error: "No spots configured" }, { status: 404 });
 
-    const spotIds = userSpots.map((x: any) => x.spot_id);
+    const spotIds = (userSpots as { spot_id: number }[]).map(x => x.spot_id);
     const [{ data: spots }, { data: conditions }] = await Promise.all([
       sb.from("spots").select("id, display_name, latitude, longitude, good_directions").in("id", spotIds),
       sb.from("ideal_conditions").select("*").eq("user_id", userId).in("spot_id", spotIds),
     ]);
 
-    const condsMap: Record<number, any> = {};
-    (conditions || []).forEach((c: any) => { condsMap[c.spot_id] = c; });
+    const condsMap: Record<number, ConditionRow> = {};
+    (conditions as ConditionRow[] || []).forEach(c => { condsMap[c.spot_id] = c; });
 
-    // Get existing alerts
     const { data: existingAlerts } = await sb.from("alert_history")
       .select("alert_type, target_date, spot_ids, primary_spot_id, created_at, delivered_email, delivered_push, delivery_error")
       .eq("user_id", userId)
@@ -118,22 +177,23 @@ export async function GET(req: NextRequest) {
 
     const lookahead = prefs.lookahead_days || 3;
     const days = [];
+    const prefsRecord = prefs as Record<string, unknown>;
 
     for (let d = 0; d <= lookahead; d++) {
       const targetDate = new Date(now);
       targetDate.setDate(targetDate.getDate() + d);
       const dateStr = targetDate.toISOString().split("T")[0];
       const dayOfWeek = targetDate.getDay();
-      const isAvailable = (prefs as any)[DAY_DB[dayOfWeek]];
+      const isAvailable = prefsRecord[DAY_DB[dayOfWeek]] as boolean;
       const isTomorrowOrToday = d <= 1;
 
-      const prevAlerts = (existingAlerts || []).filter((a: any) => a.target_date === dateStr);
-      const hadGo = prevAlerts.some((a: any) => a.alert_type === "go");
-      const hadHeadsUp = prevAlerts.some((a: any) => a.alert_type === "heads_up");
-      const hadDowngrade = prevAlerts.some((a: any) => a.alert_type === "downgrade");
+      const prevAlerts = (existingAlerts as ExistingAlert[] || []).filter(a => a.target_date === dateStr);
+      const hadGo = prevAlerts.some(a => a.alert_type === "go");
+      const hadHeadsUp = prevAlerts.some(a => a.alert_type === "heads_up");
+      const hadDowngrade = prevAlerts.some(a => a.alert_type === "downgrade");
 
-      const spotResults = [];
-      for (const spot of (spots || [])) {
+      const spotResults: SpotResult[] = [];
+      for (const spot of (spots as SpotRow[] || [])) {
         if (!spot.latitude || !spot.longitude) {
           spotResults.push({ spotId: spot.id, spotName: spot.display_name, error: "Geen coordinaten" });
           continue;
@@ -145,19 +205,18 @@ export async function GET(req: NextRequest) {
           spotResults.push({
             ...result,
             userConditions: cond ? {
-              windMin: cond.wind_min,
-              windMax: cond.wind_max,
+              windMin: cond.wind_min ?? 0,
+              windMax: cond.wind_max ?? 999,
               directions: cond.wind_directions || spot.good_directions || [],
             } : { windMin: 0, windMax: 999, directions: spot.good_directions || [] },
           });
-        } catch (e: any) {
-          spotResults.push({ spotId: spot.id, spotName: spot.display_name, error: e.message });
+        } catch (e) {
+          spotResults.push({ spotId: spot.id, spotName: spot.display_name, error: getErrorMessage(e) });
         }
       }
 
-      const goSpots = spotResults.filter((s: any) => s.inRange);
+      const goSpots = spotResults.filter(s => s.inRange);
 
-      // Determine what alert WOULD be sent
       let wouldSend: string | null = null;
       let wouldNotSendReason: string | null = null;
 
@@ -178,9 +237,7 @@ export async function GET(req: NextRequest) {
         dayLabel: `${DAY_NL[dayOfWeek]} ${targetDate.getDate()}/${targetDate.getMonth() + 1}`,
         isAvailable,
         isTomorrowOrToday,
-        hadGo,
-        hadHeadsUp,
-        hadDowngrade,
+        hadGo, hadHeadsUp, hadDowngrade,
         spotResults,
         goSpots: goSpots.length,
         wouldSend,
@@ -202,7 +259,7 @@ export async function GET(req: NextRequest) {
         notifyEmail: prefs.notify_email,
         notifyPush: prefs.notify_push,
       },
-      spots: (spots || []).map(s => ({
+      spots: (spots as SpotRow[] || []).map(s => ({
         id: s.id, name: s.display_name,
         conditions: condsMap[s.id] ? {
           windMin: condsMap[s.id].wind_min,
@@ -213,7 +270,7 @@ export async function GET(req: NextRequest) {
       days,
     });
 
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
