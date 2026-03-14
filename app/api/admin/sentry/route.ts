@@ -4,6 +4,20 @@ const SENTRY_ORG = "windping";
 const SENTRY_PROJECT = "windping";
 const SENTRY_TOKEN = process.env.SENTRY_AUTH_TOKEN || "";
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+interface SentryIssue {
+  id: string;
+  title: string;
+  culprit: string;
+  count: string;
+  lastSeen: string;
+  level: string;
+  permalink: string;
+}
+
 export async function GET() {
   if (!SENTRY_TOKEN) {
     return NextResponse.json({ error: "No SENTRY_AUTH_TOKEN" }, { status: 500 });
@@ -19,14 +33,14 @@ export async function GET() {
       fetch(
         `https://sentry.io/api/0/projects/${SENTRY_ORG}/${SENTRY_PROJECT}/issues/?query=is:unresolved&statsPeriod=24h&limit=5&sort=date`,
         { headers }
-      ).then(r => r.json()),
+      ).then(r => r.json()) as Promise<SentryIssue[]>,
       fetch(
         `https://sentry.io/api/0/projects/${SENTRY_ORG}/${SENTRY_PROJECT}/issues/?query=is:unresolved&statsPeriod=7d&limit=25`,
         { headers }
-      ).then(r => r.json()),
+      ).then(r => r.json()) as Promise<SentryIssue[]>,
     ]);
 
-    const recentIssues = Array.isArray(issues24h) ? issues24h.map((i: any) => ({
+    const recentIssues = Array.isArray(issues24h) ? issues24h.map(i => ({
       id: i.id,
       title: i.title,
       culprit: i.culprit,
@@ -41,7 +55,7 @@ export async function GET() {
 
     const culprits: Record<string, number> = {};
     if (Array.isArray(issues7d)) {
-      issues7d.forEach((i: any) => {
+      issues7d.forEach(i => {
         const key = i.culprit || "unknown";
         culprits[key] = (culprits[key] || 0) + parseInt(i.count || "0");
       });
@@ -55,7 +69,7 @@ export async function GET() {
       topCulprit: topCulprit ? { route: topCulprit[0], count: topCulprit[1] } : null,
       sentryUrl: `https://windping.sentry.io/projects/windping/`,
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
