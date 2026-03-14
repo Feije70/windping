@@ -1,19 +1,11 @@
+/* ── lib/hooks/useAlerts.ts ───────────────────────────────────
+   Data hook voor alert history. Gebruikt lib/db/ voor queries.
+──────────────────────────────────────────────────────────── */
 import { useEffect, useState } from "react";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
-import type { DbAlertConditions } from "@/lib/types";
+import { getAlertHistory } from "@/lib/db";
+import type { DbAlertHistory } from "@/lib/types";
 
-export interface Alert {
-  id: number;
-  alert_type: string;
-  target_date: string;
-  spot_ids: number[];
-  primary_spot_id: number | null;
-  conditions: DbAlertConditions;
-  delivered_email: boolean;
-  delivered_push: boolean;
-  is_test: boolean;
-  created_at: string;
-}
+export type Alert = DbAlertHistory;
 
 interface UseAlertsOptions {
   token: string | null;
@@ -31,16 +23,13 @@ export function useAlerts({ token, userId, fromDate }: UseAlertsOptions) {
     if (!token || !userId) return;
     setLoading(true);
     setError(null);
-    const since = fromDate || new Date().toISOString().split("T")[0];
-    fetch(
-      `${SUPABASE_URL}/rest/v1/alert_history?user_id=eq.${userId}&target_date=gte.${since}&is_test=eq.false&order=created_at.desc&select=id,alert_type,target_date,spot_ids,primary_spot_id,conditions,delivered_email,delivered_push,is_test,created_at`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
-    )
-      .then((r) => { if (!r.ok) throw new Error(`Alerts fetch failed: ${r.status}`); return r.json(); })
-      .then((data) => setAlerts(data || []))
-      .catch((e) => setError(e.message))
+
+    const since = fromDate ?? new Date().toISOString().split("T")[0];
+    getAlertHistory(userId, since, token)
+      .then((data) => setAlerts(data))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, [token, userId, fromDate, trigger]);
 
-  return { alerts, loading, error, refetch: () => setTrigger(t => t + 1) };
+  return { alerts, loading, error, refetch: () => setTrigger((t) => t + 1) };
 }

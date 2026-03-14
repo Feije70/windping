@@ -1,6 +1,9 @@
+/* ── lib/hooks/useSessions.ts ─────────────────────────────────
+   Data hook voor sessies. Gebruikt lib/db/ voor alle queries.
+──────────────────────────────────────────────────────────── */
 import { useEffect, useState } from "react";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
-import type { DbPhotoCrop } from "@/lib/types";
+import { getCompletedSessions } from "@/lib/db";
+import type { DbSession, DbPhotoCrop } from "@/lib/types";
 
 export interface Session {
   id: number;
@@ -34,15 +37,12 @@ export function useSessions({ token, userId }: UseSessionsOptions) {
     if (!token || !userId) return;
     setLoading(true);
     setError(null);
-    fetch(
-      `${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${userId}&status=eq.completed&order=id.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,wind_feel,notes,photo_url,photo_crop,image_url`,
-      { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
-    )
-      .then((r) => { if (!r.ok) throw new Error(`Sessions fetch failed: ${r.status}`); return r.json(); })
-      .then((data) => setSessions(data || []))
-      .catch((e) => setError(e.message))
+
+    getCompletedSessions(userId, token)
+      .then((data) => setSessions(data as Session[]))
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, [token, userId, trigger]);
 
-  return { sessions, loading, error, refetch: () => setTrigger(t => t + 1) };
+  return { sessions, loading, error, refetch: () => setTrigger((t) => t + 1) };
 }
