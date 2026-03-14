@@ -13,6 +13,10 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const CRON_KEY = "WindPing-cron-key-2026";
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 async function sbFetch(path: string, options: RequestInit = {}) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
@@ -45,34 +49,26 @@ export async function GET(req: NextRequest) {
 
     if (mode === "new_only") {
       const [spotsRes, enrichRes] = await Promise.all([
-        sbFetch(spotsQuery).then(r => r.json()),
-        sbFetch("spot_enrichment?select=spot_id").then(r => r.json()),
+        sbFetch(spotsQuery).then(r => r.json()) as Promise<{ id: number }[]>,
+        sbFetch("spot_enrichment?select=spot_id").then(r => r.json()) as Promise<{ spot_id: number }[]>,
       ]);
-      const allSpotIds = new Set(
-        Array.isArray(spotsRes) ? spotsRes.map((s: any) => s.id) : []
-      );
-      const enrichedIds = new Set(
-        Array.isArray(enrichRes) ? enrichRes.map((e: any) => e.spot_id) : []
-      );
+      const allSpotIds = new Set(Array.isArray(spotsRes) ? spotsRes.map(s => s.id) : []);
+      const enrichedIds = new Set(Array.isArray(enrichRes) ? enrichRes.map(e => e.spot_id) : []);
       spotIds = [...allSpotIds].filter(id => !enrichedIds.has(id));
 
     } else if (mode === "active") {
       const [userSpotsRes, spotsRes] = await Promise.all([
-        sbFetch("user_spots?select=spot_id").then(r => r.json()),
-        sbFetch(spotsQuery).then(r => r.json()),
+        sbFetch("user_spots?select=spot_id").then(r => r.json()) as Promise<{ spot_id: number }[]>,
+        sbFetch(spotsQuery).then(r => r.json()) as Promise<{ id: number }[]>,
       ]);
-      const userSpotIds = new Set(
-        Array.isArray(userSpotsRes) ? userSpotsRes.map((r: any) => r.spot_id) : []
-      );
-      const countrySpotIds = new Set(
-        Array.isArray(spotsRes) ? spotsRes.map((s: any) => s.id) : []
-      );
-      spotIds = [...userSpotIds].filter(id => countrySpotIds.has(id)) as number[];
+      const userSpotIds = new Set(Array.isArray(userSpotsRes) ? userSpotsRes.map(r => r.spot_id) : []);
+      const countrySpotIds = new Set(Array.isArray(spotsRes) ? spotsRes.map(s => s.id) : []);
+      spotIds = [...userSpotIds].filter(id => countrySpotIds.has(id));
 
     } else if (mode === "all") {
       const res = await sbFetch(spotsQuery);
-      const rows = await res.json();
-      spotIds = Array.isArray(rows) ? rows.map((r: any) => r.id) : [];
+      const rows = await res.json() as { id: number }[];
+      spotIds = Array.isArray(rows) ? rows.map(r => r.id) : [];
     }
 
     if (spotIds.length === 0) {
@@ -82,10 +78,8 @@ export async function GET(req: NextRequest) {
     const existingRes = await sbFetch(
       `enrichment_jobs?status=in.(pending,running)&job_type=eq.full_scan&select=spot_id`
     );
-    const existingJobs = await existingRes.json();
-    const alreadyQueued = new Set(
-      Array.isArray(existingJobs) ? existingJobs.map((j: any) => j.spot_id) : []
-    );
+    const existingJobs = await existingRes.json() as { spot_id: number }[];
+    const alreadyQueued = new Set(Array.isArray(existingJobs) ? existingJobs.map(j => j.spot_id) : []);
 
     const toQueue = spotIds.filter(id => !alreadyQueued.has(id));
     const toQueueLimited = limit ? toQueue.slice(0, limit) : toQueue;
@@ -122,7 +116,7 @@ export async function GET(req: NextRequest) {
       limit_applied: limit,
     });
 
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
