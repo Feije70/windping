@@ -6,6 +6,27 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+interface AnthropicBlock {
+  type: string;
+  id?: string;
+  input?: { query?: string };
+  text?: string;
+}
+
+interface AnthropicMessage {
+  role: "user" | "assistant";
+  content: string | AnthropicBlock[];
+}
+
+interface PromptRow {
+  category: string;
+  prompt_text: string;
+}
+
 const REGION_LANG: Record<string, string> = {
   Spain: "es", Germany: "de", France: "fr", Italy: "it",
   Portugal: "pt", Greece: "el", Denmark: "da", Ireland: "en",
@@ -14,21 +35,16 @@ const REGION_LANG: Record<string, string> = {
   Austria: "de", Switzerland: "de", Latvia: "lv", Romania: "ro",
   Hungary: "hu", Montenegro: "sr", Azores: "pt", Wales: "en",
   England: "en", Scotland: "en",
-  // Zuid-Amerika
   Brazil: "pt", Argentina: "es", Chile: "es", Colombia: "es",
   Venezuela: "es", Peru: "es", "Costa Rica": "es", Mexico: "es",
   "Dominican Republic": "es",
-  // Afrika
   "South Africa": "en", Kenya: "en", Mozambique: "pt",
   Madagascar: "fr", Senegal: "fr", Tanzania: "en", Mauritius: "fr",
   "Cape Verde": "pt",
-  // Azië & Pacific
   Indonesia: "id", Philippines: "en", Malaysia: "ms",
   "Sri Lanka": "en", Vietnam: "vi", Thailand: "th",
   Japan: "ja", Taiwan: "zh", India: "en",
-  // Midden-Oosten
   Oman: "ar", UAE: "ar",
-  // Engelstalig
   Australia: "en", "New Zealand": "en", USA: "en", Canada: "en",
   Egypt: "ar",
 };
@@ -67,16 +83,13 @@ async function loadPrompts(): Promise<Record<string, string>> {
   };
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/enrichment_prompts?select=category,prompt_text`, {
-      headers: {
-        apikey: SUPABASE_SERVICE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-      },
+      headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
     });
     if (!res.ok) return defaults;
-    const rows = await res.json();
+    const rows = await res.json() as PromptRow[];
     if (!Array.isArray(rows) || rows.length === 0) return defaults;
     const merged = { ...defaults };
-    rows.forEach((r: any) => { if (r.category && r.prompt_text) merged[r.category] = r.prompt_text; });
+    rows.forEach(r => { if (r.category && r.prompt_text) merged[r.category] = r.prompt_text; });
     return merged;
   } catch {
     return defaults;
@@ -85,7 +98,7 @@ async function loadPrompts(): Promise<Record<string, string>> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { spot } = await req.json();
+    const { spot } = await req.json() as { spot: { id: number; display_name: string; region?: string; latitude?: number; longitude?: number } };
     if (!spot) {
       return NextResponse.json({ error: "Geen spot meegegeven" }, { status: 400 });
     }
@@ -95,7 +108,6 @@ export async function POST(req: NextRequest) {
     }
 
     const prompts = await loadPrompts();
-
     const spotLang = getLangForSpot(spot.region);
     const spotLangName = LANG_NAME[spotLang] || "English";
     const needsBothLangs = spotLang !== "en";
@@ -151,7 +163,7 @@ Respond with JSON in exactly this structure:
 ${jsonStructure}`;
 
     const tools = [{ type: "web_search_20250305", name: "web_search" }];
-    let messages: any[] = [{ role: "user", content: prompt }];
+    let messages: AnthropicMessage[] = [{ role: "user", content: prompt }];
 
     const res1 = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -174,21 +186,21 @@ ${jsonStructure}`;
       return NextResponse.json({ error: `Anthropic fout: ${res1.status} — ${err}` }, { status: 500 });
     }
 
-    const data1 = await res1.json();
+    const data1 = await res1.json() as { stop_reason: string; content: AnthropicBlock[] };
     let finalData = data1;
 
     if (data1.stop_reason === "tool_use") {
-      const toolUseBlocks = data1.content.filter((b: any) => b.type === "tool_use");
+      const toolUseBlocks = data1.content.filter(b => b.type === "tool_use");
       messages = [
         { role: "user", content: prompt },
         { role: "assistant", content: data1.content },
         {
           role: "user",
-          content: toolUseBlocks.map((b: any) => ({
+          content: toolUseBlocks.map(b => ({
             type: "tool_result",
             tool_use_id: b.id,
             content: `Search results for "${b.input?.query || ""}" have been processed.`,
-          })),
+          })) as unknown as AnthropicBlock[],
         },
       ];
 
@@ -213,11 +225,11 @@ ${jsonStructure}`;
         return NextResponse.json({ error: `Anthropic fout ronde 2: ${res2.status} — ${err}` }, { status: 500 });
       }
 
-      finalData = await res2.json();
+      finalData = await res2.json() as { stop_reason: string; content: AnthropicBlock[] };
     }
 
-    const textBlocks = finalData.content?.filter((b: any) => b.type === "text") || [];
-    const fullText = textBlocks.map((b: any) => b.text).join("");
+    const textBlocks = finalData.content?.filter(b => b.type === "text") || [];
+    const fullText = textBlocks.map(b => b.text ?? "").join("");
     const cleaned = fullText.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
 
@@ -225,13 +237,10 @@ ${jsonStructure}`;
       return NextResponse.json({ error: `Geen JSON in response. Raw: ${fullText.slice(0, 200)}` }, { status: 500 });
     }
 
-    const result = JSON.parse(jsonMatch[0]);
+    const result = JSON.parse(jsonMatch[0]) as { categories: Record<string, unknown>; confidence: number; sources: string[]; missing: string[] };
 
-    // Valideer taallagen
     if (needsBothLangs && result.categories && !result.categories[spotLang]) {
-      return NextResponse.json({ 
-        error: `Taallaag "${spotLang}" ontbreekt — probeer opnieuw` 
-      }, { status: 500 });
+      return NextResponse.json({ error: `Taallaag "${spotLang}" ontbreekt — probeer opnieuw` }, { status: 500 });
     }
 
     const upsertRes = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment`, {
@@ -260,7 +269,7 @@ ${jsonStructure}`;
 
     return NextResponse.json(result);
 
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
