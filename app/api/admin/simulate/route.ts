@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
     let spotMap: Record<number, string> = {};
     if (spotIds.length > 0) {
       const { data: spots } = await client.from("spots").select("id, display_name").in("id", spotIds);
-      (spots || []).forEach((s: any) => { spotMap[s.id] = s.display_name; });
+      (spots as { id: number; display_name: string }[] || []).forEach(s => { spotMap[s.id] = s.display_name; });
     }
 
     const enriched = (sessions || []).map(s => ({
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
       f.user_id === Number(userId) ? f.friend_id : f.user_id
     );
 
-    let friendUsers: any[] = [];
+    let friendUsers: { id: number; name: string | null; email: string | null }[] = [];
     if (friendIds.length > 0) {
       const { data } = await client
         .from("users")
@@ -143,11 +143,11 @@ export async function GET(req: NextRequest) {
     const nameMap: Record<number, string> = {};
     (users || []).forEach(u => { nameMap[u.id] = u.name || u.email?.split("@")[0] || "?"; });
 
-    const feed = (sessions || []).map((s: any) => ({
+    const feed = (sessions || []).map((s: { id: number; created_by: number; spot_id: number; session_date: string; status: string; rating: number | null; gear_type: string | null; gear_size: number | null; forecast_wind: number | null; forecast_dir: string | null; photo_url: string | null; notes: string | null; spots: { display_name: string }[] | null }) => ({
       id: s.id,
       friendName: nameMap[s.created_by] || "?",
       friendId: s.created_by,
-      spotName: s.spots?.display_name || `Spot #${s.spot_id}`,
+      spotName: (s.spots as { display_name: string }[] | null)?.[0]?.display_name || `Spot #${s.spot_id}`,
       sessionDate: s.session_date,
       status: s.status,
       rating: s.rating,
@@ -228,7 +228,7 @@ export async function POST(req: NextRequest) {
         const { data: user } = await client.from("users").select("name").eq("id", userId).single();
         const { data: spot } = await client.from("spots").select("display_name").eq("id", spotId).single();
         const { data: friendships } = await client.from("friendships").select("user_id, friend_id").or(`user_id.eq.${userId},friend_id.eq.${userId}`).eq("status", "accepted");
-        const friendIds = (friendships || []).map((f: any) => f.user_id === userId ? f.friend_id : f.user_id);
+        const friendIds = (friendships as { user_id: number; friend_id: number }[] || []).map(f => f.user_id === userId ? f.friend_id : f.user_id);
         const userName = user?.name || "Iemand";
         const spotName = spot?.display_name || "een spot";
         const ratingEmojis: Record<number, string> = { 1: "😬", 2: "😐", 3: "👌", 4: "😎", 5: "🤙" };
