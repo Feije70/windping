@@ -4,6 +4,10 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ADMIN_KEY = "WindPing-cron-key-2026";
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 async function sbDelete(path: string) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method: "DELETE",
@@ -45,7 +49,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     return NextResponse.json({ error: "onbekend type" }, { status: 400 });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
