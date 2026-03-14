@@ -26,13 +26,74 @@ import { StatsTab } from "./components/StatsTab";
 import { FinancienTab } from "./components/FinancienTab";
 import { SimulatorTab } from "./components/SimulatorTab";
 
+type SectionType = "dashboard" | "gebruikers" | "alerts" | "content" | "systeem" | "financien";
+type TabType = "health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "spots" | "moderation" | "enrichment" | "beheer" | "nieuws" | "prompts" | "kosten" | "campagnes";
+
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+interface DiagnoseSpotResult {
+  spotId: number;
+  spotName: string;
+  wind: number;
+  dir: string;
+  inRange: boolean;
+  reasons: string[];
+  error?: string;
+}
+
+interface DiagnoseSentAlert {
+  alert_type: string;
+  created_at: string;
+  delivered_push: boolean;
+  delivered_email: boolean;
+}
+
+interface DiagnoseDay {
+  date: string;
+  dayLabel: string;
+  hadGo: boolean;
+  hadHeadsUp: boolean;
+  hadDowngrade: boolean;
+  wouldSend: string | null;
+  wouldNotSendReason: string | null;
+  spotResults: DiagnoseSpotResult[];
+  sentAlerts: DiagnoseSentAlert[];
+}
+
+interface DiagnoseSpot {
+  id: number;
+  name: string;
+  conditions: { windMin: number; windMax: number; directions: string[] } | null;
+}
+
+interface AdminUserInfo extends UserInfo {
+  min_wind_speed?: number | null;
+  max_wind_speed?: number | null;
+  welcome_shown?: boolean;
+  subscription_status?: string | null;
+}
+
+interface UserSpotItem {
+  spot_id: number;
+  spots?: { display_name: string | undefined } | null;
+}
+
+interface AlertSpot {
+  spotName?: string;
+  name?: string;
+  wind: number;
+  dir: string;
+}
+
 export default function AdminPage() {
   const { token, loading: authLoading } = useUser({ redirectIfUnauthenticated: true });
 
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [section, setSection] = useState<"dashboard" | "gebruikers" | "alerts" | "content" | "systeem" | "financien">("dashboard");
   const [tab, setTab] = useState<"health" | "test" | "history" | "diagnose" | "users" | "stats" | "simulator" | "spots" | "moderation" | "enrichment" | "beheer" | "nieuws" | "prompts" | "kosten" | "campagnes">("stats");
-  const [flaggedPosts, setFlaggedPosts] = useState<any[]>([]);
+  const [flaggedPosts, setFlaggedPosts] = useState<unknown[]>([]);
   const [flaggedLoading, setFlaggedLoading] = useState(false);
   const [stats, setStats] = useState({ users: 0, spots: 0, alerts: 0, alertsToday: 0 });
   const [history, setHistory] = useState<AlertHistoryItem[]>([]);
@@ -50,18 +111,18 @@ export default function AdminPage() {
   const [health, setHealth] = useState<HealthData | null>(null);
 
   // Users tab state
-  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<AdminUserInfo[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
-  const [userDetail, setUserDetail] = useState<any>(null);
-  const [userSpots, setUserSpots] = useState<any[]>([]);
-  const [userPrefs, setUserPrefs] = useState<any>(null);
+  const [userDetail, setUserDetail] = useState<AdminUserInfo | null>(null);
+  const [userSpots, setUserSpots] = useState<UserSpotItem[]>([]);
+  const [userPrefs, setUserPrefs] = useState<Record<string, unknown> | null>(null);
   const [userSaving, setUserSaving] = useState(false);
   const [userMsg, setUserMsg] = useState("");
   const [editName, setEditName] = useState("");
   const [editWindMin, setEditWindMin] = useState(12);
   const [editWindMax, setEditWindMax] = useState(28);
   const [editWelcome, setEditWelcome] = useState(false);
-  const [allSpots, setAllSpots] = useState<any[]>([]);
+  const [allSpots, setAllSpots] = useState<SpotInfo[]>([]);
   const [healthLoading, setHealthLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
@@ -88,7 +149,7 @@ export default function AdminPage() {
         users: data.users?.length || 0,
         spots: data.spots?.length || 0,
         alerts: data.alerts?.length || 0,
-        alertsToday: (data.alerts || []).filter((a: any) => a.created_at?.startsWith(today)).length,
+        alertsToday: (data.alerts as AlertHistoryItem[] || []).filter(a => a.created_at?.startsWith(today)).length,
       });
     } catch (e) { console.error(e); }
   }, [token, selectedUser]);
@@ -129,7 +190,7 @@ export default function AdminPage() {
       const result = await apiPost("/api/alerts/test", { action: "evaluate", userId: selectedUser }, token || undefined);
       setEvalResult({ ...result, mode: "preview" });
       loadData();
-    } catch (e: any) { setEvalResult({ error: e.message }); }
+    } catch (e) { setEvalResult({ error: getErrorMessage(e) }); }
     setLoading(false);
   };
 
@@ -145,7 +206,7 @@ export default function AdminPage() {
       const result = await res.json();
       setEvalResult({ ...result, mode: "live" });
       loadData(); loadHealth();
-    } catch (e: any) { setEvalResult({ error: e.message }); }
+    } catch (e) { setEvalResult({ error: getErrorMessage(e) }); }
     setLoading(false);
   };
 
@@ -156,7 +217,7 @@ export default function AdminPage() {
       const result = await apiPost("/api/alerts/test", { action: "send_test", userId: selectedUser, alertType: selectedAlertType, spotId: selectedSpot }, token || undefined);
       setTestResult(result);
       loadData();
-    } catch (e: any) { setTestResult({ error: e.message }); }
+    } catch (e) { setTestResult({ error: getErrorMessage(e) }); }
     setLoading(false);
   };
 
@@ -173,7 +234,7 @@ export default function AdminPage() {
     try {
       const result = await apiPost("/api/alerts/test", { action: "test_push", userId: selectedUser }, token || undefined);
       setTestResult(result);
-    } catch (e: any) { setTestResult({ error: e.message }); }
+    } catch (e) { setTestResult({ error: getErrorMessage(e) }); }
     setLoading(false);
   };
 
@@ -264,7 +325,7 @@ export default function AdminPage() {
                 <button onClick={() => {
                   setSection(item.section);
                   const subs = SUBTABS[item.section];
-                  if (subs.length > 0) setTab(subs[0].id as any);
+                  if (subs.length > 0) setTab(subs[0].id as TabType);
                 }} style={{
                   width: "100%", display: "flex", alignItems: "center", gap: 10,
                   padding: "10px 12px", borderRadius: 10, border: "none", cursor: "pointer",
@@ -284,7 +345,7 @@ export default function AdminPage() {
                 {section === item.section && SUBTABS[item.section].length > 0 && (
                   <div style={{ paddingLeft: 20, marginBottom: 4 }}>
                     {SUBTABS[item.section].map(sub => (
-                      <button key={sub.id} onClick={() => setTab(sub.id as any)} style={{
+                      <button key={sub.id} onClick={() => setTab(sub.id as TabType)} style={{
                         width: "100%", display: "flex", alignItems: "center", gap: 8,
                         padding: "7px 10px", borderRadius: 8, border: "none", cursor: "pointer",
                         background: tab === sub.id ? `${C.sky}25` : "transparent",
@@ -322,7 +383,7 @@ export default function AdminPage() {
             {SUBTABS[section].length > 0 && (
               <div style={{ display: "flex", gap: 4, marginTop: 12, background: C.creamDark, padding: 4, borderRadius: 10, width: "fit-content" }}>
                 {SUBTABS[section].map(sub => (
-                  <button key={sub.id} onClick={() => setTab(sub.id as any)} style={{
+                  <button key={sub.id} onClick={() => setTab(sub.id as TabType)} style={{
                     padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700,
                     border: "none", cursor: "pointer",
                     background: tab === sub.id ? C.card : "transparent",
@@ -341,7 +402,7 @@ export default function AdminPage() {
             <AdminDashboard
               stats={stats}
               health={health}
-              onNavigate={(sec, tabId) => { setSection(sec as any); if (tabId) setTab(tabId as any); }}
+              onNavigate={(sec, tabId) => { setSection(sec as SectionType); if (tabId) setTab(tabId as TabType); }}
             />
           )}
 
@@ -439,7 +500,7 @@ export default function AdminPage() {
                 <select value={selectedSpot || ""} onChange={(e) => setSelectedSpot(e.target.value ? Number(e.target.value) : null)}
                   style={{ width: "100%", padding: "10px 12px", background: C.card, boxShadow: C.cardShadow, borderRadius: 10, color: C.navy, fontSize: 13 }}>
                   <option value="">— Auto (first user spot) —</option>
-                  {spots.map(s => <option key={s.id} value={s.id}>{(s as any).display_name || (s as any).name || `Spot #${s.id}`} (#{s.id})</option>)}
+                  {spots.map(s => <option key={s.id} value={s.id}>{s.display_name || s.name || `Spot #${s.id}`} (#{s.id})</option>)}
                 </select>
               </div>
 
@@ -520,7 +581,7 @@ export default function AdminPage() {
                 </button>
               ) : (
                 <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-                  {allUsers.map((u: any) => (
+                  {allUsers.map(u => (
                     <button key={u.id} onClick={() => { setDiagnoseUserId(u.id); setDiagnoseResult(null); }} style={{
                       padding: "8px 16px", borderRadius: 10, border: "2px solid",
                       borderColor: diagnoseUserId === u.id ? C.sky : C.cardBorder,
@@ -547,8 +608,8 @@ export default function AdminPage() {
                     } else {
                       setDiagnoseResult(data);
                     }
-                  } catch (e: any) {
-                    setDiagnoseResult({ error: e.message || "Fetch mislukt" });
+                  } catch (e) {
+                    setDiagnoseResult({ error: getErrorMessage(e) || "Fetch mislukt" });
                   }
                   setDiagnoseLoading(false);
                 }} style={{ padding: "10px 20px", background: C.sky, color: "#fff", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", marginBottom: 20, opacity: diagnoseLoading ? 0.6 : 1 }}>
@@ -561,7 +622,7 @@ export default function AdminPage() {
                   <Card style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8 }}>INSTELLINGEN</div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {Object.entries(diagnoseResult.prefs.availability).map(([day, avail]: [string, any]) => (
+                      {Object.entries(diagnoseResult.prefs.availability).map(([day, avail]: [string, unknown]) => (
                         <span key={day} style={{ padding: "3px 8px", borderRadius: 6, fontSize: 11, fontWeight: 700, background: avail ? "#D1FAE5" : C.creamDark, color: avail ? "#065F46" : C.muted }}>
                           {day.charAt(0).toUpperCase() + day.slice(1)}
                         </span>
@@ -575,7 +636,7 @@ export default function AdminPage() {
 
                   <Card style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 8 }}>SPOTS ({diagnoseResult.spots.length})</div>
-                    {diagnoseResult.spots.map((s: any) => (
+                    {diagnoseResult.spots.map((s: DiagnoseSpot) => (
                       <div key={s.id} style={{ padding: "6px 0", borderBottom: `1px solid ${C.cardBorder}`, fontSize: 12 }}>
                         <span style={{ fontWeight: 600, color: C.navy }}>{s.name}</span>
                         {s.conditions ? (
@@ -585,7 +646,7 @@ export default function AdminPage() {
                     ))}
                   </Card>
 
-                  {diagnoseResult.days.map((day: any) => (
+                  {diagnoseResult.days.map((day: DiagnoseDay) => (
                     <div key={day.date} style={{ background: C.card, borderRadius: 14, padding: "14px 16px", marginBottom: 10, boxShadow: C.cardShadow, borderLeft: `4px solid ${day.hadGo ? C.green : day.hadHeadsUp ? C.sky : day.wouldSend ? C.gold : C.cardBorder}` }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                         <div style={{ fontWeight: 700, color: C.navy, fontSize: 14 }}>{day.dayLabel}</div>
@@ -594,7 +655,7 @@ export default function AdminPage() {
                         </div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                        {day.spotResults.map((s: any) => (
+                        {day.spotResults.map((s: DiagnoseSpotResult) => (
                           <div key={s.spotId} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8, background: s.inRange ? "#F0FDF4" : "#FFF7ED" }}>
                             <span>{s.inRange ? "✅" : "❌"}</span>
                             <span style={{ fontWeight: 600, fontSize: 12, color: C.navy, flex: 1 }}>{s.spotName}</span>
@@ -608,7 +669,7 @@ export default function AdminPage() {
                         <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${C.cardBorder}` }}>
                           <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, marginBottom: 6, letterSpacing: 0.5 }}>VERSTUURDE ALERTS</div>
                           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                            {day.sentAlerts.map((a: any, i: number) => (
+                            {day.sentAlerts.map((a: DiagnoseSentAlert, i: number) => (
                               <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8, background: C.creamDark }}>
                                 <span style={{ fontSize: 12, fontWeight: 700, color: a.alert_type === "go" ? C.green : a.alert_type === "heads_up" ? C.sky : C.gold }}>
                                   {a.alert_type === "go" ? "🟢 Go" : a.alert_type === "heads_up" ? "🔵 Heads-up" : a.alert_type === "downgrade" ? "🔴 Downgrade" : a.alert_type}
@@ -671,7 +732,7 @@ export default function AdminPage() {
                       </div>
                       <div style={{ fontSize: 12, color: C.muted }}>
                         Target: <strong style={{ color: C.navy }}>{a.target_date}</strong>
-                        {spotsList.length > 0 && <span> · {spotsList.map((s: any) => `${s.spotName || s.name} ${s.wind}kn ${s.dir}`).join(", ")}</span>}
+                        {spotsList.length > 0 && <span> · {(spotsList as AlertSpot[]).map(s => `${s.spotName || s.name} ${s.wind}kn ${s.dir}`).join(", ")}</span>}
                       </div>
                       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                         <span style={{ fontSize: 10, color: a.delivered_push ? C.green : C.sub }}>📱 Push: {a.delivered_push ? "✓" : "—"}</span>
@@ -836,7 +897,7 @@ export default function AdminPage() {
                           await sbPatch(`users?id=eq.${userDetail.id}`, { name: null, min_wind_speed: null, max_wind_speed: null, welcome_shown: false });
                           setUserSpots([]); setUserPrefs(null); setEditName(""); setEditWindMin(12); setEditWindMax(28); setEditWelcome(false);
                           setUserMsg("✓ Alles verwijderd — gebruiker kan opnieuw onboarden");
-                        } catch(e: any) { setUserMsg("❌ Fout: " + e.message); }
+                        } catch(e) { setUserMsg("❌ Fout: " + getErrorMessage(e)); }
                         setUserSaving(false);
                       }} style={{ padding: "7px 14px", background: "#FEF2F2", border: "2px solid #DC2626", borderRadius: 8, fontSize: 12, fontWeight: 700, color: "#DC2626", cursor: "pointer" }}>
                         🗑️ Verwijder alles (onboarding reset)
@@ -849,7 +910,7 @@ export default function AdminPage() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
                       {userSpots.length === 0 ? (
                         <span style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>Geen spots</span>
-                      ) : userSpots.map((us: any) => (
+                      ) : userSpots.map(us => (
                         <div key={us.spot_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: C.card, borderRadius: 8 }}>
                           <span style={{ flex: 1, fontSize: 12, color: C.navy }}>{us.spots?.display_name || `Spot #${us.spot_id}`}</span>
                           <button onClick={async () => {
@@ -868,7 +929,7 @@ export default function AdminPage() {
                         if (!spotId) return;
                         await sbPost2(`user_spots`, { user_id: userDetail.id, spot_id: spotId });
                         const spot = allSpots.find(s => s.id === spotId);
-                        setUserSpots(prev => [...prev, { spot_id: spotId, spots: { display_name: spot?.display_name } }]);
+                        setUserSpots(prev => [...prev, { spot_id: spotId, spots: { display_name: spot?.display_name ?? '' } }]);
                         setUserMsg("✓ Spot toegevoegd");
                         e.target.value = "";
                       }} style={{ flex: 1, padding: "8px 12px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 13, color: C.navy, outline: "none" }}>
@@ -894,7 +955,7 @@ export default function AdminPage() {
                       </div>
                       <button onClick={async () => {
                         await sbPatch(`alert_preferences?user_id=eq.${userDetail.id}`, { available_mon: false, available_tue: false, available_wed: false, available_thu: false, available_fri: false, available_sat: true, available_sun: true });
-                        setUserPrefs((p: any) => ({ ...p, available_mon: false, available_tue: false, available_wed: false, available_thu: false, available_fri: false, available_sat: true, available_sun: true }));
+                        setUserPrefs(p => ({ ...p, available_mon: false, available_tue: false, available_wed: false, available_thu: false, available_fri: false, available_sat: true, available_sun: true }));
                         setUserMsg("✓ Beschikbaarheid naar default (weekenden)");
                       }} style={{ padding: "6px 14px", background: C.creamDark, color: C.sub, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                         Reset naar weekenden
