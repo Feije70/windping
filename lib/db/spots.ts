@@ -25,7 +25,7 @@ export async function getSpotsByIds(
 ): Promise<DbSpot[]> {
   if (!ids.length) return [];
   const rows = await dbGet<DbSpot[]>(
-    `spots?id=in.(${ids.join(",")})&select=id,display_name,latitude,longitude,lat,lng,spot_type,level,min_wind,max_wind,good_directions,tips,country,region,is_private,active,created_by`,
+    `spots?id=in.(${ids.join(",")})&select=id,display_name,latitude,longitude,good_directions,spot_type,level,min_wind,max_wind,tips,country,region`,
     token
   );
   return rows ?? [];
@@ -37,7 +37,7 @@ export async function getSpotById(
   token: string
 ): Promise<DbSpot | null> {
   const rows = await dbGet<DbSpot[]>(
-    `spots?id=eq.${spotId}&select=id,display_name,latitude,longitude,lat,lng,spot_type,level,min_wind,max_wind,good_directions,tips,country,region,is_private,active,created_by&limit=1`,
+    `spots?id=eq.${spotId}&select=id,display_name,latitude,longitude,good_directions,spot_type,level,min_wind,max_wind,tips,country,region&limit=1`,
     token
   );
   return rows?.[0] ?? null;
