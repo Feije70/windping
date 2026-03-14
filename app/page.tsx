@@ -6,14 +6,38 @@ import { colors as C, fonts } from "@/lib/design";
 import { Icons } from "@/components/Icons";
 import NavBar from "@/components/NavBar";
 import HomeSpotIcon from "@/components/HomeSpotIcon";
-import Prikbord from "@/components/Prikbord";
+import Prikbord, { PrikbordPost } from "@/components/Prikbord";
 import { Logo } from "@/components/Logo";
 import { WPing } from "@/components/WPing";
 import { getValidToken, clearAuth, SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from "@/lib/supabase";
 import { RATINGS, RATING_COLORS, WIND_FEELS } from "@/lib/constants/session";
 import { RatingIcon, PropIcon, WindFeelIcon } from "@/app/components/SessionIcons";
 import { LandingPage } from "@/app/components/LandingPage";
-import { useHomepage } from "@/lib/hooks/useHomepage";
+import { useHomepage, type SpotSummary } from "@/lib/hooks/useHomepage";
+import type { BundledFeedItem, FeedSpot, FeedDowngradeSpot } from "@/lib/utils/feedUtils";
+import type { DbSpotPost } from "@/lib/types";
+import type React from "react";
+
+/* ── Lokale interface voor vriendenactiviteit (camelCase van API) ── */
+interface FeedFriendActivity {
+  id: number;
+  friendId: number;
+  friendName: string;
+  spotId: number;
+  spotName: string;
+  sessionDate: string;
+  createdAt: string;
+  status: string;
+  rating: number | null;
+  gearType: string | null;
+  gearSize: string | null;
+  photoUrl: string | null;
+  photoCrop: string | null;
+  forecastWind: number | null;
+  forecastDir: string | null;
+  notes: string | null;
+  isNew?: boolean;
+}
 
 const h = { fontFamily: fonts.heading };
 const OM_BASE = "https://api.open-meteo.com/v1/forecast";
@@ -37,7 +61,7 @@ function Dashboard() {
   } = useHomepage();
 
   // Spot picker bottomsheet (bij meerdere go-spots)
-  const [pickerSpots, setPickerSpots] = useState<any[] | null>(null);
+  const [pickerSpots, setPickerSpots] = useState<FeedSpot[] | null>(null);
   const [pickerCallback, setPickerCallback] = useState<((spotName: string) => void) | null>(null);
 
   // Handmatige sessie modal
@@ -68,7 +92,7 @@ function Dashboard() {
   const [manualWeatherLoading, setManualWeatherLoading] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
   const [savedSessionId, setSavedSessionId] = useState<number | null>(null);
-  const [manualStep, setManualStep] = useState<"pick" | 1 | 2 | 3 | 4 | 5 | 6>("pick");
+  const [manualStep, setManualStep] = useState<"pick" | "saved" | 1 | 2 | 3 | 4 | 5 | 6>("pick");
   const [manualRating, setManualRating] = useState<number | null>(null);
   const [manualPropulsion, setManualPropulsion] = useState<"kite" | "wing" | "zeil" | null>(null);
   const [manualBoardOrFoil, setManualBoardOrFoil] = useState<"board" | "foil" | null>(null);
@@ -141,7 +165,7 @@ function Dashboard() {
     setManualError("");
     try {
       const token = await getValidToken();
-      const body: any = {
+      const body: Record<string, unknown> = {
         created_by: userId,
         spot_id: manualSpotId,
         session_date: manualDate,
@@ -167,7 +191,7 @@ function Dashboard() {
       const savedData = await saveRes.json();
       const sessionId = savedData?.[0]?.id || null;
       setSavedSessionId(sessionId);
-      setManualStep("saved" as any);
+      setManualStep("saved");
       loadData();
     } catch { setManualError("Opslaan mislukt, probeer opnieuw."); }
     setManualSaving(false);
@@ -199,7 +223,7 @@ function Dashboard() {
             {loading ? "Even kijken…" :
               goSpots.length > 0
                 ? <><span style={{ fontWeight: 700, color: C.green }}>{goSpots.length > 1 ? `${goSpots.length} spots` : goSpots[0].name}</span> {goSpots.length > 1 ? "zijn" : "is"} nu Go — <a href="/alert" style={{ color: C.sky, textDecoration: "none", fontWeight: 600 }}>bekijk je alert →</a></>
-                : feedItems.some((i: any) => i.alertType === "go")
+                : feedItems.some((i: BundledFeedItem) => i.alertType === "go")
                   ? <><span style={{ fontWeight: 600, color: C.navy }}>Er komen Go-dagen aan</span> — check je alerts</>
                   : spots.length > 0 ? "Vandaag even geen wind op je spots"
                   : "Voeg spots toe om te beginnen"}
@@ -257,8 +281,8 @@ function Dashboard() {
               { label: "Spot +", href: "/add-spot", color: C.amber, icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.amber} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 1 1 16 0z"/><path d="M12 7v6M9 10h6"/></svg> },
               { label: paused ? "Gepauzeerd" : "Pauzeer", onClick: () => setShowPause(!showPause), color: showPause || paused ? C.gold : C.muted, icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={showPause || paused ? C.gold : C.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg> },
               { label: "Instellingen", href: "/voorkeuren", color: C.sub, icon: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
-            ].map((a: any) => {
-              const style: any = { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 4px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, cursor: "pointer", textDecoration: "none", boxShadow: C.cardShadow };
+            ].map((a) => {
+              const style: React.CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 5, padding: "10px 4px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, cursor: "pointer", textDecoration: "none", boxShadow: C.cardShadow };
               const label = <span style={{ fontSize: 10, fontWeight: 600, color: a.color, textAlign: "center" as const, lineHeight: 1.2 }}>{a.label}</span>;
               if (a.href) return <Link key={a.label} href={a.href} style={style}>{a.icon}{label}</Link>;
               return <button key={a.label} onClick={a.onClick} style={{ ...style, fontFamily: "inherit" }}>{a.icon}{label}</button>;
@@ -312,8 +336,8 @@ function Dashboard() {
               </div>
             </div>
           ) :
-            feedItems.map((item: any) => {
-              const isEpic = item.goSpots.some((s: any) => s.wind >= 25);
+            feedItems.map((item: BundledFeedItem) => {
+              const isEpic = item.goSpots.some((s: FeedSpot) => s.wind >= 25);
               return (
                 <div key={item.targetDate} style={{ background: C.card, borderRadius: 18, overflow: "hidden", boxShadow: C.cardShadow, marginBottom: 12, border: `1.5px solid ${C.cardBorder}` }}>
                   <div style={{ background: "linear-gradient(135deg, #08303F 0%, #0E5470 45%, #1A7A9E 100%)", padding: "13px 16px 11px", position: "relative", overflow: "hidden" }}>
@@ -334,11 +358,11 @@ function Dashboard() {
                         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", marginTop: 3 }}>
                           {item.goSpots.length === 1
                             ? `${item.goSpots[0].dir}${item.goSpots[0].gust > 0 ? ` · gusts ${item.goSpots[0].gust}kn` : ""}`
-                            : item.goSpots.map((s: any) => s.spotName).join(" · ")}
+                            : item.goSpots.map((s: FeedSpot) => s.spotName).join(" · ")}
                         </div>
                       </div>
                       <div style={{ flexShrink: 0, textAlign: "center" }}>
-                        <div style={{ fontSize: 38, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-2px" }}>{Math.max(...item.goSpots.map((s: any) => s.wind))}</div>
+                        <div style={{ fontSize: 38, fontWeight: 900, color: "#fff", lineHeight: 1, letterSpacing: "-2px" }}>{Math.max(...item.goSpots.map((s: FeedSpot) => s.wind))}</div>
                         <div style={{ fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.55)", letterSpacing: "1px", marginTop: 1 }}>KNOPEN</div>
                       </div>
                     </div>
@@ -347,7 +371,7 @@ function Dashboard() {
                   <div style={{ padding: "11px 14px 12px" }}>
                     {item.goSpots.length > 1 && (
                       <div style={{ marginBottom: 10 }}>
-                        {item.goSpots.map((s: any) => (
+                        {item.goSpots.map((s: FeedSpot) => (
                           <div key={s.spotName} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${C.cardBorder}` }}>
                             <span style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{s.spotName}</span>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -360,7 +384,7 @@ function Dashboard() {
                     )}
 
                     {(() => {
-                      const goingSpot = item.goSpots.find((s: any) => goingSessions[`${s.spotId}_${item.targetDate}`]);
+                      const goingSpot = item.goSpots.find((s: FeedSpot) => goingSessions[`${s.spotId}_${item.targetDate}`]);
                       const session = goingSpot ? goingSessions[`${goingSpot.spotId}_${item.targetDate}`] : null;
                       if (session?.status === "going") {
                         return (
@@ -382,7 +406,7 @@ function Dashboard() {
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Ik ga!
                             </a>
                           ) : (
-                            <a href="#" onClick={(e) => { e.preventDefault(); setPickerSpots(item.goSpots); setPickerCallback(() => (spotName: string) => { const s = item.goSpots.find((x: any) => x.spotName === spotName); if (s) handleIkGa(s.spotName, s.spotId, item.targetDate, s.wind, s.gust, s.dir); }); }} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", cursor: "pointer" }}>
+                            <a href="#" onClick={(e) => { e.preventDefault(); setPickerSpots(item.goSpots); setPickerCallback(() => (spotName: string) => { const s = item.goSpots.find((x: FeedSpot) => x.spotName === spotName); if (s) handleIkGa(s.spotName, s.spotId, item.targetDate, s.wind, s.gust, s.dir); }); }} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px", background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", border: "none", borderRadius: 10, fontSize: 13, fontWeight: 700, color: "#fff", textDecoration: "none", cursor: "pointer" }}>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Ik ga!
                             </a>
                           )}
@@ -399,7 +423,7 @@ function Dashboard() {
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#DC2626" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7 7 7-7"/></svg>
                           <span style={{ fontSize: 11, fontWeight: 700, color: "#DC2626" }}>Alert ingetrokken</span>
                         </div>
-                        <div style={{ fontSize: 11, color: "#EF4444" }}>{item.downgradeSpots.map((s: any) => `${s.spotName} ${s.wind}kn`).join(" · ")}</div>
+                        <div style={{ fontSize: 11, color: "#EF4444" }}>{item.downgradeSpots.map((s: FeedDowngradeSpot) => `${s.spotName} ${s.wind}kn`).join(" · ")}</div>
                       </div>
                     )}
                   </div>
@@ -431,7 +455,7 @@ function Dashboard() {
             </div>
           ) : (
             <>
-              {friendActivity.slice(0, 2).map((a: any) => {
+              {(friendActivity as unknown as FeedFriendActivity[]).slice(0, 2).map((a: FeedFriendActivity) => {
                 const ratingLabels: Record<number, string> = { 1: "Shit", 2: "Mwah", 3: "Oké", 4: "Lekker!", 5: "EPIC!" };
                 const ratingColors: Record<number, string> = { 1: C.terra, 2: C.terra, 3: C.gold, 4: C.sky, 5: C.green };
                 return (
@@ -481,7 +505,7 @@ function Dashboard() {
               </div>
               <a href={`/spot?id=${homeSpotId}`} style={{ fontSize: 12, fontWeight: 700, color: C.sky, textDecoration: "none" }}>Bekijk spot →</a>
             </div>
-            <Prikbord spotId={homeSpotId} spotName={homeSpotName} userId={userId} userName={userName} posts={homeSpotPosts} onPostAdded={(post) => setHomeSpotPosts((prev: any[]) => [post, ...prev])} compact={true} />
+            <Prikbord spotId={homeSpotId} spotName={homeSpotName} userId={userId} userName={userName} posts={homeSpotPosts} onPostAdded={(post: PrikbordPost) => setHomeSpotPosts(prev => [post as unknown as DbSpotPost, ...prev])} compact={true} />
           </div>
         )}
 
@@ -503,10 +527,10 @@ function Dashboard() {
                   <div style={{ fontWeight: 700, color: C.navy, marginBottom: 6 }}>Welkom bij WindPing, {userName}! 🤙</div>
                   <div style={{ marginBottom: 10 }}>Fijn dat je er bent. Dit kun je allemaal doen:</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                    {[[Icons.wind, "Check", "zie de huidige wind op al je spots"], [Icons.mapPin, "Spots", "voeg je favoriete spots toe"], [Icons.calendar, "Sessies", "log je sessies en bekijk je stats"], [Icons.users, "Vrienden", "nodig je maten uit en deel sessies"], [Icons.bell, "Alerts", "ik ping je automatisch als het waait"]].map(([icon, title, desc]: any) => (
-                      <div key={title} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                        <span style={{ flexShrink: 0 }}>{icon({ color: C.sky, size: 14 })}</span>
-                        <span><strong>{title}</strong> — {desc}</span>
+                    {[[Icons.wind, "Check", "zie de huidige wind op al je spots"], [Icons.mapPin, "Spots", "voeg je favoriete spots toe"], [Icons.calendar, "Sessies", "log je sessies en bekijk je stats"], [Icons.users, "Vrienden", "nodig je maten uit en deel sessies"], [Icons.bell, "Alerts", "ik ping je automatisch als het waait"]].map(([iconFn, title, desc], idx) => (
+                      <div key={idx} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                        <span style={{ flexShrink: 0 }}>{(iconFn as (p: {color: string; size: number}) => React.ReactNode)({ color: C.sky, size: 14 })}</span>
+                        <span><strong>{title as string}</strong> — {desc as string}</span>
                       </div>
                     ))}
                   </div>
@@ -564,7 +588,7 @@ function Dashboard() {
                 <div style={{ fontSize: 18, fontWeight: 800, color: C.navy }}>Kies je spot</div>
               </div>
               <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 8 }}>
-                {pickerSpots.map((s: any) => (
+                {pickerSpots.map((s: FeedSpot) => (
                   <button key={s.spotName} onClick={() => { if (pickerCallback) pickerCallback(s.spotName); setPickerSpots(null); }} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", background: C.card, border: `1.5px solid ${C.cardBorder}`, borderRadius: 14, cursor: "pointer" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, #1A5F7A, #2E8FAE)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -617,7 +641,7 @@ function Dashboard() {
 
                 {manualError && <div style={{ padding: "10px 14px", background: "#FEF2F2", border: "1px solid #FCA5A5", borderRadius: 10, fontSize: 12, color: "#DC2626", marginBottom: 16 }}>{manualError}</div>}
 
-                {(manualStep as any) === "saved" && (
+                {manualStep === "saved" && (
                   <div style={{ textAlign: "center", padding: "8px 0 16px" }}>
                     <div style={{ fontSize: 48, marginBottom: 12 }}>🤙</div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: C.navy, marginBottom: 6 }}>Sessie gelogd!</div>
@@ -632,8 +656,8 @@ function Dashboard() {
                           const wind = manualWeather ? `${manualWeather.wind}kn ${manualWeather.dirStr}` : "";
                           const text = `🤙 Net een sessie gelogd op ${spotName}${wind ? ` · ${wind}` : ""} — bekijk hem op WindPing!`;
                           const url = `https://www.windping.com/sessie/${savedSessionId}`;
-                          if ((navigator as any).share) { (navigator as any).share({ title: "WindPing sessie", text, url }).catch(() => {}); }
-                          else { navigator.clipboard.writeText(`${text} ${url}`); }
+                          if ("share" in navigator) { (navigator as Navigator & { share: (data: { title: string; text: string; url: string }) => Promise<void> }).share({ title: "WindPing sessie", text, url }).catch(() => {}); }
+                          else { void window.navigator.clipboard?.writeText(`${text} ${url}`); }
                         }} style={{ width: "100%", padding: "14px", background: `linear-gradient(135deg, ${C.sky}, ${C.skyDark})`, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>Deel sessie 🤙</button>
                         <a href={`https://wa.me/?text=${encodeURIComponent(`🤙 Net een sessie gelogd op ${allSpots.find(s => s.id === manualSpotId)?.name || "een spot"}${manualWeather ? ` · ${manualWeather.wind}kn ${manualWeather.dirStr}` : ""} — https://www.windping.com/sessie/${savedSessionId}`)}`} target="_blank" rel="noopener noreferrer" style={{ display: "block", width: "100%", padding: "14px", background: "#25D366", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 700, cursor: "pointer", textDecoration: "none", boxSizing: "border-box" }}>Stuur via WhatsApp</a>
                       </div>
