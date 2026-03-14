@@ -9,15 +9,80 @@ const CRON_KEY = "WindPing-cron-key-2026";
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "feijekooistra@hotmail.com";
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+/* ── Lokale interfaces ── */
+
+interface PromptRow {
+  category: string;
+  prompt_text: string;
+}
+
+interface SpotRow {
+  id: number;
+  display_name: string;
+  region: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  spot_type: string | null;
+  country: string | null;
+}
+
+interface AnthropicBlock {
+  type: string;
+  id?: string;
+  name?: string;
+  input?: { query?: string };
+  text?: string;
+}
+
+interface AnthropicMessage {
+  role: "user" | "assistant";
+  content: string | AnthropicBlock[];
+}
+
+interface ScanResult {
+  categories: Record<string, Record<string, string | null>>;
+  confidence: number;
+  sources: string[];
+  missing: string[];
+}
+
+interface EnrichItem {
+  spot_id: number;
+  news_score: number | null;
+  news_push_blocked: boolean;
+  categories: Record<string, Record<string, string | null>> | null;
+}
+
+interface SpotItem {
+  id: number;
+  display_name: string;
+  country: string | null;
+}
+
+interface CronResultItem {
+  job_id: number;
+  spot_id: number;
+  spot_name?: string;
+  job_type?: string;
+  status: string;
+  error?: string;
+}
+
 // Strip <cite index='...'> tags uit alle string values recursief
-function stripCiteTags(obj: any): any {
+function stripCiteTags(obj: unknown): unknown {
   if (typeof obj === "string") {
     return obj.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, "$1").trim();
   }
   if (Array.isArray(obj)) return obj.map(stripCiteTags);
   if (obj && typeof obj === "object") {
-    const result: any = {};
-    for (const key of Object.keys(obj)) result[key] = stripCiteTags(obj[key]);
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(obj as Record<string, unknown>)) {
+      result[key] = stripCiteTags((obj as Record<string, unknown>)[key]);
+    }
     return result;
   }
   return obj;
@@ -31,21 +96,16 @@ const REGION_LANG: Record<string, string> = {
   Austria: "de", Switzerland: "de", Latvia: "lv", Romania: "ro",
   Hungary: "hu", Montenegro: "sr", Azores: "pt", Wales: "en",
   England: "en", Scotland: "en",
-  // Zuid-Amerika
   Brazil: "pt", Argentina: "es", Chile: "es", Colombia: "es",
   Venezuela: "es", Peru: "es", "Costa Rica": "es", Mexico: "es",
   "Dominican Republic": "es",
-  // Afrika
   "South Africa": "en", Kenya: "en", Mozambique: "pt",
   Madagascar: "fr", Senegal: "fr", Tanzania: "en", Mauritius: "fr",
   "Cape Verde": "pt",
-  // Azië & Pacific
   Indonesia: "id", Philippines: "en", Malaysia: "ms",
   "Sri Lanka": "en", Vietnam: "vi", Thailand: "th",
   Japan: "ja", Taiwan: "zh", India: "en",
-  // Midden-Oosten
   Oman: "ar", UAE: "ar",
-  // Engelstalig
   Australia: "en", "New Zealand": "en", USA: "en", Canada: "en",
   Egypt: "ar",
 };
@@ -102,10 +162,10 @@ async function loadPrompts(): Promise<Record<string, string>> {
   try {
     const res = await supabaseFetch("enrichment_prompts?select=category,prompt_text");
     if (!res.ok) return DEFAULT_PROMPTS;
-    const rows = await res.json();
+    const rows = await res.json() as PromptRow[];
     if (!Array.isArray(rows) || rows.length === 0) return DEFAULT_PROMPTS;
     const merged = { ...DEFAULT_PROMPTS };
-    rows.forEach((r: any) => {
+    rows.forEach(r => {
       if (r.category && r.prompt_text) merged[r.category] = r.prompt_text;
     });
     return merged;
@@ -114,13 +174,8 @@ async function loadPrompts(): Promise<Record<string, string>> {
   }
 }
 
-async function scanSpot(spot: any, prompts: Record<string, string>): Promise<{
-  categories: any;
-  confidence: number;
-  sources: string[];
-  missing: string[];
-}> {
-  const spotLang = getLangForSpot(spot.region);
+async function scanSpot(spot: SpotRow, prompts: Record<string, string>): Promise<ScanResult> {
+  const spotLang = getLangForSpot(spot.region ?? undefined);
   const spotLangName = LANG_NAME[spotLang] || "English";
   const needsBothLangs = spotLang !== "en";
 
@@ -175,7 +230,7 @@ Respond with JSON in exactly this structure:
 ${jsonStructure}`;
 
   const tools = [{ type: "web_search_20250305", name: "web_search" }];
-  let messages: any[] = [{ role: "user", content: prompt }];
+  let messages: AnthropicMessage[] = [{ role: "user", content: prompt }];
 
   const res1 = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -198,22 +253,22 @@ ${jsonStructure}`;
     throw new Error(`Anthropic API fout: ${res1.status} — ${err}`);
   }
 
-  const data1 = await res1.json();
+  const data1 = await res1.json() as { stop_reason: string; content: AnthropicBlock[] };
   let finalData = data1;
 
   if (data1.stop_reason === "tool_use") {
-    const toolUseBlocks = data1.content.filter((b: any) => b.type === "tool_use");
+    const toolUseBlocks = data1.content.filter(b => b.type === "tool_use");
 
     messages = [
       { role: "user", content: prompt },
       { role: "assistant", content: data1.content },
       {
         role: "user",
-        content: toolUseBlocks.map((b: any) => ({
+        content: toolUseBlocks.map(b => ({
           type: "tool_result",
           tool_use_id: b.id,
           content: `Search results for "${b.input?.query || ""}" have been processed.`,
-        })),
+        })) as unknown as AnthropicBlock[],
       },
     ];
 
@@ -238,11 +293,11 @@ ${jsonStructure}`;
       throw new Error(`Anthropic API fout ronde 2: ${res2.status} — ${err}`);
     }
 
-    finalData = await res2.json();
+    finalData = await res2.json() as { stop_reason: string; content: AnthropicBlock[] };
   }
 
-  const textBlocks = finalData.content?.filter((b: any) => b.type === "text") || [];
-  const fullText = textBlocks.map((b: any) => b.text).join("");
+  const textBlocks = finalData.content?.filter(b => b.type === "text") || [];
+  const fullText = textBlocks.map(b => b.text ?? "").join("");
   const cleaned = fullText.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
 
@@ -250,15 +305,13 @@ ${jsonStructure}`;
     throw new Error(`Geen JSON in response. Raw: ${fullText.slice(0, 200)}`);
   }
 
-  const parsed = JSON.parse(jsonMatch[0]);
+  const parsed = JSON.parse(jsonMatch[0]) as ScanResult;
 
-  // Valideer taallagen — als beide vereist zijn maar lokale taal ontbreekt, gooi error
-  // De job wordt dan automatisch opnieuw opgepakt door de cron
   if (needsBothLangs && parsed.categories && !parsed.categories[spotLang]) {
     throw new Error(`Taallaag "${spotLang}" ontbreekt in response — job wordt opnieuw ingepland`);
   }
 
-  return stripCiteTags(parsed);
+  return stripCiteTags(parsed) as ScanResult;
 }
 
 async function scoreNews(newsText: string, spotName: string): Promise<number> {
@@ -281,7 +334,7 @@ async function scoreNews(newsText: string, spotName: string): Promise<number> {
       }),
     });
     if (!res.ok) return 5;
-    const data = await res.json();
+    const data = await res.json() as { content: { text: string }[] };
     const score = parseInt((data.content?.[0]?.text || "5").replace(/\D/g, ""), 10);
     return isNaN(score) ? 5 : Math.min(10, Math.max(0, score));
   } catch {
@@ -289,9 +342,9 @@ async function scoreNews(newsText: string, spotName: string): Promise<number> {
   }
 }
 
-async function saveEnrichment(spotId: number, result: any, jobType: string = "full_scan", spotName: string = "") {
+async function saveEnrichment(spotId: number, result: ScanResult, jobType = "full_scan", spotName = "") {
   const now = new Date().toISOString();
-  const payload: any = {
+  const payload: Record<string, unknown> = {
     spot_id: spotId,
     categories: result.categories,
     confidence: result.confidence,
@@ -304,8 +357,8 @@ async function saveEnrichment(spotId: number, result: any, jobType: string = "fu
   if (jobType === "news_update") {
     const cats = result.categories || {};
     const layer = cats.nl || cats.en || cats;
-    const newsText = layer?.news || "";
-    payload.news_score = await scoreNews(newsText, spotName);
+    const newsText = (layer as Record<string, string | null>)?.news || "";
+    payload.news_score = await scoreNews(newsText ?? "", spotName);
     payload.news_push_blocked = false;
   }
 
@@ -330,26 +383,26 @@ async function sendNewsOverviewEmail() {
     const enrichRes = await supabaseFetch(
       `spot_enrichment?updated_at=gte.${today.toISOString()}&news_score=gte.1&select=spot_id,news_score,news_push_blocked,categories`
     );
-    const enrichData = await enrichRes.json();
+    const enrichData = await enrichRes.json() as EnrichItem[];
     if (!Array.isArray(enrichData) || enrichData.length === 0) return;
 
-    const spotIds = enrichData.map((e: any) => e.spot_id);
+    const spotIds = enrichData.map(e => e.spot_id);
     const spotsRes = await supabaseFetch(`spots?id=in.(${spotIds.join(",")})&select=id,display_name,country`);
-    const spotsData = await spotsRes.json();
-    const spotMap: Record<number, any> = {};
-    if (Array.isArray(spotsData)) spotsData.forEach((s: any) => { spotMap[s.id] = s; });
+    const spotsData = await spotsRes.json() as SpotItem[];
+    const spotMap: Record<number, SpotItem> = {};
+    if (Array.isArray(spotsData)) spotsData.forEach(s => { spotMap[s.id] = s; });
 
-    const pushCount = enrichData.filter((e: any) => (e.news_score || 0) >= 7 && !e.news_push_blocked).length;
+    const pushCount = enrichData.filter(e => (e.news_score || 0) >= 7 && !e.news_push_blocked).length;
 
     const rows = enrichData
-      .sort((a: any, b: any) => (b.news_score || 0) - (a.news_score || 0))
-      .map((e: any) => {
+      .sort((a, b) => (b.news_score || 0) - (a.news_score || 0))
+      .map(e => {
         const spot = spotMap[e.spot_id];
         const spotName = spot?.display_name || `Spot #${e.spot_id}`;
         const isNL = spot?.country === "NL";
         const cats = e.categories || {};
         const layer = isNL ? (cats.nl || cats.en || cats) : (cats.en || cats);
-        const newsText = layer?.news || "—";
+        const newsText = (layer as Record<string, string | null>)?.news || "—";
         const score = e.news_score || 0;
         const willPush = score >= 7 && !e.news_push_blocked;
         const scoreColor = score >= 7 ? "#166534" : score >= 5 ? "#92400E" : "#6B7280";
@@ -389,13 +442,13 @@ export async function GET(req: NextRequest) {
     const jobsRes = await supabaseFetch(
       "enrichment_jobs?status=eq.pending&order=created_at.asc&limit=3&select=id,spot_id,job_type"
     );
-    const jobs = await jobsRes.json();
+    const jobs = await jobsRes.json() as { id: number; spot_id: number; job_type: string }[];
 
     if (!Array.isArray(jobs) || jobs.length === 0) {
       return NextResponse.json({ processed: 0, message: "Geen pending jobs" });
     }
 
-    const results: any[] = [];
+    const results: CronResultItem[] = [];
 
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
@@ -409,7 +462,7 @@ export async function GET(req: NextRequest) {
       const spotRes = await supabaseFetch(
         `spots?id=eq.${job.spot_id}&select=id,display_name,region,latitude,longitude,spot_type,country`
       );
-      const spots = await spotRes.json();
+      const spots = await spotRes.json() as SpotRow[];
       const spot = spots?.[0];
 
       if (!spot) {
@@ -431,12 +484,12 @@ export async function GET(req: NextRequest) {
         });
 
         results.push({ job_id: job.id, spot_id: job.spot_id, spot_name: spot.display_name, job_type: jobType, status: "done" });
-      } catch (err: any) {
+      } catch (err) {
         await supabaseFetch(`enrichment_jobs?id=eq.${job.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ status: "error", error_msg: err.message, finished_at: new Date().toISOString() }),
+          body: JSON.stringify({ status: "error", error_msg: getErrorMessage(err), finished_at: new Date().toISOString() }),
         });
-        results.push({ job_id: job.id, spot_id: job.spot_id, spot_name: spot.display_name, job_type: jobType, status: "error", error: err.message });
+        results.push({ job_id: job.id, spot_id: job.spot_id, spot_name: spot.display_name, job_type: jobType, status: "error", error: getErrorMessage(err) });
       }
 
       if (i < jobs.length - 1) {
@@ -444,13 +497,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Stuur overzicht-email als alle news_update jobs klaar zijn
-    const hadNewsJobs = results.some((r: any) => r.job_type === "news_update");
+    const hadNewsJobs = results.some(r => r.job_type === "news_update");
     if (hadNewsJobs) {
       const pendingRes = await supabaseFetch(
         "enrichment_jobs?status=in.(pending,running)&job_type=eq.news_update&select=id&limit=1"
       );
-      const pendingJobs = await pendingRes.json();
+      const pendingJobs = await pendingRes.json() as { id: number }[];
       if (!Array.isArray(pendingJobs) || pendingJobs.length === 0) {
         await sendNewsOverviewEmail();
       }
@@ -458,7 +510,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ processed: results.length, results });
 
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
