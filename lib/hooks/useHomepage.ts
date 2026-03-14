@@ -1,26 +1,42 @@
-/* ── lib/hooks/useHomepage.ts ─────────────────────────────────────────────────
+/* ── lib/hooks/useHomepage.ts ─────────────────────────────────
    Data fetching hook voor de homepage Dashboard component.
-   Bevat alle state, data fetching en handlers.
-   Dashboard zelf wordt een pure render component.
+   Gebruikt lib/db/ voor alle Supabase queries.
 ──────────────────────────────────────────────────────────── */
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { getValidToken, SUPABASE_URL, SUPABASE_ANON_KEY, supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { bundleAlertsByDate, BundledFeedItem } from "@/lib/utils/feedUtils";
 import { SessionStats, RecentSession } from "@/app/components/SessionStatsSection";
+import {
+  getUserByAuthId,
+  updateUser,
+  getAlertPausedUntil,
+  needsOnboarding,
+  getUserSpotIds,
+  getSpotsByIds,
+  getSpotNames,
+  getAllPublicSpots,
+  getIdealConditions,
+  getSpotPosts,
+  getRecentAlertHistory,
+  getUserSessions,
+  getUserStats,
+  createGoingSession,
+  deleteSession,
+} from "@/lib/db";
 import type {
   DbUser,
-  DbUserSpot,
   DbSpot,
   DbIdealConditions,
   DbSession,
   DbAlertHistory,
   DbSpotPost,
   FriendActivityItem,
+  SessionGoingRequest,
 } from "@/lib/types";
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface SpotSummary {
   id: number;
@@ -37,7 +53,7 @@ interface MapSpot {
   lng: number;
 }
 
-// ── Helpers (local to this hook) ─────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const OM_BASE = "https://api.open-meteo.com/v1/forecast";
 const DIRS_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"] as const;
@@ -46,31 +62,7 @@ function degToDir(deg: number): string {
   return DIRS_16[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
 }
 
-async function sbPatch(path: string, body: Record<string, unknown>): Promise<void> {
-  const token = await getValidToken();
-  await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    method: "PATCH",
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify(body),
-  });
-}
-
-async function sbGet<T>(path: string): Promise<T | null> {
-  const token = await getValidToken();
-  const headers: Record<string, string> = { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers });
-  if (!res.ok) throw new Error(`${res.status}`);
-  const text = await res.text();
-  return text ? JSON.parse(text) : null;
-}
-
-// ── Hook ─────────────────────────────────────────────────────────────────────
+// ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useHomepage() {
   const [userName, setUserName] = useState("");
@@ -104,26 +96,25 @@ export function useHomepage() {
       const email = session?.user?.email;
       if (!email) return;
       const authId = session?.user?.id;
+      const token = session?.access_token;
+      if (!authId || !token) return;
 
-      const users = await sbGet<Pick<DbUser, "id" | "name" | "min_wind_speed" | "max_wind_speed" | "welcome_shown" | "home_spot_id">[]>(
-        `users?auth_id=eq.${encodeURIComponent(authId || "")}&select=id,name,min_wind_speed,max_wind_speed,welcome_shown,home_spot_id`
-      );
-      if (!users?.length) return;
-      const user = users[0];
+      // 1. User laden
+      const user = await getUserByAuthId(authId, token);
+      if (!user) return;
       setUserName(user.name || email.split("@")[0]);
       setUserId(user.id);
 
       if (!user.welcome_shown) {
         setShowWelcome(true);
-        sbPatch(`users?id=eq.${user.id}`, { welcome_shown: true }).catch(() => {});
+        updateUser(user.id, { welcome_shown: true } as Partial<DbUser>, token).catch(() => {});
       }
 
+      // 2. Alerts gepauzeerd?
       try {
-        const pauseData = await sbGet<{ alerts_paused_until: string | null }[]>(
-          `user_settings?user_id=eq.${user.id}&select=alerts_paused_until`
-        );
-        if (pauseData?.[0]?.alerts_paused_until) {
-          const until = new Date(pauseData[0].alerts_paused_until);
+        const pausedUntil = await getAlertPausedUntil(user.id, token);
+        if (pausedUntil) {
+          const until = new Date(pausedUntil);
           if (until > new Date()) {
             setPaused(true);
             setPauseUntil(until.toLocaleDateString("nl-NL", { weekday: "short", day: "numeric", month: "short" }));
@@ -131,87 +122,80 @@ export function useHomepage() {
         }
       } catch {}
 
-      const userSpots = await sbGet<DbUserSpot[]>(`user_spots?user_id=eq.${user.id}&select=spot_id`);
+      // 3. User spots laden
+      const spotIds = await getUserSpotIds(user.id, token);
 
+      // 4. Onboarding check
       try {
-        const prefs = await sbGet<{ id: number }[]>(`alert_preferences?user_id=eq.${user.id}&select=id`);
-        const needsOnboarding = !user.name || !userSpots?.length || !prefs?.length;
-        if (needsOnboarding) { window.location.href = "/onboarding"; return; }
+        const onboarding = await needsOnboarding(user.id, user.name, token);
+        if (onboarding) { window.location.href = "/onboarding"; return; }
       } catch {}
 
-      if (!userSpots?.length) { setLoading(false); return; }
-      const ids = userSpots.map(x => x.spot_id);
+      if (!spotIds.length) { setLoading(false); return; }
 
-      // Auto-set homespot
-      let currentHomeSpotId = user.home_spot_id || null;
-      if (!currentHomeSpotId && ids.length >= 1) {
-        currentHomeSpotId = ids[0];
-        try { await sbPatch(`users?id=eq.${user.id}`, { home_spot_id: currentHomeSpotId }); } catch {}
+      // 5. Home spot instellen
+      let currentHomeSpotId = user.home_spot_id ?? null;
+      if (!currentHomeSpotId && spotIds.length >= 1) {
+        currentHomeSpotId = spotIds[0];
+        try { await updateUser(user.id, { home_spot_id: currentHomeSpotId } as Partial<DbUser>, token); } catch {}
       }
       if (currentHomeSpotId) {
         setHomeSpotId(currentHomeSpotId);
         try {
-          const posts = await sbGet<DbSpotPost[]>(
-            `spot_posts?spot_id=eq.${currentHomeSpotId}&order=created_at.desc&limit=3&select=id,type,content,author_name,created_at,wind_speed,wind_dir`
-          );
-          setHomeSpotPosts(posts || []);
-          const spotInfo = await sbGet<Pick<DbSpot, "display_name">[]>(
-            `spots?id=eq.${currentHomeSpotId}&select=display_name`
-          );
-          if (spotInfo?.[0]) setHomeSpotName(spotInfo[0].display_name);
+          const [posts, spotInfo] = await Promise.all([
+            getSpotPosts(currentHomeSpotId, 3),
+            getSpotsByIds([currentHomeSpotId], token),
+          ]);
+          setHomeSpotPosts(posts);
+          if (spotInfo[0]) setHomeSpotName(spotInfo[0].display_name);
         } catch {}
       }
 
+      // 6. Spots + ideal conditions parallel laden
       type SpotWithCoords = Pick<DbSpot, "id" | "display_name" | "latitude" | "longitude" | "good_directions">;
       type IcForSpot = Pick<DbIdealConditions, "spot_id" | "wind_min" | "wind_max" | "directions">;
 
       const [spotsData, condsData] = await Promise.all([
-        sbGet<SpotWithCoords[]>(`spots?id=in.(${ids.join(",")})&select=id,display_name,latitude,longitude,good_directions`),
-        sbGet<IcForSpot[]>(`ideal_conditions?user_id=eq.${user.id}&spot_id=in.(${ids.join(",")})&select=spot_id,wind_min,wind_max,directions`),
+        getSpotsByIds(spotIds, token) as Promise<SpotWithCoords[]>,
+        getIdealConditions(user.id, spotIds, token) as Promise<IcForSpot[]>,
       ]);
 
+      // 7. Spot namen opbouwen
       const names: Record<number, string> = {};
-      (spotsData || []).forEach(s => { names[s.id] = s.display_name; });
+      (spotsData ?? []).forEach((s) => { names[s.id] = s.display_name; });
 
       try {
-        const sessRes2 = await sbGet<Pick<DbSession, "spot_id">[]>(
-          `sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=spot_id`
-        );
-        const sessionSpotIds = (sessRes2 || [])
-          .map(s => s.spot_id)
-          .filter(id => !names[id]);
-        if (sessionSpotIds.length > 0) {
-          const extraSpots = await sbGet<Pick<DbSpot, "id" | "display_name">[]>(
-            `spots?id=in.(${sessionSpotIds.join(",")})&select=id,display_name`
-          );
-          (extraSpots || []).forEach(s => { names[s.id] = s.display_name; });
+        const sessions = await getUserSessions(user.id, token, 10);
+        const missingIds = sessions.map((s) => s.spot_id).filter((id) => !names[id]);
+        if (missingIds.length > 0) {
+          const extra = await getSpotNames(missingIds, token);
+          Object.assign(names, extra);
         }
       } catch {}
 
       setSpotNames(names);
       setAllSpots(
-        (spotsData || [])
-          .filter(s => s.latitude && s.longitude)
-          .map(s => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude }))
+        (spotsData ?? [])
+          .filter((s) => s.latitude && s.longitude)
+          .map((s) => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude }))
       );
 
       try {
-        const publicSpots = await sbGet<SpotWithCoords[]>(
-          `spots?select=id,display_name,latitude,longitude&order=display_name.asc`
-        );
+        const publicSpots = await getAllPublicSpots(token);
         setAllPublicSpots(
-          (publicSpots || [])
-            .filter(s => s.latitude && s.longitude)
-            .map(s => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude }))
+          publicSpots
+            .filter((s) => s.latitude && s.longitude)
+            .map((s) => ({ id: s.id, name: s.display_name, lat: s.latitude, lng: s.longitude }))
         );
       } catch {}
 
+      // 8. Wind data ophalen per spot
       const conds: Record<number, IcForSpot> = {};
-      (condsData || []).forEach(ic => { conds[ic.spot_id] = ic; });
-      const valid = (spotsData || []).filter(s => s.latitude && s.longitude);
+      (condsData ?? []).forEach((ic) => { conds[ic.spot_id] = ic; });
+      const valid = (spotsData ?? []).filter((s) => s.latitude && s.longitude);
       const results: SpotSummary[] = [];
 
-      await Promise.all(valid.map(async s => {
+      await Promise.all(valid.map(async (s) => {
         try {
           const res = await fetch(
             `${OM_BASE}?latitude=${s.latitude}&longitude=${s.longitude}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn&timezone=auto`
@@ -241,50 +225,36 @@ export function useHomepage() {
       });
       setSpots(results);
 
+      // 9. Recente alerts
       try {
-        const since = new Date();
-        since.setDate(since.getDate() - 7);
-        const alertData = await sbGet<DbAlertHistory[]>(
-          `alert_history?user_id=eq.${user.id}&target_date=gte.${since.toISOString().split("T")[0]}&order=created_at.desc&limit=20`
-        );
-        setRecentAlerts(alertData || []);
+        const alertData = await getRecentAlertHistory(user.id, 7, token);
+        setRecentAlerts(alertData);
       } catch {}
 
+      // 10. Sessies + stats
       try {
-        const token = await getValidToken();
-        if (token) {
-          const sessRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${user.id}&order=id.desc&limit=10&select=id,spot_id,session_date,status,rating,gear_type,gear_size,forecast_wind,forecast_dir,photo_url,notes`,
-            { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
-          );
-          if (sessRes.ok) setRecentSessions(await sessRes.json() || []);
-
-          const statsRes = await fetch(
-            `${SUPABASE_URL}/rest/v1/user_stats?user_id=eq.${user.id}&select=*`,
-            { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` } }
-          );
-          if (statsRes.ok) {
-            const statsData = await statsRes.json();
-            if (statsData?.[0]) {
-              const s = statsData[0];
-              const badges: string[] = typeof s.badges === "string" ? JSON.parse(s.badges) : (s.badges || []);
-              setSessionStats({ ...s, badges });
-              setEarnedBadges(badges);
-            }
-          }
+        const [sessData, statsData] = await Promise.all([
+          getUserSessions(user.id, token, 10),
+          getUserStats(user.id, token),
+        ]);
+        setRecentSessions(sessData as RecentSession[]);
+        if (statsData) {
+          const badges: string[] = typeof statsData.badges === "string"
+            ? JSON.parse(statsData.badges)
+            : (statsData.badges || []);
+          setSessionStats({ ...statsData, badges });
+          setEarnedBadges(badges);
         }
       } catch (e) { console.error("Session stats load error:", e); }
 
+      // 11. Vriend activiteit
       try {
-        const token = await getValidToken();
-        if (token) {
-          const actRes = await fetch("/api/friends?type=activity", {
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
-          });
-          if (actRes.ok) {
-            const actData: { activity: FriendActivityItem[] } = await actRes.json();
-            setFriendActivity(actData.activity || []);
-          }
+        const actRes = await fetch("/api/friends?type=activity", {
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        });
+        if (actRes.ok) {
+          const actData: { activity: FriendActivityItem[] } = await actRes.json();
+          setFriendActivity(actData.activity || []);
         }
       } catch (e) { console.error("Friend activity load error:", e); }
 
@@ -294,7 +264,7 @@ export function useHomepage() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   const handleIkGa = async (
     spotName: string,
@@ -306,32 +276,22 @@ export function useHomepage() {
   ) => {
     if (!spotId || !date || !userId) return;
     const key = `${spotId}_${date}`;
-    const token = await getValidToken();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
     if (!token) return;
     try {
-      const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions`, {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          Prefer: "return=representation",
-        },
-        body: JSON.stringify({
-          created_by: userId,
-          spot_id: spotId,
-          session_date: date,
-          status: "going",
-          going_at: new Date().toISOString(),
-          forecast_wind: wind || 0,
-          forecast_gust: gust || 0,
-          forecast_dir: dir || "",
-        }),
-      });
-      if (res.ok) {
-        const data: DbSession[] = await res.json();
-        setGoingSessions(prev => ({ ...prev, [key]: data[0] }));
-      }
+      const request: SessionGoingRequest = {
+        created_by: userId,
+        spot_id: spotId,
+        session_date: date,
+        status: "going",
+        going_at: new Date().toISOString(),
+        forecast_wind: wind || 0,
+        forecast_gust: gust || 0,
+        forecast_dir: dir || "",
+      };
+      const newSession = await createGoingSession(request, token);
+      setGoingSessions((prev) => ({ ...prev, [key]: newSession }));
     } catch (e) { console.error("Ik ga error:", e); }
   };
 
@@ -339,26 +299,23 @@ export function useHomepage() {
     const key = `${spotId}_${date}`;
     const session = goingSessions[key];
     if (!session) return;
-    const token = await getValidToken();
+    const { data: { session: authSession } } = await supabase.auth.getSession();
+    const token = authSession?.access_token;
     if (!token) return;
     try {
-      await fetch(`${SUPABASE_URL}/rest/v1/sessions?id=eq.${session.id}`, {
-        method: "DELETE",
-        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
-      });
-      setGoingSessions(prev => { const next = { ...prev }; delete next[key]; return next; });
+      await deleteSession(session.id, token);
+      setGoingSessions((prev) => { const next = { ...prev }; delete next[key]; return next; });
     } catch {}
   };
 
-  // ── Computed ───────────────────────────────────────────────────────────────
+  // ── Computed ──────────────────────────────────────────────────────────────
 
-  const goSpots = spots.filter(s => s.match === "go");
+  const goSpots = spots.filter((s) => s.match === "go");
   const feedItems: BundledFeedItem[] = bundleAlertsByDate(recentAlerts);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Goedemorgen" : hour < 18 ? "Goedemiddag" : "Goedenavond";
 
   return {
-    // state
     userName, userId, spots, loading,
     paused, setPaused, showPause, setShowPause, pauseUntil, setPauseUntil,
     pauseOption, setPauseOption,
@@ -366,9 +323,7 @@ export function useHomepage() {
     friendActivity, showWelcome, allSpots, allPublicSpots,
     homeSpotId, homeSpotName, homeSpotPosts, setHomeSpotPosts,
     goingSessions,
-    // computed
     goSpots, feedItems, greeting,
-    // handlers
     loadData, handleIkGa, handleSkipHome,
   };
 }

@@ -21,6 +21,7 @@ export {
   getAllPublicSpots,
   getIdealConditions,
   getSpotPosts,
+  getSpotNames,
 } from "./spots";
 
 export {
@@ -30,6 +31,7 @@ export {
   createGoingSession,
   completeSession,
   deleteSession,
+  uploadSessionPhoto,
 } from "./sessions";
 
 export {

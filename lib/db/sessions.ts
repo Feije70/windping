@@ -4,6 +4,7 @@
 
 import type { DbSession, SessionCompleteUpdate, SessionGoingRequest } from "@/lib/types";
 import { dbGet, dbPost, dbPatch, dbDelete } from "./client";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 
 /** Haal voltooide sessies op voor een gebruiker */
 export async function getCompletedSessions(
@@ -75,4 +76,35 @@ export async function deleteSession(
   token: string
 ): Promise<void> {
   await dbDelete(`sessions?id=eq.${sessionId}`, token);
+}
+
+/** Upload een sessie foto naar Supabase Storage */
+export async function uploadSessionPhoto(
+  file: File,
+  userId: number,
+  sessionId: number,
+  token: string
+): Promise<string | null> {
+  try {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+    const path = `${userId}/${sessionId}_${Date.now()}.${ext}`;
+    const res = await fetch(
+      `${SUPABASE_URL}/storage/v1/object/session-photos/${path}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": file.type,
+          "x-upsert": "true",
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: file,
+      }
+    );
+    if (!res.ok) { console.error("Photo upload failed:", await res.text()); return null; }
+    return `${SUPABASE_URL}/storage/v1/object/public/session-photos/${path}`;
+  } catch (e) {
+    console.error("Photo upload error:", e);
+    return null;
+  }
 }

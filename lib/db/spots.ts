@@ -78,3 +78,18 @@ export async function getSpotPosts(
   );
   return rows ?? [];
 }
+
+/** Haal display_name op voor een lijst spot IDs (voor sessies buiten user_spots) */
+export async function getSpotNames(
+  spotIds: number[],
+  token: string
+): Promise<Record<number, string>> {
+  if (!spotIds.length) return {};
+  const rows = await dbGet<Pick<DbSpot, "id" | "display_name">[]>(
+    `spots?id=in.(${spotIds.join(",")})&select=id,display_name`,
+    token
+  );
+  const map: Record<number, string> = {};
+  (rows ?? []).forEach((s) => { map[s.id] = s.display_name; });
+  return map;
+}
