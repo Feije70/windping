@@ -6,7 +6,7 @@
 import Link from "next/link";
 import { colors as C } from "@/lib/design";
 import { RATING_COLORS } from "@/lib/constants/session";
-import { RatingIcon } from "@/components/SessionIcons";
+import { RatingIcon } from "@/app/components/SessionIcons";
 
 export interface SessionStats {
   total_sessions: number;
