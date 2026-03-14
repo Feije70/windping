@@ -9,6 +9,10 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://wxnpevwjga
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 const CRON_KEY = "WindPing-cron-key-2026";
 
+function getErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 async function sbFetch(path: string, options: RequestInit = {}) {
   return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
@@ -30,23 +34,23 @@ export async function GET(req: NextRequest) {
   try {
     // 1. Haal alle spot_ids op die minimaal 1 gebruiker hebben
     const res = await sbFetch("user_spots?select=spot_id");
-    const rows = await res.json();
+    const rows = await res.json() as { spot_id: number }[];
     if (!Array.isArray(rows)) {
       return NextResponse.json({ error: "user_spots ophalen mislukt" }, { status: 500 });
     }
 
-    const spotIds = [...new Set(rows.map((r: any) => r.spot_id))] as number[];
+    const spotIds = [...new Set(rows.map(r => r.spot_id))];
     if (spotIds.length === 0) {
       return NextResponse.json({ queued: 0, message: "Geen actieve spots gevonden" });
     }
 
-    // 2. Check welke spots al een enrichment record hebben — overige overslaan
+    // 2. Check welke spots al een enrichment record hebben
     const enrichRes = await sbFetch(
       `spot_enrichment?spot_id=in.(${spotIds.join(",")})&select=spot_id`
     );
-    const enrichData = await enrichRes.json();
+    const enrichData = await enrichRes.json() as { spot_id: number }[];
     const alreadyEnriched = new Set(
-      Array.isArray(enrichData) ? enrichData.map((r: any) => r.spot_id) : []
+      Array.isArray(enrichData) ? enrichData.map(r => r.spot_id) : []
     );
 
     const enrichedSpotIds = spotIds.filter(id => alreadyEnriched.has(id));
@@ -60,9 +64,9 @@ export async function GET(req: NextRequest) {
     const existingRes = await sbFetch(
       `enrichment_jobs?status=in.(pending,running)&job_type=eq.news_update&select=spot_id`
     );
-    const existingJobs = await existingRes.json();
+    const existingJobs = await existingRes.json() as { spot_id: number }[];
     const alreadyQueued = new Set(
-      Array.isArray(existingJobs) ? existingJobs.map((j: any) => j.spot_id) : []
+      Array.isArray(existingJobs) ? existingJobs.map(j => j.spot_id) : []
     );
 
     const toQueue = enrichedSpotIds.filter(id => !alreadyQueued.has(id));
@@ -95,7 +99,7 @@ export async function GET(req: NextRequest) {
       total_active_spots: spotIds.length,
     });
 
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: getErrorMessage(e) }, { status: 500 });
   }
 }
