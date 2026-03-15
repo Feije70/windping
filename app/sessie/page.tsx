@@ -222,19 +222,19 @@ function SessionLogInner() {
         const res = await fetch(`${SUPABASE_URL}/rest/v1/sessions?created_by=eq.${uid}&status=eq.going&session_date=lte.${today}&order=session_date.desc&select=id,spot_id,session_date,status,rating,gear_type,gear_size,notes,forecast_wind,forecast_dir,wind_feel,image_url`, {
           headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
         });
-        const data = await res.json();
+        const data = await res.json() as SessionData[];
         if (data?.length) {
-          const spotIds = [...new Set(data.map((s: any) => s.spot_id))] as number[];
+          const spotIds = [...new Set(data.map(s => s.spot_id))] as number[];
           const spotRes = await fetch(`${SUPABASE_URL}/rest/v1/spots?id=in.(${spotIds.join(",")})&select=id,display_name`, {
             headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
           });
           const spotData = await spotRes.json();
           const spotMap: Record<number, string> = {};
-          (spotData || []).forEach((s: any) => { spotMap[s.id] = s.display_name; });
-          data.forEach((s: any) => { s._spotName = spotMap[s.spot_id] || `spot ${s.spot_id}`; });
+          (spotData as { id: number; display_name: string }[] || []).forEach(s => { spotMap[s.id] = s.display_name; });
+          data.forEach(s => { s._spotName = spotMap[s.spot_id] || `spot ${s.spot_id}`; });
           setSessions(data);
           setSession(data[0]);
-          setSpotName(data[0]._spotName);
+          setSpotName(data[0]._spotName ?? "");
           setStep(1);
         } else {
           setStep(-1);
@@ -304,7 +304,7 @@ function SessionLogInner() {
       } else {
         setStep(7);
       }
-    } catch (e: any) { setError(e.message); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     setSaving(false);
   };
 
@@ -654,11 +654,11 @@ function SessionLogInner() {
                     formData.append("file", file);
                     formData.append("session_id", String(session.id));
                     const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
-                    let uploadData: any = {};
+                    let uploadData: { url?: string; error?: string } = {};
                     try { uploadData = await uploadRes.json(); } catch { uploadData = { error: "Ongeldige server response" }; }
                     if (uploadRes.ok && uploadData.url) { setPhotoUrl(uploadData.url); photoUrlRef.current = uploadData.url; }
                     else { setError(`Foto upload mislukt: ${uploadData.error || `HTTP ${uploadRes.status}`}`); }
-                  } catch (err: any) { setError("Foto upload mislukt. Controleer je verbinding."); }
+                  } catch { setError("Foto upload mislukt. Controleer je verbinding."); }
                   setPhotoUploading(false);
                   e.target.value = "";
                 }}
