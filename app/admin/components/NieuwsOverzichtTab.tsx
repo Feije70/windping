@@ -9,7 +9,7 @@ interface NieuwsRow {
   news_push_blocked: boolean;
   last_news_push_at: string | null;
   scanned_at: string | null;
-  categories: any;
+  categories: Record<string, Record<string, string | null>> | null;
   spot_name: string;
   region: string;
   country: string;
@@ -36,11 +36,11 @@ function NieuwsOverzichtTab() {
         }).then(r => r.json()),
       ]);
 
-      const spotMap: Record<number, any> = {};
-      if (Array.isArray(spotsRes)) spotsRes.forEach((s: any) => { spotMap[s.id] = s; });
+      const spotMap: Record<number, { id: number; display_name: string; region: string | null; country: string | null }> = {};
+      if (Array.isArray(spotsRes)) (spotsRes as { id: number; display_name: string; region: string | null; country: string | null }[]).forEach(s => { spotMap[s.id] = s; });
 
       const combined: NieuwsRow[] = Array.isArray(enrichRes)
-        ? enrichRes.map((e: any) => ({
+        ? (enrichRes as { spot_id: number; news_score: number | null; news_push_blocked: boolean; last_news_push_at: string | null; scanned_at: string | null; categories: Record<string, Record<string, string | null>> | null }[]).map(e => ({
             ...e,
             spot_name: spotMap[e.spot_id]?.display_name || `#${e.spot_id}`,
             region: spotMap[e.spot_id]?.region || "",
