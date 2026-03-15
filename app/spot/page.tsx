@@ -16,6 +16,46 @@ function normA(a: number) { return ((a % 360) + 360) % 360; }
 function pct(v: number) { return ((v - SMIN) / (SMAX - SMIN)) * 100; }
 function valFromPct(p: number) { return Math.round(SMIN + (p / 100) * (SMAX - SMIN)); }
 
+interface SpotDetail {
+  id: number;
+  display_name: string;
+  spot_type: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  region: string | null;
+  level: string | null;
+  min_wind: number | null;
+  max_wind: number | null;
+  good_directions: string[] | null;
+  tips: string | null;
+  language?: string;
+}
+
+interface EnrichmentDetail {
+  categories: Record<string, Record<string, string | null> | null> | null;
+  confidence: number | null;
+  scanned_at: string | null;
+  sources: string[] | null;
+}
+
+interface IdealCondition {
+  user_id: number;
+  spot_id: number;
+  wind_min: number | null;
+  wind_max: number | null;
+  directions: string[] | null;
+  perfect_enabled: boolean | null;
+  perfect_wind_min: number | null;
+  perfect_wind_max: number | null;
+  perfect_directions: string[] | null;
+  compass_lat: number | null;
+  compass_lng: number | null;
+  tide_enabled: boolean | null;
+  tide_reference: "HW" | "LW" | null;
+  tide_hours_before: number | null;
+  tide_hours_after: number | null;
+}
+
 function WindSlider({ min, max, onChange, color = C.sky }: { min: number; max: number; onChange: (mn: number, mx: number) => void; color?: string }) {
   const trackRef = useRef<HTMLDivElement>(null);
   const dragging = useRef<"min" | "max" | null>(null);
@@ -68,7 +108,7 @@ function stripCiteSpot(text: string): string {
   return text.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, '$1').trim();
 }
 
-function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enrichment: any; userLanguage: string }) {
+function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: SpotDetail; enrichment: EnrichmentDetail | null; userLanguage: string }) {
   const rawCats = enrichment?.categories || {};
   const availableLangs = ["nl","en","de","fr","es","pt","it"].filter(lang =>
     rawCats[lang] && typeof rawCats[lang] === "object" && Object.values(rawCats[lang]).some(Boolean)
@@ -88,10 +128,10 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
       <div style={{ background: C.card, borderRadius: 14, padding: "16px 18px", boxShadow: C.cardShadow, marginBottom: 16 }}>
         {spot.tips && <p style={{ fontSize: 14, color: C.sub, lineHeight: 1.7, margin: "0 0 14px" }}>{spot.tips}</p>}
         <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 16 }}>
-          {spot.good_directions?.length > 0 && (
+          {(spot.good_directions?.length ?? 0) > 0 && (
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.8, textTransform: "uppercase" as const, marginBottom: 4 }}>Richtingen</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.sky }}>{spot.good_directions.join(", ")}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.sky }}>{spot.good_directions?.join(", ")}</div>
             </div>
           )}
           {spot.min_wind && (
@@ -147,7 +187,7 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
                 <span style={{ fontSize: 11, fontWeight: 800, color: "#1D4ED8", textTransform: "uppercase" as const, letterSpacing: 0.8 }}>Nieuws</span>
                 <span style={{ fontSize: 10, background: "#DBEAFE", color: "#1D4ED8", padding: "1px 7px", borderRadius: 4, fontWeight: 700 }}>Actueel</span>
               </div>
-              <div style={{ fontSize: 13, color: "#1E3A5F", lineHeight: 1.7 }}>{stripCiteSpot(cats.news)}</div>
+              <div style={{ fontSize: 13, color: "#1E3A5F", lineHeight: 1.7 }}>{stripCiteSpot(String(cats.news ?? ""))}</div>
             </div>
           )}
 
@@ -157,7 +197,7 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#92400E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
                 <span style={{ fontSize: 11, fontWeight: 800, color: "#92400E", textTransform: "uppercase" as const, letterSpacing: 0.8 }}>Events & wedstrijden</span>
               </div>
-              <div style={{ fontSize: 13, color: "#78350F", lineHeight: 1.7 }}>{stripCiteSpot(cats.events)}</div>
+              <div style={{ fontSize: 13, color: "#78350F", lineHeight: 1.7 }}>{stripCiteSpot(String(cats.events ?? ""))}</div>
             </div>
           )}
 
@@ -172,14 +212,14 @@ function EnrichmentInfoTab({ spot, enrichment, userLanguage }: { spot: any; enri
                 {cat.icon}
                 <span style={{ fontSize: 11, fontWeight: 700, color: C.navy, textTransform: "uppercase" as const, letterSpacing: 0.8 }}>{cat.label}</span>
               </div>
-              <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.7 }}>{stripCiteSpot(cats[cat.key])}</div>
+              <div style={{ fontSize: 13, color: C.sub, lineHeight: 1.7 }}>{stripCiteSpot(String(cats[cat.key] ?? ""))}</div>
             </div>
           ))}
 
-          {enrichment.sources?.length > 0 && (
+          {(enrichment.sources?.length ?? 0) > 0 && (
             <div style={{ marginTop: 6, padding: "10px 14px", background: C.creamDark, borderRadius: 10 }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: C.sub, letterSpacing: 0.8, textTransform: "uppercase" as const, marginBottom: 4 }}>Bronnen</div>
-              <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>{enrichment.sources.join(" · ")}</div>
+              <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>{enrichment.sources?.join(" · ")}</div>
             </div>
           )}
         </>
@@ -196,9 +236,9 @@ function SpotDetailContent() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [spot, setSpot] = useState<any>(null);
+  const [spot, setSpot] = useState<SpotDetail | null>(null);
   const [userName, setUserName] = useState<string>("");
-  const [enrichment, setEnrichment] = useState<any>(null);
+  const [enrichment, setEnrichment] = useState<EnrichmentDetail | null>(null);
   const [userLanguage, setUserLanguage] = useState<string>("nl");
   const [wMin, setWMin] = useState(15);
   const [wMax, setWMax] = useState(25);
@@ -265,13 +305,13 @@ function SpotDetailContent() {
       setSpot(sp);
       if (user.name) setUserName(user.name);
 
-      const existing = conds?.find((c: any) => c.user_id === user.id) || null;
-      if (existing?.wind_min != null) { setWMin(existing.wind_min); setWMax(existing.wind_max); }
+      const existing = (conds as IdealCondition[] | null)?.find(c => c.user_id === user.id) || null;
+      if (existing?.wind_min != null) { setWMin(existing.wind_min); setWMax(existing.wind_max ?? 25); }
       else if (user.min_wind_speed != null) { setWMin(user.min_wind_speed); setWMax(user.max_wind_speed || 25); }
-      if (existing?.compass_lat != null) { setCompassLat(existing.compass_lat); setCompassLng(existing.compass_lng); compassLatRef.current = existing.compass_lat; compassLngRef.current = existing.compass_lng; }
+      if (existing?.compass_lat != null) { setCompassLat(existing.compass_lat ?? null); setCompassLng(existing.compass_lng ?? null); compassLatRef.current = existing.compass_lat; compassLngRef.current = existing.compass_lng; }
       if (existing?.directions?.length) {
         const segs = new Array(16).fill(false);
-        DIRS.forEach((d, i) => { if (existing.directions.includes(d)) segs[i] = true; });
+        DIRS.forEach((d, i) => { if (existing.directions?.includes(d)) segs[i] = true; });
         setUserSegs(segs); setIsSaved(true); setHasEdits(true);
       } else if (sp.good_directions?.length) {
         const exp: Record<string, boolean> = {};
@@ -283,7 +323,7 @@ function SpotDetailContent() {
         if (existing.perfect_wind_min != null) { setEMin(existing.perfect_wind_min); setEMax(existing.perfect_wind_max || 30); }
         if (existing.perfect_directions?.length) {
           const eSegs = new Array(16).fill(false);
-          DIRS.forEach((d, i) => { if (existing.perfect_directions.includes(d)) eSegs[i] = true; });
+          DIRS.forEach((d, i) => { if (existing.perfect_directions?.includes(d)) eSegs[i] = true; });
           setEpicSegs(eSegs);
         }
       }
@@ -319,8 +359,8 @@ function SpotDetailContent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (!document.querySelector('link[href*="leaflet"]')) { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(l); }
-    if (!(window as any).L) { const s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.onload = () => { LRef.current = (window as any).L; }; document.head.appendChild(s); }
-    else LRef.current = (window as any).L;
+    if (!(window as { L?: unknown }).L) { const s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"; s.onload = () => { LRef.current = (window as { L?: unknown }).L; }; document.head.appendChild(s); }
+    else LRef.current = (window as { L?: unknown }).L;
   }, []);
 
   const satLayerRef = useRef<any>(null);
@@ -341,7 +381,7 @@ function SpotDetailContent() {
       const street = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 18 });
       sat.addTo(map);
       satLayerRef.current = sat; streetLayerRef.current = street;
-      const col = typeColors[spot.spot_type] || C.sky;
+      const col = typeColors[spot.spot_type ?? ""] || C.sky;
       if (spot.latitude && spot.longitude) {
         spotMarkerRef.current = L.circleMarker([spot.latitude, spot.longitude], { radius: 8, color: col, fillColor: col, fillOpacity: 0.8, weight: 2 }).addTo(map);
       }
@@ -527,7 +567,7 @@ function SpotDetailContent() {
     if (st.epicEnabled) for (let i = 0; i < SEG; i++) if (st.epicSegs[i]) eDirs.push(DIRS[i]);
     const mapCenter = mapRef.current?.getCenter();
 
-    const upsert = async (table: string, data: any) => {
+    const upsert = async (table: string, data: Record<string, unknown>) => {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
         method: "POST",
         headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
@@ -553,7 +593,7 @@ function SpotDetailContent() {
       ]);
       setIsSaved(true);
       if (showFeedback) showToast("✓ Saved");
-    } catch (e: any) { if (showFeedback) showToast("Save failed"); }
+    } catch { if (showFeedback) showToast("Save failed"); }
   }
 
   async function handleSave() {
@@ -594,7 +634,7 @@ function SpotDetailContent() {
     </div>
   );
 
-  const tc = typeColors[spot.spot_type] || C.sky;
+  const tc = typeColors[spot.spot_type ?? ""] || C.sky;
   const TAB_ICONS: Record<string, React.ReactElement> = {
     prikbord: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
     info: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
