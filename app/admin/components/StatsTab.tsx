@@ -32,8 +32,44 @@ function SparkBar({ data }: { data: Record<string, number> }) {
   );
 }
 
+interface TopSpot {
+  id: number;
+  name: string;
+  count: number;
+  avgRating: number | null;
+}
+
+interface TopUser {
+  id: number;
+  name: string;
+  count: number;
+}
+
+interface StatsOverview {
+  totalUsers: number;
+  activeUsers30d: number;
+  totalSessions: number;
+  completedSessions: number;
+  goingSessions: number;
+  totalSpots: number;
+  totalReactions: number;
+  totalFriendships: number;
+  sessionsLast7d: number;
+  avgRating: number | null;
+}
+
+interface StatsData {
+  overview: StatsOverview;
+  topSpots: TopSpot[];
+  reactionCounts: Record<string, number>;
+  sessionsByDay: Record<string, number>;
+  ratingDist: Record<string, number>;
+  topUsers: TopUser[];
+  usersByMonth: Record<string, number>;
+}
+
 function StatsTab({ token }: { token: string | null }) {
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -108,7 +144,7 @@ function StatsTab({ token }: { token: string | null }) {
         <div style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 12, letterSpacing: "0.06em" }}>TOP SPOTS</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {topSpots.slice(0, 8).map((spot: any, i: number) => (
+            {(topSpots as TopSpot[]).slice(0, 8).map((spot: TopSpot, i: number) => (
               <div key={spot.id}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, alignItems: "center" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -134,8 +170,8 @@ function StatsTab({ token }: { token: string | null }) {
           {[5, 4, 3, 2, 1].map(r => (
             <div key={r} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: ratingColors[r], width: 40 }}>{ratingLabels[r]}</span>
-              <MiniBar value={(ratingDist as any)[r] || 0} max={maxRating} color={ratingColors[r]} />
-              <span style={{ fontSize: 11, color: C.muted, width: 24, textAlign: "right" }}>{(ratingDist as any)[r] || 0}</span>
+              <MiniBar value={(ratingDist as Record<string, number>)[r] || 0} max={maxRating} color={ratingColors[r]} />
+              <span style={{ fontSize: 11, color: C.muted, width: 24, textAlign: "right" }}>{(ratingDist as Record<string, number>)[r] || 0}</span>
             </div>
           ))}
         </div>
@@ -145,7 +181,7 @@ function StatsTab({ token }: { token: string | null }) {
       {topUsers?.length > 0 && (
         <div style={{ background: C.card, borderRadius: 14, padding: "14px 16px", boxShadow: C.cardShadow }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.sub, marginBottom: 12, letterSpacing: "0.06em" }}>TOP LOGGERS</div>
-          {topUsers.map((u: any, i: number) => (
+          {(topUsers as TopUser[]).map((u: TopUser, i: number) => (
             <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: i < topUsers.length - 1 ? `1px solid ${C.cardBorder}` : "none" }}>
               <span style={{ fontSize: 14, width: 20 }}>{["🥇","🥈","🥉","4️⃣","5️⃣"][i]}</span>
               <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: C.navy }}>{u.name}</div>
