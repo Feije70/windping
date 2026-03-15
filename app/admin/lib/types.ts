@@ -3,7 +3,7 @@ export interface AlertHistoryItem {
   alert_type: string;
   target_date: string;
   spot_ids: number[];
-  conditions: any;
+  conditions: Record<string, unknown> | null;
   is_test: boolean;
   created_at: string;
   delivered_push: boolean;
@@ -28,7 +28,7 @@ export interface HealthData {
     pushSent: number;
     pushFailed: number;
     byType: Record<string, number>;
-    errors: any[];
+    errors: { id: number; error: string | null; type: string; date: string }[];
   };
   users: {
     id: number;

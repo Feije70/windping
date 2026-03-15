@@ -719,7 +719,7 @@ export default function AdminPage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {history.map((a) => {
                   const tc = alertTypeColors[a.alert_type] || C.muted;
-                  const spotsList = a.conditions?.spots || [];
+                  const spotsList = (a.conditions?.spots as AlertSpot[] | undefined) || [];
                   return (
                     <Card key={a.id} style={{ padding: "12px 16px", border: a.is_test ? `1.5px solid ${C.gold}40` : undefined }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
