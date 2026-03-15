@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import type { Map as LeafletMap, Marker as LeafletMarker } from "leaflet";
 import { useRouter } from "next/navigation";
 import { colors as C, fonts } from "@/lib/design";
 import { useUser } from "@/lib/hooks/useUser";
@@ -11,8 +12,8 @@ export default function SpotCreatePage() {
   const { user, token, loading: authLoading } = useUser({ redirectIfUnauthenticated: true });
 
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  const mapInstanceRef = useRef<LeafletMap | null>(null);
+  const markerRef = useRef<LeafletMarker | null>(null);
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [name, setName] = useState("");
@@ -32,30 +33,32 @@ export default function SpotCreatePage() {
 
     function initMap(centerLat: number, centerLng: number) {
       if (!mapRef.current || mapInstanceRef.current) return;
-      const L = (window as any).L;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const L = (window as unknown as { L?: any }).L;
       if (!L) return;
 
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      delete L.Icon.Default.prototype._getIconUrl;
       L.Icon.Default.mergeOptions({
         iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
         iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
         shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
       });
 
-      const map = L.map(mapRef.current).setView([centerLat, centerLng], 10);
+      const map: LeafletMap = L.map(mapRef.current).setView([centerLat, centerLng], 10);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap",
       }).addTo(map);
 
-      map.on("click", (e: any) => {
-        const { lat: clickLat, lng: clickLng } = e.latlng;
+      map.on("click", (e) => {
+        const { lat: clickLat, lng: clickLng } = (e as unknown as { latlng: { lat: number; lng: number } }).latlng;
         if (markerRef.current) {
-          markerRef.current.setLatLng([clickLat, clickLng]);
+          markerRef.current.setLatLng([clickLat, clickLng] as [number, number]);
         } else {
-          markerRef.current = L.marker([clickLat, clickLng], { draggable: true }).addTo(map);
-          markerRef.current.on("dragend", (ev: any) => {
-            setLat(ev.target.getLatLng().lat);
-            setLng(ev.target.getLatLng().lng);
+          markerRef.current = L.marker([clickLat, clickLng], { draggable: true }).addTo(map) as LeafletMarker;
+          markerRef.current.on("dragend", (ev) => {
+            const ll = (ev as unknown as { target: { getLatLng: () => { lat: number; lng: number } } }).target.getLatLng();
+            setLat(ll.lat);
+            setLng(ll.lng);
           });
         }
         setLat(clickLat);
@@ -67,7 +70,7 @@ export default function SpotCreatePage() {
       setTimeout(() => map.invalidateSize(), 100);
     }
 
-    if ((window as any).L) {
+    if ((window as unknown as { L?: unknown }).L) {
       navigator.geolocation?.getCurrentPosition(
         (pos) => initMap(pos.coords.latitude, pos.coords.longitude),
         () => initMap(52.3, 4.9),
