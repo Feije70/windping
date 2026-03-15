@@ -5,12 +5,34 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 import { Tip } from "./SharedUI";
 import { EnrichmentResult } from "./EnrichmentResult";
 
+interface SpotRow {
+  id: number;
+  display_name: string;
+  spot_type: string | null;
+  region: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+interface EnrichmentRow {
+  spot_id: number;
+  scanned_at: string | null;
+}
+
+interface EnrichmentScanResult {
+  categories?: Record<string, unknown>;
+  confidence?: number;
+  sources?: string[];
+  missing?: string[];
+  error?: string;
+}
+
 function EnrichmentTab() {
-  const [spots, setSpots] = useState<any[]>([]);
+  const [spots, setSpots] = useState<SpotRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
-  const [resultMap, setResultMap] = useState<Record<number, any>>({});
+  const [resultMap, setResultMap] = useState<Record<number, EnrichmentScanResult>>({});
   const [viewId, setViewId] = useState<number | null>(null);
   const [scanProgress, setScanProgress] = useState("");
   const [spotSearch, setSpotSearch] = useState("");
@@ -23,7 +45,7 @@ function EnrichmentTab() {
   const [cronProgress, setCronProgress] = useState<{ done: number; total: number; recent: string[] }>({ done: 0, total: 0, recent: [] });
 
   // Landenoverzicht state
-  const [landStats, setLandStats] = useState<Record<string, { gescand: number; laatste: string | null }>>({});
+  const [landStats, setLandStats] = useState<Record<number, string | null>>({});
   const [landStatsLoading, setLandStatsLoading] = useState(true);
   const [overzichtOpen, setOverzichtOpen] = useState(true);
 
@@ -52,9 +74,9 @@ function EnrichmentTab() {
         const data = await res.json();
         if (Array.isArray(data)) {
           // Bouw map: spot_id -> scanned_at
-          const scannedMap: Record<number, string> = {};
-          data.forEach((row: any) => { scannedMap[row.spot_id] = row.scanned_at; });
-          setLandStats(scannedMap as any);
+          const scannedMap: Record<number, string | null> = {};
+          (data as EnrichmentRow[]).forEach(row => { scannedMap[row.spot_id] = row.scanned_at; });
+          setLandStats(scannedMap);
         }
       } catch {}
       setLandStatsLoading(false);
@@ -63,12 +85,12 @@ function EnrichmentTab() {
   }, []);
 
   // Herbereken landStats zodra spots én enrichment data beschikbaar zijn
-  const scannedMap: Record<number, string> = landStats as any;
+  const scannedMap: Record<number, string | null> = landStats;
 
   const filteredSpots = spots.filter(s => {
     const matchSearch = spotSearch.length >= 2 ? s.display_name.toLowerCase().includes(spotSearch.toLowerCase()) : true;
-    const matchLand = selectedLand ? getLand(s.region) === selectedLand
-      : selectedLanden.size > 0 ? selectedLanden.has(getLand(s.region))
+    const matchLand = selectedLand ? getLand(s.region ?? '') === selectedLand
+      : selectedLanden.size > 0 ? selectedLanden.has(getLand(s.region ?? ''))
       : true;
     return matchSearch && matchLand;
   });
@@ -85,7 +107,7 @@ function EnrichmentTab() {
     if (checkedIds.size === filteredSpots.length) {
       setCheckedIds(new Set());
     } else {
-      setCheckedIds(new Set(filteredSpots.map((s: any) => s.id)));
+      setCheckedIds(new Set(filteredSpots.map(s => s.id)));
     }
   }
 
@@ -100,7 +122,7 @@ function EnrichmentTab() {
   // Selecteer ontbrekende spots van een land
   function selectOntbrekende(land: string) {
     const ontbrekende = spots
-      .filter(s => getLand(s.region) === land && !scannedMap[s.id])
+      .filter(s => getLand(s.region ?? '') === land && !scannedMap[s.id])
       .map(s => s.id);
     setCheckedIds(new Set(ontbrekende));
     setSelectedLand(land);
@@ -125,12 +147,12 @@ function EnrichmentTab() {
         const data = await res.json();
         if (Array.isArray(data)) {
           const done = data.length;
-          const recentIds = data.slice(0, 3).map((r: any) => r.spot_id);
+          const recentIds = (data as EnrichmentRow[]).slice(0, 3).map(r => r.spot_id);
           const recentNames = recentIds.map((id: number) => spots.find(s => s.id === id)?.display_name || `#${id}`);
           setCronProgress({ done, total, recent: recentNames });
           // Update scannedMap live
-          data.forEach((row: any) => {
-            (scannedMap as any)[row.spot_id] = row.scanned_at;
+          (data as EnrichmentRow[]).forEach(row => {
+            scannedMap[row.spot_id] = row.scanned_at;
           });
           if (done >= total) break;
           lastDone = done;
@@ -223,7 +245,7 @@ function EnrichmentTab() {
           const spotResult = hasCreditsError ? { error: "insufficient_credits" } : data;
           setResultMap(prev => ({ ...prev, [spot.id]: spotResult }));
           // Update scannedMap live zodat overzicht bijwerkt
-          (scannedMap as any)[spot.id] = new Date().toISOString();
+          scannedMap[spot.id] = new Date().toISOString();
           setViewId(spot.id);
           break;
         } catch {
@@ -247,9 +269,9 @@ function EnrichmentTab() {
   const checkedCount = checkedIds.size;
   const scannedSpots = spots.filter(s => resultMap[s.id]);
 
-  const landenMap: Record<string, any[]> = {};
+  const landenMap: Record<string, SpotRow[]> = {};
   spots.forEach(s => {
-    const land = getLand(s.region);
+    const land = getLand(s.region ?? '');
     if (!landenMap[land]) landenMap[land] = [];
     landenMap[land].push(s);
   });
@@ -533,7 +555,7 @@ function EnrichmentTab() {
           </div>
 
           <div style={{ overflowY: "auto" as const, flex: 1, padding: "4px 6px 8px" }}>
-            {filteredSpots.map((spot: any) => {
+            {filteredSpots.map(spot => {
               const checked = checkedIds.has(spot.id);
               const isScanning = scanning && scanProgress.includes(spot.display_name);
               const isGescand = !!scannedMap[spot.id];
