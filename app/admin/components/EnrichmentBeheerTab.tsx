@@ -9,9 +9,28 @@ function stripCite(text: string): string {
   return text.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, '$1').trim();
 }
 
+interface EnrichmentRow {
+  spot_id: number;
+  confidence: number | null;
+  sources: string[] | null;
+  categories: Record<string, Record<string, string | null> | null> | null;
+  scanned_at: string | null;
+  updated_at: string;
+  news_score: number | null;
+  news_push_blocked: boolean;
+  missing?: string[] | null;
+}
+
+interface SpotRow {
+  id: number;
+  display_name: string;
+  region: string | null;
+  spot_type: string | null;
+}
+
 function EnrichmentBeheerTab() {
-  const [saved, setSaved] = useState<any[]>([]);
-  const [spots, setSpots] = useState<any[]>([]);
+  const [saved, setSaved] = useState<EnrichmentRow[]>([]);
+  const [spots, setSpots] = useState<SpotRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editId, setEditId] = useState<number | null>(null);
   const [editCats, setEditCats] = useState<Record<string, string>>({});
@@ -51,7 +70,7 @@ function EnrichmentBeheerTab() {
     return spots.find(s => s.id === spot_id);
   }
 
-  function startEdit(row: any) {
+  function startEdit(row: EnrichmentRow) {
     setEditId(row.spot_id);
     const raw = row.categories || {};
     const isMultiLang = raw.nl || raw.en;
@@ -90,7 +109,7 @@ function EnrichmentBeheerTab() {
     } catch { setMsg("❌ Opslaan mislukt"); }
   }
 
-  async function saveEdit(spot_id: number, row: any) {
+  async function saveEdit(spot_id: number, row: EnrichmentRow) {
     setSaving(true);
     const res = await fetch(`${SUPABASE_URL}/rest/v1/spot_enrichment`, {
       method: "POST",
@@ -112,7 +131,7 @@ function EnrichmentBeheerTab() {
       }),
     });
     if (res.ok) {
-      setSaved(prev => prev.map(r => r.spot_id === spot_id ? { ...r, categories: editCats, updated_at: new Date().toISOString() } : r));
+      setSaved(prev => prev.map(r => r.spot_id === spot_id ? { ...r, categories: Object.keys(editAllLangs).length > 1 ? { ...editAllLangs, [editLang]: editCats } as EnrichmentRow["categories"] : null, updated_at: new Date().toISOString() } : r));
       setMsg("✓ Opgeslagen");
       setEditId(null);
     } else {
