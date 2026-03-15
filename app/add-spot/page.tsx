@@ -159,7 +159,7 @@ export default function AddSpotPage() {
         setSpotLat(lat); setSpotLng(lng);
         if (markerRef.current) map.removeLayer(markerRef.current);
         markerRef.current = L.circleMarker([lat, lng], { radius: 8, color: C.sky, fillColor: C.sky, fillOpacity: 0.8, weight: 2 }).addTo(map);
-        map.setView([lat, lng], 13);
+        map.setView([lat, lng], 11);
       });
       map.on("moveend", () => {
         if (!markerRef.current) return;
