@@ -91,7 +91,7 @@ export function FunnelPanel({ funnel }: { funnel: HealthData["funnel"] }) {
       {funnel.errors.length > 0 && (
         <div style={{ marginTop: 12, padding: "10px 12px", background: "#FEF2F2", borderRadius: 8, border: "1px solid #FCA5A5" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#DC2626", marginBottom: 4 }}>Delivery errors ({funnel.errors.length})</div>
-          {funnel.errors.slice(0, 3).map((e: any, i: number) => <div key={i} style={{ fontSize: 10, color: "#7F1D1D", marginBottom: 2 }}>{e.error}</div>)}
+          {funnel.errors.slice(0, 3).map((e, i: number) => <div key={i} style={{ fontSize: 10, color: "#7F1D1D", marginBottom: 2 }}>{e.error}</div>)}
         </div>
       )}
     </Card>

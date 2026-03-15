@@ -24,7 +24,7 @@ function PromptsTab() {
         if (Array.isArray(data) && data.length > 0) {
           setPrompts(prev => {
             const merged = { ...prev };
-            data.forEach((r: any) => { if (r.prompt_text) merged[r.category] = r.prompt_text; });
+            (data as { category: string; prompt_text: string }[]).forEach(r => { if (r.prompt_text) merged[r.category] = r.prompt_text; });
             return merged;
           });
         }

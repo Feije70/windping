@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import type React from "react";
 import { C } from "../lib/constants";
 
 export function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean }) {
@@ -18,7 +19,7 @@ export function Section({ title, children, defaultOpen = true }: { title: string
   );
 }
 
-export function Card({ children, style }: { children: React.ReactNode; style?: any }) {
+export function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
   return (
     <div style={{ background: C.card, boxShadow: C.cardShadow, borderRadius: 14, padding: 16, ...style }}>
       {children}
