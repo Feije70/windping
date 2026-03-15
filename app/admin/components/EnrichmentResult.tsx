@@ -8,14 +8,29 @@ function stripCite(text: string): string {
   return text.replace(/<cite[^>]*>([\s\S]*?)<\/cite>/g, '$1').trim();
 }
 
-function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSaved?: (spotId: number) => void }) {
+interface EnrichmentSpot {
+  id: number;
+  display_name: string;
+  spot_type: string | null;
+  region: string | null;
+}
+
+interface EnrichmentData {
+  categories?: Record<string, Record<string, string | null> | null> | null;
+  confidence?: number;
+  sources?: string[];
+  missing?: string[];
+  error?: string;
+}
+
+function EnrichmentResult({ spot, data, onSaved }: { spot: EnrichmentSpot; data: EnrichmentData; onSaved?: (spotId: number) => void }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saveError, setSaveError] = useState("");
 
   // Editable categories — lees uit nl of en taallaag, of root als oud formaat
-  function extractCats(categories: any): Record<string, string> {
+  function extractCats(categories: Record<string, Record<string, string | null> | null> | null | undefined): Record<string, string> {
     if (!categories) return {};
     // Nieuw formaat: { nl: {...}, en: {...} }
     const langCats = categories.nl || categories.en || null;
@@ -80,8 +95,8 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
         setSaved(true);
         onSaved?.(spot.id);
       }
-    } catch (e: any) {
-      setSaveError(e.message);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
     }
     setSaving(false);
   }
@@ -104,8 +119,8 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
       } else {
         setSaveError(`Verwijderen mislukt: ${res.status}`);
       }
-    } catch (e: any) {
-      setSaveError(e.message);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
     }
     setDeleting(false);
   }
@@ -151,8 +166,8 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
         </span>
       </div>
 
-      {data.sources?.length > 0 && (
-        <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Bronnen: {data.sources.join(" · ")}</div>
+      {(data.sources?.length ?? 0) > 0 && (
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>Bronnen: {data.sources?.join(" · ")}</div>
       )}
 
       {/* Taalwissel als meerdere talen beschikbaar */}
@@ -161,7 +176,7 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
           {Object.keys(data.categories).filter(k => ["nl","en","de","fr","es","pt","it"].includes(k)).map(lang => (
             <button key={lang} onClick={() => {
               setEditLang(lang);
-              const cats = data.categories[lang] || {};
+              const cats = data.categories?.[lang] || {};
               const result: Record<string, string> = {};
               Object.entries(cats).forEach(([k, v]) => { if (typeof v === "string") result[k] = stripCite(v); });
               setEditCats(result);
@@ -196,9 +211,9 @@ function EnrichmentResult({ spot, data, onSaved }: { spot: any; data: any; onSav
         </div>
       ))}
 
-      {data.missing?.length > 0 && (
+      {(data.missing?.length ?? 0) > 0 && (
         <div style={{ fontSize: 11, color: C.muted, marginTop: 4, marginBottom: 12 }}>
-          Niet gevonden: {data.missing.join(", ")}
+          Niet gevonden: {data.missing?.join(", ")}
         </div>
       )}
 

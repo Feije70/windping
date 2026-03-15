@@ -20,7 +20,7 @@ interface EnrichmentRow {
 }
 
 interface EnrichmentScanResult {
-  categories?: Record<string, unknown>;
+  categories?: Record<string, Record<string, string | null> | null> | null;
   confidence?: number;
   sources?: string[];
   missing?: string[];
