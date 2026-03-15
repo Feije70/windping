@@ -3,8 +3,17 @@ import { useEffect, useState } from "react";
 import { C } from "../lib/constants";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 
+interface SpotRow {
+  id: number;
+  display_name: string;
+  spot_type: string | null;
+  region: string | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 function SpotsTab() {
-  const [spots, setSpots] = useState<any[]>([]);
+  const [spots, setSpots] = useState<SpotRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -19,7 +28,7 @@ function SpotsTab() {
     }).catch(() => setLoading(false));
   }, []);
 
-  async function deleteSpot(spot: any) {
+  async function deleteSpot(spot: SpotRow) {
     if (!confirm(`Spot "${spot.display_name}" permanent verwijderen?\n\nDit verwijdert ook alle gekoppelde user_spots, ideal_conditions en enrichment data.`)) return;
     setDeleting(spot.id);
     try {
@@ -41,8 +50,8 @@ function SpotsTab() {
       } else {
         setMsg(`❌ Verwijderen mislukt (${res.status})`);
       }
-    } catch (e: any) {
-      setMsg(`❌ ${e.message}`);
+    } catch (e) {
+      setMsg(`❌ ${e instanceof Error ? e.message : String(e)}`);
     }
     setDeleting(null);
   }
