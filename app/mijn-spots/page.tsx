@@ -145,6 +145,10 @@ function MySpotCard({ spot, userId, token, onDelete, isHome, onSetHome, settingH
   );
 }
 
+interface RawUserSpot { spot_id: number; }
+interface RawSpot { id: number; display_name: string; spot_type: string | null; min_wind: number | null; max_wind: number | null; good_directions: string[] | null; is_private: boolean | null; }
+interface RawIdealCondition { spot_id: number; wind_min: number | null; wind_max: number | null; directions: string[] | null; enabled: boolean | null; perfect_enabled: boolean | null; }
+
 export default function MySpotPage() {
   const { user, token, loading: authLoading } = useUser();
 
@@ -188,17 +192,17 @@ export default function MySpotPage() {
 
         const userSpots = await sbFetch(`user_spots?user_id=eq.${uid}&select=spot_id`);
         if (!userSpots?.length) { setSpots([]); setLoading(false); return; }
-        const ids = userSpots.map((x: any) => x.spot_id);
+        const ids = (userSpots as RawUserSpot[]).map(x => x.spot_id);
 
         const [spotsData, condsData] = await Promise.all([
           sbFetch(`spots?id=in.(${ids.join(",")})&select=id,display_name,spot_type,level,min_wind,max_wind,good_directions,is_private`),
           sbFetch(`ideal_conditions?user_id=eq.${uid}&spot_id=in.(${ids.join(",")})&select=spot_id,wind_min,wind_max,directions,enabled,perfect_enabled`),
         ]);
 
-        const conds: Record<number, any> = {};
-        (condsData || []).forEach((ic: any) => { conds[ic.spot_id] = ic; });
+        const conds: Record<number, RawIdealCondition> = {};
+        (condsData as RawIdealCondition[] || []).forEach(ic => { conds[ic.spot_id] = ic; });
 
-        const result: MySpot[] = (spotsData || []).map((s: any) => {
+        const result: MySpot[] = (spotsData as RawSpot[] || []).map(s => {
           const ic = conds[s.id];
           return {
             id: s.id,
@@ -214,7 +218,7 @@ export default function MySpotPage() {
         });
 
         setSpots(result);
-      } catch (e: any) {
+      } catch (e) {
         console.error("My spots error:", e);
       }
       setLoading(false);
