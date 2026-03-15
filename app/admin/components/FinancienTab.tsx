@@ -14,15 +14,35 @@ const VASTE_KOSTEN_DEFAULTS = [
   { id: "domein",        label: "Domein (windping.com)", categorie: "Overig",     bedrag: 15,    eenheid: "jaar", actief: true, toelichting: "Jaarlijkse domeinkosten" },
 ];
 
+interface Kost {
+  id: string;
+  label: string;
+  categorie: string;
+  bedrag: number;
+  eenheid: string;
+  actief: boolean;
+  toelichting: string;
+}
+
+interface Campagne {
+  id: string;
+  naam: string;
+  type: string;
+  kanaal: string;
+  bedrag: number;
+  datum: string;
+  notitie: string;
+}
+
 function FinancienTab({ tab, token }: { tab: string; token: string | null }) {
   const SK = "wp_fin_kosten";
   const SC = "wp_fin_campagnes";
 
-  const [kosten, setKosten] = useState<any[]>([]);
-  const [campagnes, setCampagnes] = useState<any[]>([]);
+  const [kosten, setKosten] = useState<Kost[]>([]);
+  const [campagnes, setCampagnes] = useState<Campagne[]>([]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
-  const [editKosten, setEditKosten] = useState<any>(null);
+  const [editKosten, setEditKosten] = useState<Kost | null>(null);
 
   // Nieuw campagne form
   const [newCamp, setNewCamp] = useState({ naam: "", type: "online", kanaal: "", bedrag: "", datum: new Date().toISOString().split("T")[0], notitie: "" });
@@ -40,17 +60,17 @@ function FinancienTab({ tab, token }: { tab: string; token: string | null }) {
     }
   }, []);
 
-  function saveKosten(updated: any[]) {
+  function saveKosten(updated: Kost[]) {
     setKosten(updated);
     localStorage.setItem(SK, JSON.stringify(updated));
   }
 
-  function saveCampagnes(updated: any[]) {
+  function saveCampagnes(updated: Campagne[]) {
     setCampagnes(updated);
     localStorage.setItem(SC, JSON.stringify(updated));
   }
 
-  function updateKost(id: string, field: string, value: any) {
+  function updateKost(id: string, field: string, value: unknown) {
     const updated = kosten.map(k => k.id === id ? { ...k, [field]: value } : k);
     saveKosten(updated);
   }
@@ -71,12 +91,12 @@ function FinancienTab({ tab, token }: { tab: string; token: string | null }) {
   const actieveKosten = kosten.filter(k => k.actief);
   const maandTotaal = actieveKosten
     .filter(k => k.eenheid === "mnd")
-    .reduce((s, k) => s + (parseFloat(k.bedrag) || 0), 0);
+    .reduce((s, k) => s + (Number(k.bedrag) || 0), 0);
   const jaarVaste = actieveKosten
     .filter(k => k.eenheid === "jaar")
-    .reduce((s, k) => s + (parseFloat(k.bedrag) || 0), 0);
+    .reduce((s, k) => s + (Number(k.bedrag) || 0), 0);
   const jaarTotaalVast = maandTotaal * 12 + jaarVaste;
-  const campagneTotaal = campagnes.reduce((s, c) => s + (parseFloat(c.bedrag) || 0), 0);
+  const campagneTotaal = campagnes.reduce((s, c) => s + (Number(c.bedrag) || 0), 0);
 
   const categorieën = Array.from(new Set(kosten.map(k => k.categorie)));
 
@@ -183,8 +203,8 @@ function FinancienTab({ tab, token }: { tab: string; token: string | null }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 20 }}>
         {[
           { label: "Totaal uitgegeven", value: `€${campagneTotaal.toFixed(2)}`, color: C.navy },
-          { label: "Online", value: `€${campagnes.filter(c => c.type === "online").reduce((s, c) => s + c.bedrag, 0).toFixed(2)}`, color: C.sky },
-          { label: "Offline", value: `€${campagnes.filter(c => c.type === "offline").reduce((s, c) => s + c.bedrag, 0).toFixed(2)}`, color: C.gold },
+          { label: "Online", value: `€${campagnes.filter(c => c.type === "online").reduce((s, c) => s + Number(c.bedrag), 0).toFixed(2)}`, color: C.sky },
+          { label: "Offline", value: `€${campagnes.filter(c => c.type === "offline").reduce((s, c) => s + Number(c.bedrag), 0).toFixed(2)}`, color: C.gold },
         ].map(k => (
           <div key={k.label} style={{ background: C.card, borderRadius: 12, padding: "14px 16px", boxShadow: C.cardShadow }}>
             <div style={{ fontSize: 22, fontWeight: 800, color: k.color }}>{k.value}</div>
@@ -275,7 +295,7 @@ function FinancienTab({ tab, token }: { tab: string; token: string | null }) {
                 color: c.type === "online" ? C.sky : c.type === "offline" ? C.gold : C.muted,
               }}>{c.type}</span>
               <span style={{ fontSize: 12, color: C.muted }}>{c.kanaal || "—"}</span>
-              <span style={{ fontSize: 14, fontWeight: 700, color: C.navy, textAlign: "right" as const }}>€{parseFloat(c.bedrag).toFixed(2)}</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.navy, textAlign: "right" as const }}>€{Number(c.bedrag).toFixed(2)}</span>
               <button onClick={() => deleteCampagne(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.muted, fontSize: 16, padding: 0, lineHeight: 1 }}>×</button>
             </div>
           ))}
