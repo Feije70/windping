@@ -2,15 +2,58 @@
 import { useEffect, useState } from "react";
 import { C } from "../lib/constants";
 
+interface SimUser {
+  id: number;
+  name: string | null;
+  email: string | null;
+}
+
+interface SimSpot {
+  id: number;
+  display_name: string;
+}
+
+interface SimSession {
+  id: number;
+  spot_id: number;
+  session_date: string;
+  status: string;
+  forecast_wind: number | null;
+  gear_type: string | null;
+  rating: number | null;
+  notes: string | null;
+  spotName?: string;
+  spots?: { display_name: string } | null;
+}
+
+interface SimFeedItem {
+  id: number;
+  friendName: string;
+  spotName: string;
+  sessionDate: string;
+  forecastWind: number | null;
+  forecastDir: string | null;
+  gearType: string | null;
+  rating: number | null;
+  notes: string | null;
+  status: string;
+}
+
+interface SimFriendship {
+  id: number;
+  friendName: string;
+  status: string;
+}
+
 function SimulatorTab({ token }: { token: string | null }) {
-  const [simUsers, setSimUsers] = useState<any[]>([]);
-  const [simSpots, setSimSpots] = useState<any[]>([]);
-  const [selectedUser, setSelectedUser] = useState<any>(null);
-  const [userSessions, setUserSessions] = useState<any[]>([]);
-  const [userFriendships, setUserFriendships] = useState<any[]>([]);
-  const [userFeed, setUserFeed] = useState<any[]>([]);
+  const [simUsers, setSimUsers] = useState<SimUser[]>([]);
+  const [simSpots, setSimSpots] = useState<SimSpot[]>([]);
+  const [selectedUser, setSelectedUser] = useState<SimUser | null>(null);
+  const [userSessions, setUserSessions] = useState<SimSession[]>([]);
+  const [userFriendships, setUserFriendships] = useState<SimFriendship[]>([]);
+  const [userFeed, setUserFeed] = useState<SimFeedItem[]>([]);
   const [feedFriendCount, setFeedFriendCount] = useState(0);
-  const [feedDebug, setFeedDebug] = useState<any>(null);
+  const [feedDebug, setFeedDebug] = useState<{ totalFriendships: number; acceptedFriendships: number; sessionCount?: number } | null>(null);
   const [activePanel, setActivePanel] = useState<"sessions" | "friends" | "feed" | "create">("feed");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
@@ -37,7 +80,7 @@ function SimulatorTab({ token }: { token: string | null }) {
     return res.json();
   }
 
-  async function adminPost(url: string, body: any) {
+  async function adminPost(url: string, body: Record<string, unknown>) {
     const t = token || (await import("@/lib/supabase").then(m => m.getValidToken()))
     const res = await fetch(url, {
       method: "POST",
@@ -65,7 +108,7 @@ function SimulatorTab({ token }: { token: string | null }) {
     load();
   }, []);
 
-  async function selectUser(user: any) {
+  async function selectUser(user: SimUser) {
     setSelectedUser(user);
     setMsg("");
     setLoading(true);
@@ -170,7 +213,7 @@ function SimulatorTab({ token }: { token: string | null }) {
               <div style={{ fontSize: 11, color: C.muted }}>
                 {userFriendships.filter(f => f.status === "accepted").length} vrienden
                 {userFriendships.filter(f => f.status === "accepted").length > 0 && (
-                  <span> — {userFriendships.filter(f => f.status === "accepted").map((f: any) => f.friendName).join(", ")}</span>
+                  <span> — {userFriendships.filter(f => f.status === "accepted").map(f => f.friendName).join(", ")}</span>
                 )}
                 {" · "}
                 {userSessions.length} sessies
@@ -230,7 +273,7 @@ function SimulatorTab({ token }: { token: string | null }) {
                   <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>
                     Vrienden hebben de afgelopen 90 dagen geen sessies gelogd. Maak er een aan via ➕ Simuleer.
                   </div>
-                ) : userFeed.map((item: any) => (
+                ) : userFeed.map((item: SimFeedItem) => (
                   <div key={item.id} style={{ padding: "10px 12px", background: C.creamDark, borderRadius: 10, marginBottom: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{item.friendName} · {item.spotName}</div>
@@ -258,7 +301,7 @@ function SimulatorTab({ token }: { token: string | null }) {
                 </div>
                 {userSessions.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>Geen sessies</div>
-                ) : userSessions.map((s: any) => (
+                ) : userSessions.map((s: SimSession) => (
                   <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 0", borderBottom: `1px solid ${C.cardBorder}` }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: C.navy }}>{s.spotName || s.spots?.display_name || `Spot #${s.spot_id}`}</div>
@@ -303,7 +346,7 @@ function SimulatorTab({ token }: { token: string | null }) {
 
                 {userFriendships.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "20px 0", color: C.muted, fontSize: 13 }}>Geen vriendschappen</div>
-                ) : userFriendships.map((f: any) => (
+                ) : userFriendships.map((f: SimFriendship) => (
                   <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: `1px solid ${C.cardBorder}` }}>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: C.navy }}>{f.friendName}</div>
