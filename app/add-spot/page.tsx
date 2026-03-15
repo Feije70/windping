@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import type { Map as LeafletMap, Marker as LeafletMarker, CircleMarker, TileLayer } from "leaflet";
 import { colors as C, fonts } from "@/lib/design";
 import NavBar from "@/components/NavBar";
 import { Icons } from "@/components/Icons";
@@ -111,14 +112,15 @@ export default function AddSpotPage() {
   const [savedSpotName, setSavedSpotName] = useState("");
   const fromOnboarding = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("from") === "onboarding";
 
-  const mapRef = useRef<any>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
   const mapElRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const LRef = useRef<any>(null);
-  const markerRef = useRef<any>(null);
+  const markerRef = useRef<CircleMarker | null>(null);
   const sweepRef = useRef<{ active: boolean; s: number | null; c: number | null }>({ active: false, s: null, c: null });
-  const satLayerRef = useRef<any>(null);
-  const streetLayerRef = useRef<any>(null);
+  const satLayerRef = useRef<TileLayer | null>(null);
+  const streetLayerRef = useRef<TileLayer | null>(null);
   const stateRef = useRef({ userSegs, userArc, epicSegs, epicArc, epicEnabled, compassLayer });
   useEffect(() => { stateRef.current = { userSegs, userArc, epicSegs, epicArc, epicEnabled, compassLayer }; }, [userSegs, userArc, epicSegs, epicArc, epicEnabled, compassLayer]);
 
@@ -136,48 +138,58 @@ export default function AddSpotPage() {
       .catch(() => {});
   }, [user, token]);
 
-  // Leaflet init — geen auth nodig, ongewijzigd
+  // Leaflet laden + kaart initialiseren
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!document.querySelector('link[href*="leaflet"]')) { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(l); }
-    if (!(window as any).L) {
-      const s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-      s.onload = () => { LRef.current = (window as any).L; tryInitMap(); };
-      document.head.appendChild(s);
-    } else { LRef.current = (window as any).L; tryInitMap(); }
-  }, []);
+    if (authLoading || typeof window === "undefined" || !mapElRef.current) return;
 
-  function tryInitMap() {
-    if (!LRef.current || !mapElRef.current || mapRef.current) return;
-    const L = LRef.current;
-    const map = L.map(mapElRef.current, { zoomControl: true, scrollWheelZoom: true, attributionControl: false }).setView([52.3, 5.0], 7);
-    L.control.attribution({ prefix: false, position: "bottomright" }).addAttribution('<a href="https://leafletjs.com" style="font-size:9px;opacity:0.5;">Leaflet</a>').addTo(map);
-    const street = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 18 });
-    const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 });
-    street.addTo(map);
-    streetLayerRef.current = street; satLayerRef.current = sat;
-    map.on("click", (e: any) => {
-      const { lat, lng } = e.latlng;
-      setSpotLat(lat); setSpotLng(lng);
-      if (markerRef.current) map.removeLayer(markerRef.current);
-      markerRef.current = L.circleMarker([lat, lng], { radius: 8, color: C.sky, fillColor: C.sky, fillOpacity: 0.8, weight: 2 }).addTo(map);
-      map.setView([lat, lng], 13);
-    });
-    map.on("moveend", () => {
-      if (!markerRef.current) return;
-      const center = map.getCenter();
-      markerRef.current.setLatLng([center.lat, center.lng]);
-      setSpotLat(center.lat); setSpotLng(center.lng);
-    });
-    mapRef.current = map;
-    fetch("https://ipapi.co/json/").then((r) => r.json()).then((d) => { if (d.latitude && d.longitude) map.setView([d.latitude, d.longitude], 9); }).catch(() => {});
+    function initMap() {
+      if (!mapElRef.current || mapRef.current) return;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const L = (window as unknown as { L?: any }).L;
+      if (!L) return;
+      LRef.current = L;
+      const map = L.map(mapElRef.current, { zoomControl: true, scrollWheelZoom: true, attributionControl: false }).setView([52.3, 5.0], 7);
+      L.control.attribution({ prefix: false, position: "bottomright" }).addAttribution('<a href="https://leafletjs.com" style="font-size:9px;opacity:0.5;">Leaflet</a>').addTo(map);
+      const street = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 18 });
+      const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19 });
+      street.addTo(map);
+      streetLayerRef.current = street; satLayerRef.current = sat;
+      map.on("click", (e: unknown) => {
+        const { lat, lng } = (e as { latlng: { lat: number; lng: number } }).latlng;
+        setSpotLat(lat); setSpotLng(lng);
+        if (markerRef.current) map.removeLayer(markerRef.current);
+        markerRef.current = L.circleMarker([lat, lng], { radius: 8, color: C.sky, fillColor: C.sky, fillOpacity: 0.8, weight: 2 }).addTo(map);
+        map.setView([lat, lng], 13);
+      });
+      map.on("moveend", () => {
+        if (!markerRef.current) return;
+        const center = map.getCenter();
+        markerRef.current.setLatLng([center.lat, center.lng]);
+        setSpotLat(center.lat); setSpotLng(center.lng);
+      });
+      mapRef.current = map;
+      setTimeout(() => map.invalidateSize(), 100);
+      setTimeout(() => map.invalidateSize(), 800);
+      fetch("https://ipapi.co/json/").then((r) => r.json()).then((d) => { if (d.latitude && d.longitude) map.setView([d.latitude, d.longitude], 9); }).catch(() => {});
+    }
+
+    if (!document.querySelector('link[href*="leaflet"]')) {
+      const l = document.createElement("link"); l.rel = "stylesheet"; l.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"; document.head.appendChild(l);
+    }
+    if ((window as unknown as { L?: unknown }).L) {
+      initMap();
+    } else {
+      const s = document.createElement("script"); s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      s.onload = () => initMap();
+      document.head.appendChild(s);
+    }
     return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
-  }
+  }, [authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleMapLayer() {
     if (!mapRef.current) return;
-    if (isSat) { mapRef.current.removeLayer(satLayerRef.current); streetLayerRef.current.addTo(mapRef.current); }
-    else { mapRef.current.removeLayer(streetLayerRef.current); satLayerRef.current.addTo(mapRef.current); }
+    if (isSat) { if (satLayerRef.current) mapRef.current.removeLayer(satLayerRef.current); if (streetLayerRef.current) streetLayerRef.current.addTo(mapRef.current); }
+    else { if (streetLayerRef.current) mapRef.current.removeLayer(streetLayerRef.current); if (satLayerRef.current) satLayerRef.current.addTo(mapRef.current); }
     setIsSat(!isSat);
   }
 
@@ -376,8 +388,8 @@ export default function AddSpotPage() {
 
       showToast("✓ Spot opgeslagen!");
       setTimeout(() => { window.location.href = "/mijn-spots"; }, 1200);
-    } catch (e: any) {
-      showToast("Opslaan mislukt: " + (e.message || ""));
+    } catch (e) {
+      showToast("Opslaan mislukt: " + (e instanceof Error ? e.message : ""));
       setSaving(false);
     }
   }
