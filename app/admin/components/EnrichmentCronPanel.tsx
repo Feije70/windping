@@ -3,8 +3,25 @@ import { useEffect, useState } from "react";
 import { C } from "../lib/constants";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "@/lib/supabase";
 
+interface EnrichmentJob {
+  status: string;
+  created_at: string;
+  updated_at: string;
+  job_type: string;
+}
+
+interface CronData {
+  pending: number;
+  running: number;
+  done: number;
+  failed: number;
+  lastScanned: string | null;
+  lastJob: string | null;
+  total: number;
+}
+
 export function EnrichmentCronPanel() {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<CronData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,13 +35,13 @@ export function EnrichmentCronPanel() {
             headers: { apikey: SUPABASE_ANON_KEY }
           }).then(r => r.json()),
         ]);
-        const jobs = Array.isArray(jobsRes) ? jobsRes : [];
-        const pending = jobs.filter((j: any) => j.status === "pending").length;
-        const running = jobs.filter((j: any) => j.status === "running").length;
-        const done = jobs.filter((j: any) => j.status === "done").length;
-        const failed = jobs.filter((j: any) => j.status === "failed").length;
+        const jobs: EnrichmentJob[] = Array.isArray(jobsRes) ? jobsRes : [];
+        const pending = jobs.filter(j => j.status === "pending").length;
+        const running = jobs.filter(j => j.status === "running").length;
+        const done = jobs.filter(j => j.status === "done").length;
+        const failed = jobs.filter(j => j.status === "failed").length;
         const lastScanned = Array.isArray(enrichRes) && enrichRes[0] ? enrichRes[0].scanned_at : null;
-        const lastJob = jobs.find((j: any) => j.status === "done");
+        const lastJob = jobs.find(j => j.status === "done");
         setData({ pending, running, done, failed, lastScanned, lastJob: lastJob?.updated_at || null, total: jobs.length });
       } catch {}
       setLoading(false);
